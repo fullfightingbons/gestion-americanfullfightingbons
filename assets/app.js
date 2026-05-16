@@ -1,0 +1,5450 @@
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// CONSTANTES
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+const CLOUDFLARE_API_BASE = '/api';
+const FORCED_LOGO_URL = '';
+const DIPLOME_BUCKET = 'storage';
+const DIPLOME_IMAGE_RE = /\.(png|jpe?g|webp)$/i;
+const DIPLOME_LAYOUTS_KEY = 'diplome_layouts';
+const DIPLOME_SIGNATURE_KEY = 'diplome_signature_url';
+const DIPLOME_PAGE = {pdfWidthPt:842,pdfHeightPt:595,canvasWidth:1684,canvasHeight:1190};
+const DIPLOME_FIELD_META = [
+  {key:'nomComplet',label:'Nom complet',type:'text'},
+  {key:'prenom',label:'PrÃ©nom',type:'text'},
+  {key:'nom',label:'Nom',type:'text'},
+  {key:'licence',label:'NÂ° licence',type:'text'},
+  {key:'date',label:'Date',type:'text'},
+  {key:'logo',label:'Logo du club',type:'image'},
+  {key:'signature',label:'Signature',type:'image'},
+];
+const DIPLOME_FONT_OPTIONS = [
+  {value:"'Petit Formal Script','Segoe Script','Lucida Handwriting','Brush Script MT',cursive",label:'Petit Formal Script'},
+  {value:"'Great Vibes','Petit Formal Script','Segoe Script',cursive",label:'Great Vibes'},
+  {value:"'Playfair Display','Times New Roman',serif",label:'Playfair Display'},
+  {value:"'Cormorant Garamond','Times New Roman',serif",label:'Cormorant Garamond'},
+  {value:"'Montserrat','Avenir Next','Segoe UI',sans-serif",label:'Montserrat'},
+  {value:"'Oswald','Arial Narrow',sans-serif",label:'Oswald'},
+  {value:"'Times New Roman',serif",label:'Times New Roman'},
+  {value:"Georgia,serif",label:'Georgia'},
+  {value:"Arial,sans-serif",label:'Arial'},
+];
+const DEFAULT_DIPLOME_FIELDS = {
+  nomComplet:{enabled:true,left:50,top:53.1,width:44,fontSize:30,fontFamily:"'Petit Formal Script','Segoe Script','Lucida Handwriting','Brush Script MT',cursive",fontWeight:'600',fontStyle:'normal',align:'center',color:'#16110d',letterSpacing:0},
+  prenom:{enabled:false,left:50,top:49,width:22,fontSize:22,fontFamily:"'Petit Formal Script','Segoe Script','Lucida Handwriting','Brush Script MT',cursive",fontWeight:'500',fontStyle:'normal',align:'center',color:'#16110d',letterSpacing:0},
+  nom:{enabled:false,left:50,top:57,width:26,fontSize:24,fontFamily:"'Petit Formal Script','Segoe Script','Lucida Handwriting','Brush Script MT',cursive",fontWeight:'600',fontStyle:'normal',align:'center',color:'#16110d',letterSpacing:0},
+  date:{enabled:true,left:27.2,top:75.7,width:14.2,fontSize:16,fontFamily:"'Playfair Display','Times New Roman',serif",fontWeight:'600',fontStyle:'normal',align:'left',color:'#16110d',letterSpacing:0},
+  licence:{enabled:true,left:82.2,top:77.2,width:12,fontSize:15,fontFamily:"'Playfair Display','Times New Roman',serif",fontWeight:'600',fontStyle:'normal',align:'left',color:'#16110d',letterSpacing:0},
+  logo:{enabled:false,left:50,top:18,width:16,height:18,align:'center',objectFit:'contain'},
+  signature:{enabled:false,left:82,top:86,width:18,height:10,align:'center',objectFit:'contain'},
+};
+const DEFAULT_CLUB_NAME = 'American Full Fighting Bons En Chablais';
+const DEFAULT_SIRET = '92470461200010';
+const DANGEROUS_RESTORE_PHRASE = 'RESTAURER';
+const NOTICE_LIFETIME = 5200;
+
+const ROLES = {admin:'Administrateur',tresorier:'TrÃ©sorier',secretaire:'SecrÃ©taire',entraineur:'EntraÃ®neur',membre:'Membre'};
+const AVC   = ['#C0392B','#D4AC0D','#1D9E75','#378ADD','#8e44ad','#e67e22'];
+const MODES_PAIE = ['Virement','ChÃ¨que','EspÃ¨ces','CB','PrÃ©lÃ¨vement','HelloAsso','Gratuit'];
+const ADH_TYPES = ['Club','CSE ThalÃ¨s','Membre du Bureau'];
+const ADH_STATUTS = ['Actif','Renouvellement','Inactif','AdhÃ©sion annulÃ©e'];
+const CEINTURE_COLORS = ['Blanche','Jaune','Orange','Verte','Bleue','Marron','Noire'];
+
+const ALL_TABS = [
+  {id:'dashboard',    icon:'ðŸ',label:'Pilotage'},
+  {id:'adherents',    icon:'ðŸ‘¥',label:'AdhÃ©rents',    perm:'perm_adherents'},
+  {id:'diplomes',     icon:'ðŸŽ“',label:'DiplÃ´mes',     perm:'perm_adherents'},
+  {id:'banque',       icon:'ðŸ¦',label:'Banque',        perm:'perm_banque'},
+  {id:'comptabilite', icon:'ðŸ“Š',label:'ComptabilitÃ©',  perm:'perm_comptabilite'},
+  {id:'achat',        icon:'ðŸ›’',label:'Achats',         perm:'perm_achats'},
+  {id:'facture',      icon:'ðŸ’¸',label:'Ventes',        perm:'perm_facturation'},
+  {id:'administration',icon:'âš™ï¸',label:'Administration',perm:'perm_administration'},
+];
+const PERM_META = [
+  ['perm_adherents','ðŸ‘¥ AdhÃ©rents'],
+  ['perm_banque','ðŸ¦ Banque'],
+  ['perm_comptabilite','ðŸ“Š ComptabilitÃ©'],
+  ['perm_achats','ðŸ›’ Achats'],
+  ['perm_facturation','ðŸ’¸ Ventes'],
+  ['perm_administration','âš™ï¸ Administration'],
+];
+const PERM_LEVELS = {
+  none:{label:'Aucun accÃ¨s',rank:0},
+  read:{label:'Lecture',rank:1},
+  write:{label:'Lecture / Ã©criture',rank:2},
+};
+const DEFAULT_ROLE_PERMS = {
+  admin:{perm_adherents:'write',perm_banque:'write',perm_comptabilite:'write',perm_achats:'write',perm_facturation:'write',perm_administration:'write'},
+  tresorier:{perm_adherents:'write',perm_banque:'write',perm_comptabilite:'write',perm_achats:'write',perm_facturation:'write',perm_administration:'none'},
+  secretaire:{perm_adherents:'write',perm_banque:'none',perm_comptabilite:'none',perm_achats:'none',perm_facturation:'none',perm_administration:'none'},
+  entraineur:{perm_adherents:'read',perm_banque:'none',perm_comptabilite:'none',perm_achats:'none',perm_facturation:'none',perm_administration:'none'},
+  membre:{perm_adherents:'none',perm_banque:'none',perm_comptabilite:'none',perm_achats:'none',perm_facturation:'none',perm_administration:'none'},
+};
+
+const PLAN = [
+  '1010 - Fonds associatif sans droit de reprise',
+  '1060 - RÃ©serves',
+  '1200 - RÃ©sultat de l exercice excÃ©dent',
+  '1290 - RÃ©sultat de l exercice dÃ©ficit',
+  '1640 - Emprunts auprÃ¨s des Ã©tablissements de crÃ©dit',
+  '401 - Fournisseurs',
+  '411 - AdhÃ©rents et clients',
+  '471 - Comptes d attente',
+  '4870 - Produits constatÃ©s d avance',
+  '512 - Banque',
+  '518 - IntÃ©rÃªts courus Ã  payer et Ã  recevoir',
+  '5300 - Caisse',
+  '6051 - Achats de matÃ©riels et Ã©quipements sportifs',
+  '6052 - Achats de textile et tenues',
+  '606 - Achats non stockÃ©s fournitures',
+  '6061 - Fournitures non stockÃ©es',
+  '6063 - Petit Ã©quipement',
+  '6132 - Locations immobiliÃ¨res',
+  '616 - Primes assurances',
+  '6226 - Honoraires',
+  '623 - PublicitÃ© publications',
+  '6230 - Achats de produits publicitaires',
+  '6241 - Transports sur achats',
+  '625 - DÃ©placements missions rÃ©ceptions',
+  '6251 - Voyages et dÃ©placements',
+  '6257 - RÃ©ceptions repas',
+  '626 - Frais postaux tÃ©lÃ©coms',
+  '6260 - TÃ©lÃ©phone et communications',
+  '627 - Services bancaires',
+  '6270 - Frais bancaires',
+  '628 - Cotisations fÃ©dÃ©rales licences',
+  '6281 - Cotisations fÃ©dÃ©rales et licences',
+  '6580 - Charges diverses de gestion courante',
+  '651 - Redevances droits d auteur SACEM',
+  '706 - Prestations de services',
+  '7060 - Prestations de services',
+  '7061 - Cours et stages',
+  '707 - Ventes vÃªtements et Ã©quipements',
+  '7080 - Produits des activitÃ©s annexes',
+  '7088 - Participations et produits accessoires Pass RÃ©gion',
+  '741 - Subventions',
+  '7410 - Remboursements Pass RÃ©gion',
+  '754 - Dons manuels',
+  '753 - Cotisations',
+  '7561 - Cotisations membres actifs',
+  '7562 - Cotisations licences et adhÃ©sions annexes',
+  '7580 - Autres produits de gestion courante',
+];
+const PLAN_OPT = PLAN.map(p=>`<option value="${p}">${p}</option>`).join('');
+
+// Champs mapping import
+const ADH_FIELDS = [
+  {key:'nom',              label:'Nom',               aliases:['nom','lastname','name','nom de famille']},
+  {key:'prenom',           label:'PrÃ©nom',            aliases:['prenom','prÃ©nom','firstname','first name']},
+  {key:'naissance',        label:'Date naissance',    aliases:['naissance','date naissance','dob','birthdate']},
+  {key:'couleur_ceinture', label:'Couleur ceinture',  aliases:['couleur ceinture','ceinture','grade','belt','belt color']},
+  {key:'numero_licence',   label:'NÂ° licence',        aliases:['numero licence','numÃ©ro licence','nÂ° licence','licence','license','license number']},
+  {key:'email',            label:'Email',             aliases:['email','mail','courriel']},
+  {key:'telephone',        label:'TÃ©lÃ©phone',         aliases:['telephone','tÃ©lÃ©phone','tel','phone','mobile','portable']},
+  {key:'adresse',          label:'Adresse',           aliases:['adresse','address','rue','street']},
+  {key:'code_postal',      label:'Code postal',       aliases:['code postal','cp','zip','postal','code_postal']},
+  {key:'ville',            label:'Ville',             aliases:['ville','city','commune']},
+  {key:'discipline',       label:'Type adhÃ©sion',     aliases:['discipline','sport','section','activite','activitÃ©','type adhÃ©sion','type adhesion','club','cse','thalÃ¨s','thales']},
+  {key:'cotisation',       label:'Cotisation (â‚¬)',     aliases:['cotisation','montant','tarif','fee','amount']},
+  {key:'paiement',         label:'Mode paiement',     aliases:['paiement','mode paiement','payment','mode de paiement']},
+  {key:'date_inscription', label:'Date inscription',  aliases:['inscription','date inscription','adhesion','adhÃ©sion']},
+  {key:'date_fin_adhesion',label:'Fin adhÃ©sion',      aliases:['fin adhesion','fin adhÃ©sion','expiration','date fin','validite']},
+  {key:'statut',           label:'Statut',            aliases:['statut','status','etat','Ã©tat']},
+  {key:'certificat',       label:'Certificat mÃ©dical',aliases:['certificat','certif','medical']},
+  {key:'droit_image',      label:'Droit Ã  l\'image',  aliases:['droit image','image']},
+  {key:'reglement',        label:'RÃ¨glement intÃ©rieur',aliases:['reglement','rÃ¨glement']},
+  {key:'pass_region',      label:'Pass RÃ©gion',        aliases:['pass region','pass_rÃ©gion','pass rÃ©gion','pass']},
+  {key:'montant_pass_region',label:'Montant Pass RÃ©gion',aliases:['montant pass region','montant pass rÃ©gion','aide rÃ©gion','montant aide rÃ©gion']},
+  {key:'urgence_nom',      label:'Urgence â€” Nom',     aliases:['urgence nom','contact urgence','emergency']},
+  {key:'urgence_telephone',label:'Urgence â€” TÃ©l',     aliases:['urgence tel','urgence telephone','emergency phone']},
+  {key:'notes',            label:'Notes',             aliases:['notes','remarque','commentaire','observation']},
+];
+const ECR_FIELDS = [
+  {key:'date_op', label:'Date',           aliases:['date','date op','date_op','date opÃ©ration','date ecriture','date comptable']},
+  {key:'piece',   label:'NÂ° piÃ¨ce',      aliases:['piece','piÃ¨ce','numero','ref','facture','nÂ°','num piece','numÃ©ro piÃ¨ce']},
+  {key:'compte',  label:'Compte',        aliases:['compte','account','code compte','numÃ©ro compte','compte gÃ©nÃ©ral']},
+  {key:'libelle', label:'LibellÃ©',       aliases:['libelle','libellÃ©','description','label','intitule','designation','libellÃ© Ã©criture']},
+  {key:'debit',   label:'DÃ©bit (â‚¬)',     aliases:['debit','dÃ©bit','montant debit','charge','sortie','dÃ©bit eur']},
+  {key:'credit',  label:'CrÃ©dit (â‚¬)',    aliases:['credit','crÃ©dit','montant credit','produit','entree','entrÃ©e','crÃ©dit eur']},
+];
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// STATE
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+let SB = null;
+const D = {
+  adherents:[], comptes:[], journal:[], achats:[], factures:[],
+  publicRegistrations:[],
+  users:[], auditLogs:[], clubInfo:{}, exercices:[], currentExo:null,
+  logoUrl: FORCED_LOGO_URL,
+  diplomeTemplates:[],
+  diplomeTemplatesError:'',
+  diplomeLayouts:{},
+  rolePerms: JSON.parse(JSON.stringify(DEFAULT_ROLE_PERMS)),
+  loaded:{core:false,dashboard:false,adherents:false,banque:false,comptabilite:false,achat:false,facture:false,administration:false},
+  loading:{},
+};
+const UI = {
+  tab:'dashboard',
+  subTab:{banque:'comptes',compta:'journal',facture:'liste',achat:'liste',admin:'users'},
+  modal:null, editObj:null, currentUser:null,
+  notices:[],
+  search:{adherents:'',achats:'',factures:''},
+  adhFilters:{statut:'',type:'',season:'current',special:''},
+  achatFilterStatus:'',
+  factureFilterStatus:'',
+  paging:{adherents:1,achats:1,factures:1,dons:1},
+  bankAccountId:null,
+  pdfTarget:null,
+  diplome:{adherentId:'',date:td(),templatePath:'',titre:'DiplÃ´me de ceinture',selectedField:'nomComplet'},
+  invState:{numero:'FAC-001',date:td(),destinataire:'',adresse:'',objet:'',lignes:[{desc:'',qte:1,pu:0}],notes:''},
+  invKind:'facture',
+};
+let IMP = {
+  adh:{raw:'',headers:[],rows:[],mapping:{},sep:';',importing:false},
+  ecr:{raw:'',headers:[],rows:[],mapping:{},sep:';',importing:false},
+  backup:{restoring:false,lastMessage:''},
+};
+
+function compareAlpha(a,b){
+  return (a||'').localeCompare((b||''),'fr',{sensitivity:'base'});
+}
+
+function deepClone(v){
+  return JSON.parse(JSON.stringify(v));
+}
+
+function plainText(v){
+  return String(v??'')
+    .replace(/<br\s*\/?>/gi,'\n')
+    .replace(/<\/(div|p|li|h\d)>/gi,'\n')
+    .replace(/<[^>]+>/g,' ')
+    .replace(/[ \t]+\n/g,'\n')
+    .replace(/\n{3,}/g,'\n\n')
+    .replace(/\s{2,}/g,' ')
+    .trim();
+}
+
+function notify(type,message,title){
+  const text=plainText(message);
+  if(!text) return;
+  const notice={
+    id:crypto.randomUUID(),
+    type:type||'info',
+    title:title||(
+      type==='error'?'Erreur':
+      type==='success'?'SuccÃ¨s':
+      type==='warn'?'Attention':
+      'Information'
+    ),
+    message:text
+  };
+  UI.notices=[...UI.notices.filter(n=>n.message!==notice.message).slice(-3),notice];
+  renderNotices();
+  setTimeout(()=>dismissNotice(notice.id),NOTICE_LIFETIME);
+}
+
+function dismissNotice(id){
+  const before=UI.notices.length;
+  UI.notices=UI.notices.filter(n=>n.id!==id);
+  if(UI.notices.length!==before) renderNotices();
+}
+
+function renderNotices(){
+  const host=document.getElementById('app-notices');
+  if(!host) return;
+  host.innerHTML=UI.notices.map(n=>`<div class="notice ${n.type==='error'?'error':n.type==='success'?'success':n.type==='warn'?'warn':''}" role="${n.type==='error'?'alert':'status'}">
+    <div class="notice-head">
+      <div class="notice-title">${esc(n.title)}</div>
+      <button class="notice-close" type="button" aria-label="Fermer" onclick="dismissNotice('${n.id}')">Ã—</button>
+    </div>
+    <div class="notice-body">${esc(n.message).replace(/\n/g,'<br>')}</div>
+  </div>`).join('');
+}
+
+window.dismissNotice=dismissNotice;
+window.alert=function(message){ notify('info',message); };
+window.addEventListener('error',function(event){
+  const msg=event?.error?.message || event?.message;
+  if(msg) notify('error',msg,'Erreur JavaScript');
+});
+window.addEventListener('unhandledrejection',function(event){
+  const reason=event?.reason?.message || event?.reason;
+  if(reason) notify('error',String(reason),'Erreur non gÃ©rÃ©e');
+});
+
+function esc(v){
+  return (v??'').toString()
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function sortAdherentsList(list){
+  return (list||[]).sort((a,b)=>compareAlpha(a?.nom,b?.nom) || compareAlpha(a?.prenom,b?.prenom));
+}
+
+function sortExercicesList(list){
+  return (list||[]).sort((a,b)=>(b?.date_debut||'').localeCompare(a?.date_debut||''));
+}
+
+function refreshCurrentExo(){
+  D.exercices=sortExercicesList(D.exercices);
+  D.currentExo=D.exercices.find(e=>e.statut==='actif')||D.exercices[0]||null;
+  const badge=document.getElementById('exo-badge');
+  if(badge) badge.textContent=D.currentExo?.libelle||'Aucun exercice actif';
+}
+
+function requireExerciceActif(){
+  if(D.currentExo?.statut==='actif') return true;
+  alert('Aucun exercice comptable actif. CrÃ©ez ou sÃ©lectionnez un exercice actif avant de poursuivre.');
+  UI.tab='comptabilite';
+  UI.subTab.compta='exo';
+  render();
+  return false;
+}
+
+function normalizeAdherentFinance(row){
+  const next={...(row||{})};
+  if(next.discipline==='Membre du Bureau'){
+    next.paiement='Gratuit';
+    next.cotisation=0;
+  }
+  return next;
+}
+
+function normalizeUserRow(row){
+  const next={...(row||{})};
+  ['actif','must_change_password','perm_adherents','perm_banque','perm_comptabilite','perm_achats','perm_facturation','perm_administration'].forEach(key=>{
+    next[key]=next[key]===true || next[key]===1 || next[key]==='1';
+  });
+  return next;
+}
+
+function normalizeFactureRow(row){
+  const next={...(row||{})};
+  if(typeof next.lignes==='string'){
+    try{
+      const parsed=JSON.parse(next.lignes);
+      next.lignes=Array.isArray(parsed)?parsed:[];
+    }catch(e){
+      next.lignes=[];
+    }
+  }else if(!Array.isArray(next.lignes)){
+    next.lignes=[];
+  }
+  return next;
+}
+
+function markLoaded(key,value=true){
+  D.loaded[key]=value;
+}
+
+function resetLoadedData(){
+  D.loaded={core:false,dashboard:false,adherents:false,banque:false,comptabilite:false,achat:false,facture:false,administration:false};
+  D.loading={};
+}
+
+function applyCoreData(payload={}){
+  D.clubInfo=payload.clubInfo||D.clubInfo||{};
+  D.exercices=sortExercicesList(payload.exercices||D.exercices||[]);
+  D.currentExo=D.exercices.find(e=>e.statut==='actif')||D.exercices[0]||null;
+  D.logoUrl=clubLogoUrl();
+  loadDiplomeLayoutsFromClubInfo();
+  let rolePermsRaw=null;
+  try{rolePermsRaw=D.clubInfo.role_permissions?JSON.parse(D.clubInfo.role_permissions):null;}catch(e){rolePermsRaw=null;}
+  D.rolePerms=rolePermsRaw?normalizeRolePerms(rolePermsRaw):deriveRolePermsFromUsers(D.users);
+  if(D.currentExo) document.getElementById('exo-badge').textContent=D.currentExo.libelle;
+  if(D.clubInfo?.nom){
+    document.getElementById('hdr-nom').textContent=D.clubInfo.nom;
+    document.getElementById('login-club-nom').textContent=D.clubInfo.nom;
+  }
+  markLoaded('core');
+}
+
+async function loadBootstrap(){
+  const {data,error}=await apiRequest('/bootstrap');
+  if(error) throw new Error(error.message||'Bootstrap indisponible');
+  applyCoreData(data||{});
+  if(data?.currentUser) UI.currentUser=normalizeUserRow(data.currentUser);
+  return data;
+}
+
+async function loadCoreData(force=false){
+  if(D.loaded.core && !force) return;
+  await loadBootstrap();
+}
+
+async function loadTabData(tab, force=false){
+  if(!force && D.loaded[tab]) return;
+  if(D.loading[tab]) return D.loading[tab];
+  D.loading[tab]=(async ()=>{
+    await loadCoreData(force);
+    if(tab==='dashboard'){
+      const jobs=[];
+      if(hasPerm('perm_adherents')) jobs.push(loadTabData('adherents',force));
+      if(hasPerm('perm_banque')) jobs.push(loadTabData('banque',force));
+      if(hasPerm('perm_comptabilite')) jobs.push(loadTabData('comptabilite',force));
+      if(hasPerm('perm_achats')) jobs.push(loadTabData('achat',force));
+      if(hasPerm('perm_facturation')) jobs.push(loadTabData('facture',force));
+      await Promise.all(jobs);
+      markLoaded('dashboard');
+      return;
+    }
+    if(tab==='adherents' || tab==='diplomes'){
+      const [adherentsRes, registrationsRes]=await Promise.all([
+        SB.from('adherents').select('*').order('nom'),
+        SB.from('inscriptions_publiques').select('*').order('created_at',{ascending:false}).limit(500),
+      ]);
+      D.adherents=sortAdherentsList(adherentsRes.data||[]);
+      D.publicRegistrations=registrationsRes.data||[];
+      markLoaded('adherents');
+      return;
+    }
+    if(tab==='banque'){
+      const [cpt,tr]=await Promise.all([
+        SB.from('comptes_bancaires').select('*').order('created_at'),
+        SB.from('transactions').select('*').order('created_at'),
+      ]);
+      D.comptes=(cpt.data||[]).map(c=>({...c,transactions:(tr.data||[]).filter(t=>t.compte_id===c.id)}));
+      markLoaded('banque');
+      return;
+    }
+    if(tab==='comptabilite'){
+      const {data}=await SB.from('journal_comptable').select('*').order('date_op');
+      D.journal=data||[];
+      markLoaded('comptabilite');
+      return;
+    }
+    if(tab==='achat'){
+      const {data}=await SB.from('achats').select('*').order('date_op',{ascending:false});
+      D.achats=data||[];
+      markLoaded('achat');
+      return;
+    }
+    if(tab==='facture'){
+      const {data}=await SB.from('factures').select('*').order('created_at',{ascending:false});
+      D.factures=(data||[]).map(normalizeFactureRow);
+      markLoaded('facture');
+      return;
+    }
+    if(tab==='administration'){
+      const [usersRes,auditRes]=await Promise.all([
+        SB.from('utilisateurs').select('*').order('created_at'),
+        SB.from('audit_logs').select('*').order('created_at',{ascending:false}).limit(100),
+      ]);
+      D.users=(usersRes.data||[]).map(normalizeUserRow);
+      D.auditLogs=auditRes.data||[];
+      let rolePermsRaw=null;
+      try{rolePermsRaw=D.clubInfo.role_permissions?JSON.parse(D.clubInfo.role_permissions):null;}catch(e){rolePermsRaw=null;}
+      D.rolePerms=rolePermsRaw?normalizeRolePerms(rolePermsRaw):deriveRolePermsFromUsers(D.users);
+      if(UI.currentUser?.id){
+        const freshUser=D.users.find(u=>u.id===UI.currentUser.id);
+        if(freshUser) UI.currentUser=normalizeUserRow(freshUser);
+      }
+      markLoaded('administration');
+      return;
+    }
+  })().finally(()=>{
+    delete D.loading[tab];
+  });
+  return D.loading[tab];
+}
+
+async function loadDiplomeTemplates(){
+  if(!SB?.storage) return;
+  try{
+    const files=await listDiplomeTemplateFiles();
+    D.diplomeTemplates=files.sort((a,b)=>compareAlpha(a.label,b.label));
+    D.diplomeTemplatesError='';
+    if(!UI.diplome.templatePath && D.diplomeTemplates.length){
+      UI.diplome.templatePath=D.diplomeTemplates[0].path;
+    }
+  }catch(e){
+    D.diplomeTemplates=[];
+    D.diplomeTemplatesError=e?.message||'Impossible de lister les modÃ¨les.';
+  }
+}
+
+function diplomeTemplateLabel(path){
+  return (path||'').replace(/\.[^.]+$/,'').replace(/[_-]+/g,' ');
+}
+
+function isDiplomeTemplateFile(path){
+  const name=(path||'').toLowerCase();
+  return DIPLOME_IMAGE_RE.test(name) && !/logo|signature[-_ ]?serge|signautre[-_ ]?serge/i.test(name);
+}
+
+async function listDiplomeTemplateFiles(prefix='',depth=0){
+  if(depth>5) return [];
+  const {data,error}=await SB.storage.from(DIPLOME_BUCKET).list(prefix,{limit:100,sortBy:{column:'name',order:'asc'}});
+  if(error) throw error;
+  const out=[];
+  for(const entry of (data||[])){
+    if(!entry?.name) continue;
+    const path=prefix?`${prefix}/${entry.name}`:entry.name;
+    const isFolder=entry.id==null || entry.metadata==null;
+    if(isFolder){
+      out.push(...await listDiplomeTemplateFiles(path,depth+1));
+      continue;
+    }
+    if(!isDiplomeTemplateFile(path)) continue;
+    const {data:pub}=SB.storage.from(DIPLOME_BUCKET).getPublicUrl(path);
+    out.push({
+      name:entry.name,
+      label:diplomeTemplateLabel(entry.name),
+      url:pub?.publicUrl||'',
+      path
+    });
+  }
+  return out;
+}
+
+function guessDiplomeTemplateForAdherent(a){
+  const belt=(a?.couleur_ceinture||'').toLowerCase();
+  if(!belt||!D.diplomeTemplates.length) return D.diplomeTemplates[0]?.path||'';
+  const match=D.diplomeTemplates.find(t=>t.name.toLowerCase().includes(belt));
+  return match?.path||D.diplomeTemplates[0]?.path||'';
+}
+
+function selectedDiplomeTemplate(){
+  return D.diplomeTemplates.find(t=>t.path===UI.diplome.templatePath) || D.diplomeTemplates[0] || null;
+}
+
+function clamp(n,min,max){
+  return Math.max(min,Math.min(max,n));
+}
+
+function safeParseJSON(raw,fallback){
+  if(!raw) return fallback;
+  try{return JSON.parse(raw);}catch(e){return fallback;}
+}
+
+function renderLogoNode(el,url,size,rounded){
+  if(!el) return;
+  el.textContent='';
+  if(url){
+    const img=document.createElement('img');
+    img.src=url;
+    img.alt='Logo du club';
+    img.style.width=size||'100%';
+    img.style.height=size||'100%';
+    img.style.objectFit='contain';
+    if(rounded) img.style.borderRadius='50%';
+    el.appendChild(img);
+    return;
+  }
+  const span=document.createElement('span');
+  span.style.fontSize='28px';
+  span.textContent='ðŸ¥Š';
+  el.appendChild(span);
+}
+
+function diplomeFieldMeta(key){
+  return DIPLOME_FIELD_META.find(f=>f.key===key) || {key,label:key};
+}
+
+function normalizeDiplomeField(key,raw){
+  const base=DEFAULT_DIPLOME_FIELDS[key]||DEFAULT_DIPLOME_FIELDS.nomComplet;
+  const field={...base,...(raw||{})};
+  const meta=diplomeFieldMeta(key);
+  field.enabled=field.enabled!==false;
+  const left=parseFloat(field.left);
+  const top=parseFloat(field.top);
+  field.left=clamp(Number.isFinite(left)?left:base.left,0,100);
+  field.top=clamp(Number.isFinite(top)?top:base.top,0,100);
+  field.width=clamp(parseFloat(field.width)||base.width,4,100);
+  field.height=clamp(parseFloat(field.height)||base.height||10,2,100);
+  field.fontSize=clamp(parseFloat(field.fontSize)||base.fontSize||24,8,96);
+  field.fontFamily=field.fontFamily||base.fontFamily;
+  field.fontWeight=(field.fontWeight||base.fontWeight||'400').toString();
+  field.fontStyle=(field.fontStyle==='italic'?'italic':'normal');
+  field.align=['left','center','right'].includes(field.align)?field.align:(base.align||'center');
+  field.color=(field.color||base.color||'#16110d').toString();
+  field.letterSpacing=clamp(parseFloat(field.letterSpacing)||0,-2,20);
+  field.objectFit=['contain','cover','fill'].includes(field.objectFit)?field.objectFit:(base.objectFit||'contain');
+  field.type=meta.type||'text';
+  return field;
+}
+
+function normalizeDiplomeTemplateLayout(raw){
+  const src=raw&&typeof raw==='object'?raw:{};
+  const fields={};
+  Object.keys(DEFAULT_DIPLOME_FIELDS).forEach(key=>{
+    fields[key]=normalizeDiplomeField(key,src.fields?.[key]||src[key]);
+  });
+  return {fields};
+}
+
+function loadDiplomeLayoutsFromClubInfo(){
+  D.diplomeLayouts=normalizeDiplomeLayoutsObject(safeParseJSON(D.clubInfo?.[DIPLOME_LAYOUTS_KEY],{}));
+}
+
+function normalizeDiplomeLayoutsObject(raw){
+  const out={};
+  if(!raw||typeof raw!=='object') return out;
+  Object.entries(raw).forEach(([path,layout])=>{
+    if(!path) return;
+    out[path]=normalizeDiplomeTemplateLayout(layout);
+  });
+  return out;
+}
+
+function ensureDiplomeLayout(path){
+  if(!path) return normalizeDiplomeTemplateLayout();
+  if(!D.diplomeLayouts[path]) D.diplomeLayouts[path]=normalizeDiplomeTemplateLayout();
+  return D.diplomeLayouts[path];
+}
+
+function selectedDiplomeLayout(){
+  return ensureDiplomeLayout(UI.diplome.templatePath || selectedDiplomeTemplate()?.path || '');
+}
+
+function selectedDiplomeField(){
+  const fieldKey=UI.diplome.selectedField||'nomComplet';
+  return selectedDiplomeLayout().fields[fieldKey] || selectedDiplomeLayout().fields.nomComplet;
+}
+
+function selectedDiplomeFieldMeta(){
+  return diplomeFieldMeta(UI.diplome.selectedField||'nomComplet');
+}
+
+function selectDiplomeField(key){
+  UI.diplome.selectedField=key;
+  render();
+}
+
+function updateDiplomeField(key,prop,value){
+  const layout=selectedDiplomeLayout();
+  if(!layout.fields[key]) layout.fields[key]=normalizeDiplomeField(key,{});
+  layout.fields[key]=normalizeDiplomeField(key,{...layout.fields[key],[prop]:value});
+  render();
+}
+
+function updateDraggedFieldElement(key,field){
+  const preview=document.getElementById('diplome-preview-surface');
+  if(!preview) return;
+  const nodes=[...preview.querySelectorAll('.dipl-field-box')];
+  const node=nodes.find(el=>el.getAttribute('onclick')===`selectDiplomeField('${key}')`);
+  if(!node) return;
+  if(field.type==='image'){
+    node.style.left=`${field.left}%`;
+    node.style.top=`${field.top}%`;
+    node.style.width=`${field.width}%`;
+    node.style.height=`${field.height}%`;
+    node.style.transform=diplomeFieldAnchorTransform(field.align);
+  }else{
+    node.style.left=`${field.left}%`;
+    node.style.top=`${field.top}%`;
+    node.style.width=`${field.width}%`;
+    node.style.transform=diplomeFieldAnchorTransform(field.align);
+  }
+}
+
+function syncDiplomeEditorInputs(field){
+  const pairs=[
+    ['Position X (%)','left'],
+    ['Position Y (%)','top'],
+  ];
+  pairs.forEach(([,prop])=>{
+    const input=[...document.querySelectorAll('.dipl-editor-grid input[type="number"]')].find(el=>{
+      const label=el.closest('.fg')?.querySelector('label')?.textContent?.trim();
+      return (prop==='left' && label==='Position X (%)') || (prop==='top' && label==='Position Y (%)');
+    });
+    if(input) input.value=String(Math.round((field[prop]||0)*10)/10);
+  });
+}
+
+async function saveDiplomeLayouts(){
+  if(!requireWritePerm('perm_adherents')) return;
+  const payload=JSON.stringify(D.diplomeLayouts);
+  const {error}=await SB.from('club_info').upsert({cle:DIPLOME_LAYOUTS_KEY,valeur:payload},{onConflict:'cle'});
+  if(error) return alert('Erreur lors de la sauvegarde des rÃ©glages de diplÃ´me : '+error.message);
+  D.clubInfo[DIPLOME_LAYOUTS_KEY]=payload;
+  alert('RÃ©glages des diplÃ´mes sauvegardÃ©s.');
+}
+
+function resetCurrentDiplomeLayout(){
+  const tpl=selectedDiplomeTemplate();
+  if(!tpl) return;
+  D.diplomeLayouts[tpl.path]=normalizeDiplomeTemplateLayout();
+  render();
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// API
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+function apiUrl(path){
+  return `${CLOUDFLARE_API_BASE}${path}`;
+}
+
+function clearSession(){
+  return fetch(apiUrl('/auth/session'),{
+    method:'DELETE',
+    credentials:'same-origin',
+    cache:'no-store'
+  }).catch(function(){});
+}
+
+function buildStorageObjectUrl(bucket,path){
+  const base=bucket==='fullfighting-pdf'
+    ? '/cloudflare/export/assets/fullfighting-pdf'
+    : '/cloudflare/export/assets/storage';
+  return `${base}/${String(path||'').split('/').map(encodeURIComponent).join('/')}`;
+}
+
+function getAdherentPublicRegistration(adherentId){
+  if(!adherentId) return null;
+  const matches=(D.publicRegistrations||[]).filter(r=>r.adherent_id===adherentId);
+  if(!matches.length) return null;
+  return matches.sort((a,b)=>(b.updated_at||b.created_at||'').localeCompare(a.updated_at||a.created_at||''))[0]||null;
+}
+
+function getRegistrationDocuments(registration){
+  const docs=registration?.documents_json && typeof registration.documents_json==='object' ? registration.documents_json : {};
+  const labels={
+    photoIdentity:"Photo d'identitÃ©",
+    medicalCertificate:"Certificat mÃ©dical",
+    passRegionDocument:"Justificatif Pass RÃ©gion",
+    proofDocument:"Justificatif tarif rÃ©duit",
+  };
+  return Object.entries(docs).map(([key,doc])=>{
+    if(!doc?.bucket || !doc?.key) return null;
+    return {
+      key,
+      label:labels[key]||key,
+      name:doc.name||'document',
+      url:buildStorageObjectUrl(doc.bucket,doc.key),
+    };
+  }).filter(Boolean);
+}
+
+function getAdherentDocuments(adherentId){
+  return getRegistrationDocuments(getAdherentPublicRegistration(adherentId));
+}
+
+function clubLogoUrl(){
+  return D.clubInfo?.logo || D.logoUrl || FORCED_LOGO_URL || '';
+}
+
+function storageProviderLabel(){
+  return 'les fichiers statiques Cloudflare Pages';
+}
+
+async function apiRequest(path, options={}){
+  const headers=new Headers(options.headers||{});
+  if(options.body && !(options.body instanceof FormData) && !headers.has('Content-Type')){
+    headers.set('Content-Type','application/json');
+  }
+  const res=await fetch(apiUrl(path),{
+    method:options.method||'GET',
+    headers,
+    body:options.body,
+    cache:'no-store',
+    credentials:'same-origin'
+  });
+  let payload=null;
+  try{payload=await res.json();}catch(e){payload=null;}
+  if(!res.ok){
+    if(res.status===401){
+      clearSession();
+      if(UI.currentUser){
+        UI.currentUser=null;
+        document.getElementById('app').style.display='none';
+        showLoginScreen();
+        notify('warn','Votre session a expirÃ©. Reconnectez-vous pour continuer.','Session expirÃ©e');
+      }
+    }
+    return {data:null,error:{message:payload?.error||`HTTP ${res.status}`,status:res.status}};
+  }
+  if(payload && typeof payload==='object' && 'data' in payload){
+    return {...payload,error:null};
+  }
+  return {data:payload,error:null};
+}
+
+class CloudflareQueryBuilder{
+  constructor(table){
+    this.table=table;
+    this.query={op:'select',columns:'*',filters:[],single:false};
+  }
+  select(columns='*'){
+    if(this.query.op==='insert' || this.query.op==='update' || this.query.op==='upsert' || this.query.op==='delete'){
+      this.query.returning=true;
+      this.query.columns=columns;
+      return this;
+    }
+    this.query.op='select';
+    this.query.columns=columns;
+    return this;
+  }
+  insert(payload){this.query.op='insert';this.query.payload=payload;return this}
+  update(payload){this.query.op='update';this.query.payload=payload;return this}
+  delete(){this.query.op='delete';return this}
+  upsert(payload,options={}){this.query.op='upsert';this.query.payload=payload;this.query.onConflict=options.onConflict;return this}
+  eq(column,value){this.query.filters.push({op:'eq',column,value});return this}
+  in(column,value){this.query.filters.push({op:'in',column,value});return this}
+  order(column,options={}){this.query.order={column,ascending:options.ascending!==false};return this}
+  limit(value){this.query.limit=value;return this}
+  single(){this.query.single=true;return this}
+  async execute(){
+    return apiRequest(`/db/${encodeURIComponent(this.table)}`,{
+      method:'POST',
+      body:JSON.stringify(this.query),
+    });
+  }
+  then(resolve,reject){
+    return this.execute().then(resolve,reject);
+  }
+}
+
+async function listStaticBucketFiles(bucket){
+  const res=await fetch(buildStorageObjectUrl(bucket,'index.json'),{cache:'no-store'});
+  if(!res.ok) return {data:[],error:null};
+  const payload=await res.json();
+  const files=Array.isArray(payload?.files)?payload.files:[];
+  return {
+    data:files.map(file=>({
+      name:file.name,
+      id:file.id||file.name,
+      metadata:file.metadata||{mimetype:file.mimetype||'',size:file.size||0}
+    })),
+    error:null
+  };
+}
+
+function createCloudflareClient(){
+  return {
+    from(table){
+      return new CloudflareQueryBuilder(table);
+    },
+    storage:{
+      from(bucket){
+        return {
+          async upload(path,file,options={}){
+            return {data:null,error:{message:"Upload dÃ©sactivÃ© sur l'hÃ©bergement gratuit Cloudflare Pages sans R2.",status:501}};
+          },
+          getPublicUrl(path){
+            return {data:{publicUrl:buildStorageObjectUrl(bucket,path)}};
+          },
+          async list(prefix='',options={}){
+            return listStaticBucketFiles(bucket);
+          },
+        };
+      },
+    },
+  };
+}
+
+async function initCloudflareBackend(){
+  try{
+    const res=await fetch(apiUrl('/health'),{cache:'no-store'});
+    if(!res.ok) return false;
+    const payload=await res.json();
+    if(!payload?.ok || !payload?.bindings?.hasDb) return false;
+    SB=createCloudflareClient();
+    return true;
+  }catch(e){
+    return false;
+  }
+}
+
+async function initBackend(){
+  return initCloudflareBackend();
+}
+
+async function preloadClubBranding(){
+  if(!SB) return;
+  try{
+    await loadCoreData(true);
+  }catch(e){}
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// AUTH
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+function showLoginScreen(){
+  document.getElementById('login-screen').style.display='flex';
+  D.logoUrl=clubLogoUrl();
+  renderLogoNode(document.getElementById('login-logo'),D.logoUrl,'80px',true);
+  if(D.clubInfo?.nom) document.getElementById('login-club-nom').textContent=D.clubInfo.nom;
+  const err=document.getElementById('login-err');
+  if(err){
+    err.style.display='none';
+    err.textContent='Email ou mot de passe incorrect';
+  }
+}
+
+function setLoginError(message){
+  const err=document.getElementById('login-err');
+  if(!err) return;
+  err.textContent=message || 'Email ou mot de passe incorrect';
+  err.style.display='block';
+}
+
+async function doLogin(){
+  const email=document.getElementById('l-email').value.trim().toLowerCase();
+  const pwd=document.getElementById('l-pwd').value;
+  const authRes=await apiRequest('/auth/login',{method:'POST',body:JSON.stringify({email,password:pwd})});
+  const {data,error}=authRes;
+  if(error||!data){
+    if(error?.status===429){
+      setLoginError('Trop de tentatives. RÃ©essayez dans quelques minutes.');
+    }else{
+      setLoginError('Email ou mot de passe incorrect');
+    }
+    return;
+  }
+  document.getElementById('login-err').style.display='none';
+  UI.currentUser=normalizeUserRow(data);
+  resetLoadedData();
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('app').style.display='block';
+  document.getElementById('cu-name').textContent=data.prenom||data.nom;
+  document.getElementById('cu-role').textContent=ROLES[data.role]||data.role;
+  await loadCoreData(true);
+  await loadTabData(UI.tab,true);
+  if(UI.tab==='diplomes') await loadDiplomeTemplates();
+  renderTabs();render();
+  notify('success',`Connexion rÃ©ussie pour ${data.prenom||data.nom}.`,'Connexion');
+  if(UI.currentUser?.must_change_password) setTimeout(forcePasswordRotation,120);
+}
+
+async function doLogout(){
+  await clearSession();
+  resetLoadedData();
+  UI.currentUser=null;
+  document.getElementById('app').style.display='none';
+  showLoginScreen();
+  notify('success','Vous avez Ã©tÃ© dÃ©connectÃ©.','DÃ©connexion');
+}
+
+function cloneRolePerms(src){
+  return JSON.parse(JSON.stringify(src||DEFAULT_ROLE_PERMS));
+}
+
+function normalizeRolePerms(raw){
+  const base=cloneRolePerms(DEFAULT_ROLE_PERMS);
+  if(!raw||typeof raw!=='object') return base;
+  Object.keys(base).forEach(role=>{
+    const rp=raw[role];
+    if(!rp||typeof rp!=='object') return;
+    PERM_META.forEach(([perm])=>{
+      if(typeof rp[perm]==='boolean' || typeof rp[perm]==='number') base[role][perm]=rp[perm]?'write':'none';
+      else if(typeof rp[perm]==='string' && PERM_LEVELS[rp[perm]]) base[role][perm]=rp[perm];
+    });
+  });
+  base.admin=cloneRolePerms(DEFAULT_ROLE_PERMS).admin;
+  return base;
+}
+
+function deriveRolePermsFromUsers(users){
+  const perms=cloneRolePerms(DEFAULT_ROLE_PERMS);
+  Object.keys(ROLES).forEach(role=>{
+    if(role==='admin') return;
+    const sample=(users||[]).find(u=>u.role===role);
+    if(!sample) return;
+    PERM_META.forEach(([perm])=>{
+      if(typeof sample[perm]==='boolean' || typeof sample[perm]==='number') perms[role][perm]=sample[perm]?'write':'none';
+      else if(typeof sample[perm]==='string' && PERM_LEVELS[sample[perm]]) perms[role][perm]=sample[perm];
+    });
+  });
+  return perms;
+}
+
+function getRolePerms(role){
+  return D.rolePerms?.[role]||DEFAULT_ROLE_PERMS[role]||{};
+}
+
+function permLevelRank(level){
+  return PERM_LEVELS[level]?.rank||0;
+}
+
+function getExplicitUserPermLevel(user, perm){
+  const value=user?.[perm];
+  if(typeof value==='boolean') return value?'write':'none';
+  if(typeof value==='number') return value?'write':'none';
+  if(typeof value==='string' && PERM_LEVELS[value]) return value;
+  if(value==='1') return 'write';
+  if(value==='0') return 'none';
+  return null;
+}
+
+function getUserPermLevel(p){
+  if(!UI.currentUser) return false;
+  if(UI.currentUser.role==='admin') return 'write';
+  const explicit=getExplicitUserPermLevel(UI.currentUser,p);
+  if(explicit) return explicit;
+  return getRolePerms(UI.currentUser.role)[p]||'none';
+}
+
+function hasPerm(p,mode='read'){
+  if(!UI.currentUser) return false;
+  const need=mode==='write'?2:1;
+  return permLevelRank(getUserPermLevel(p))>=need;
+}
+
+function requireWritePerm(p,msg){
+  if(hasPerm(p,'write')) return true;
+  alert(msg||"Vous disposez d'un accÃ¨s en lecture seule sur cette rubrique.");
+  return false;
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// CHARGEMENT
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+async function loadAll(){
+  resetLoadedData();
+  await loadCoreData(true);
+  await Promise.all([
+    loadTabData('adherents',true),
+    loadTabData('banque',true),
+    loadTabData('comptabilite',true),
+    loadTabData('achat',true),
+    loadTabData('facture',true),
+    loadTabData('administration',true),
+  ]);
+  await loadDiplomeTemplates();
+  if(!UI.diplome.adherentId && D.adherents.length){
+    UI.diplome.adherentId=D.adherents[0].id;
+  }
+  if(UI.diplome.adherentId){
+    const adhSel=D.adherents.find(a=>a.id===UI.diplome.adherentId);
+    if(adhSel && (!UI.diplome.templatePath || !D.diplomeTemplates.find(t=>t.path===UI.diplome.templatePath))){
+      UI.diplome.templatePath=guessDiplomeTemplateForAdherent(adhSel);
+    }
+  }
+  renderTabs(); render();
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// NAVIGATION
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+function renderTabs(){
+  const vis=ALL_TABS.filter(t=>!t.perm || hasPerm(t.perm));
+  document.getElementById('tabs-bar').innerHTML=vis.map(t=>`<button class="tab-btn ${UI.tab===t.id?'active':''}" onclick="showTab('${t.id}')">${t.icon} ${t.label}</button>`).join('');
+  if(!vis.find(t=>t.id===UI.tab)&&vis.length>0) UI.tab=vis[0].id;
+}
+function needsLoadedTab(tab){
+  return ['dashboard','adherents','diplomes','banque','comptabilite','achat','facture','administration'].includes(tab);
+}
+async function ensureCurrentTabData(){
+  const target=UI.tab==='diplomes'?'adherents':UI.tab;
+  if(!needsLoadedTab(UI.tab)) return;
+  if(target==='adherents' && UI.tab==='diplomes' && !D.diplomeTemplates.length){
+    await Promise.all([loadTabData(target),loadDiplomeTemplates()]);
+    return;
+  }
+  await loadTabData(target);
+}
+async function showTab(t){
+  UI.tab=t;
+  renderTabs();
+  render();
+  await ensureCurrentTabData();
+  render();
+}
+function showST(s,t){UI.subTab[s]=t;render()}
+function canWriteCurrentTab(){
+  const tab=ALL_TABS.find(x=>x.id===UI.tab);
+  return tab?.perm?hasPerm(tab.perm,'write'):false;
+}
+
+function render(){
+  if(!UI.currentUser) return;
+  const c=document.getElementById('tab-content');
+  if(needsLoadedTab(UI.tab) && !D.loaded[UI.tab==='diplomes'?'adherents':UI.tab] && D.loading[UI.tab==='diplomes'?'adherents':UI.tab]){
+    c.innerHTML=`<div class="empty">Chargement de la rubriqueâ€¦</div>`;
+    return;
+  }
+  const map={dashboard:vDashboard,adherents:vAdh,diplomes:vDiplomes,banque:vBanque,comptabilite:vCompta,achat:vAchat,facture:vFacture,administration:vAdmin};
+  c.innerHTML=(map[UI.tab]||vAdh)();
+  renderModal();
+  updLogo();
+  if(UI.tab==='diplomes') refreshDiplomePreviewCanvas();
+}
+
+function updLogo(){
+  D.logoUrl=clubLogoUrl();
+  renderLogoNode(document.getElementById('global-logo'),D.logoUrl,'100%',false);
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ADHÃ‰RENTS
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+function adhStatus(a){
+  if(!a.date_fin_adhesion) return 'unknown';
+  const diff=(new Date(a.date_fin_adhesion)-new Date())/(1000*60*60*24);
+  if(diff<0) return 'expire';
+  if(diff<30) return 'soon';
+  return 'valid';
+}
+function adhBadge(a){
+  const s=adhStatus(a);
+  if(s==='valid')  return`<span class="badge bok">âœ“ Valide</span>`;
+  if(s==='soon')   return`<span class="badge bwarn">âš  BientÃ´t</span>`;
+  if(s==='expire') return`<span class="badge bno">âœ— ExpirÃ©e</span>`;
+  return`<span class="badge bgray">â€”</span>`;
+}
+
+function currentSeasonLabel(ref=new Date()){
+  const y=ref.getFullYear();
+  const m=ref.getMonth()+1;
+  const start=m>=9?y:y-1;
+  return `${start}-${start+1}`;
+}
+
+function seasonFromDate(dateStr){
+  if(!dateStr) return '';
+  const d=new Date(dateStr);
+  if(Number.isNaN(d.getTime())) return '';
+  return currentSeasonLabel(d);
+}
+
+function seasonBounds(label){
+  const m=(label||'').match(/^(\d{4})-(\d{4})$/);
+  if(!m) return null;
+  return {start:`${m[1]}-09-01`,end:`${m[2]}-08-31`};
+}
+
+function defaultAdhesionEnd(dateStr){
+  const d=dateStr?new Date(dateStr):new Date();
+  if(Number.isNaN(d.getTime())) return '';
+  const season=currentSeasonLabel(d);
+  const b=seasonBounds(season);
+  return b?.end||'';
+}
+
+function onAdhTypeChange(value){
+  const pay=document.getElementById('f-pay');
+  const cot=document.getElementById('f-cot');
+  if(!pay||!cot) return;
+  if(value==='Membre du Bureau'){
+    pay.value='Gratuit';
+    cot.value='0';
+  }else if(pay.value==='Gratuit'){
+    pay.value='Virement';
+  }
+}
+
+function adhStatutBadge(statut){
+  if(statut==='Actif') return 'bok';
+  if(statut==='Renouvellement') return 'bblue';
+  if(statut==='AdhÃ©sion annulÃ©e') return 'bno';
+  return 'bgray';
+}
+
+function compareFrDates(a,b){
+  const norm=s=>frDateToISO(s)||(s||'').split('T')[0]||(s||'');
+  const da=norm(a),db=norm(b);
+  return da<db?-1:da>db?1:0;
+}
+
+function frDateToISO(v){
+  if(!v) return null;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  const m=(v||'').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return m?`${m[3]}-${m[2]}-${m[1]}`:null;
+}
+
+function transactionFingerprint(t){
+  return [
+    t.compte_id||'',
+    frDateToISO(t.date_op)||t.date_op||'',
+    frDateToISO(t.date_valeur)||t.date_valeur||'',
+    (t.libelle||'').replace(/\s+/g,' ').trim().toLowerCase(),
+    (+t.debit||0).toFixed(2),
+    (+t.credit||0).toFixed(2)
+  ].join('|');
+}
+
+function euro(value){
+  return (+value||0).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' â‚¬';
+}
+
+function paginateList(list,pageKey,pageSize=15){
+  const totalPages=Math.max(1,Math.ceil((list||[]).length/pageSize));
+  UI.paging[pageKey]=Math.min(Math.max(UI.paging[pageKey]||1,1),totalPages);
+  const start=(UI.paging[pageKey]-1)*pageSize;
+  return {
+    totalPages,
+    currentPage:UI.paging[pageKey],
+    rows:(list||[]).slice(start,start+pageSize),
+  };
+}
+
+function renderPager(pageKey,totalPages){
+  if(totalPages<=1) return '';
+  return `<div style="display:flex;justify-content:flex-end;gap:8px;align-items:center;margin-top:12px">
+    <button class="btn sm" ${UI.paging[pageKey]<=1?'disabled':''} onclick="UI.paging.${pageKey}=Math.max(1,(UI.paging.${pageKey}||1)-1);render()">PrÃ©cÃ©dent</button>
+    <span style="font-size:12px;color:var(--txt2)">Page ${UI.paging[pageKey]} / ${totalPages}</span>
+    <button class="btn sm" ${UI.paging[pageKey]>=totalPages?'disabled':''} onclick="UI.paging.${pageKey}=Math.min(${totalPages},(UI.paging.${pageKey}||1)+1);render()">Suivant</button>
+  </div>`;
+}
+
+function normalizeFactureStatus(status,dateOp){
+  const raw=(status||'').trim();
+  if(raw==='PayÃ©e' || raw==='AnnulÃ©e' || raw==='Brouillon' || raw==='Ã‰mise' || raw==='En retard') return raw;
+  if(raw==='Ã‰mise' || raw==='emise') return 'Ã‰mise';
+  if(raw==='Payee' || raw==='PayÃ©' || raw==='RÃ©glÃ©e' || raw==='Reglee') return 'PayÃ©e';
+  if(raw==='Annulee' || raw==='AnnulÃ©e') return 'AnnulÃ©e';
+  if(!dateOp) return raw||'Brouillon';
+  const age=(Date.now()-new Date(dateOp).getTime())/(1000*60*60*24);
+  if(age>30) return 'En retard';
+  return raw||'Ã‰mise';
+}
+
+function factureStatusBadge(status){
+  if(status==='PayÃ©e') return 'bok';
+  if(status==='En retard') return 'bno';
+  if(status==='AnnulÃ©e') return 'bgray';
+  if(status==='Brouillon') return 'bwarn';
+  return 'bblue';
+}
+
+function roleFocusLabel(){
+  const role=UI.currentUser?.role||'membre';
+  if(role==='admin') return 'Vue transverse du club, avec suivi des opÃ©rations, des dossiers et des accÃ¨s.';
+  if(role==='tresorier') return 'Suivi prioritaire des flux financiers, des achats et de la facturation.';
+  if(role==='secretaire') return 'Vue orientÃ©e adhÃ©rents, renouvellements et dossiers administratifs.';
+  if(role==='entraineur') return 'Vue synthÃ©tique pour suivre les licenciÃ©s, les Ã©chÃ©ances et les ceintures.';
+  return 'Vue synthÃ©tique des informations accessibles pour votre profil.';
+}
+
+function dashboardData(){
+  const adherents=D.adherents||[];
+  const achats=D.achats||[];
+  const factures=(D.factures||[]).map(f=>({...f,statut:normalizeFactureStatus(f.statut,f.date_op)}));
+  const journal=D.journal||[];
+  const comptes=D.comptes||[];
+  const monthPrefix=td().slice(0,7);
+  const prevMonthDate=new Date();
+  prevMonthDate.setMonth(prevMonthDate.getMonth()-1);
+  const prevMonthPrefix=prevMonthDate.toISOString().slice(0,7);
+  const paidInvoiceStatuses=new Set(['PayÃ©e','Payee','RÃ©glÃ©e','Reglee']);
+  const openInvoiceStatuses=new Set(['Ã‰mise','Emise','En retard','Brouillon']);
+  const pendingBuyStatuses=new Set(['nouveau','valide']);
+  const paidBuyStatuses=new Set(['paye']);
+  const adherentsSoon=adherents.filter(a=>adhStatus(a)==='soon');
+  const adherentsExpired=adherents.filter(a=>adhStatus(a)==='expire');
+  const renewList=adherents.filter(a=>a.statut==='Renouvellement');
+  const incompleteList=adherents.filter(a=>!a.certificat || !a.droit_image || !a.reglement);
+  const currentSeason=currentSeasonLabel();
+  const currentSeasonAdherents=adherents.filter(a=>seasonFromDate(a.date_fin_adhesion||a.date_inscription)===currentSeason);
+  const totalBank=comptes.reduce((sum,c)=>sum+(+c.solde_initial||0)+(c.transactions||[]).reduce((acc,t)=>acc+(+t.credit||0)-(+t.debit||0),0),0);
+  const bankTransactions=comptes.flatMap(c=>(c.transactions||[]).map(t=>({...t,compte_nom:c.nom||'Compte'})));
+  const unreconciledTransactions=bankTransactions.filter(t=>!t.rapproche);
+  const monthEntriesList=journal.filter(j=>(j.date_op||'').slice(0,7)===monthPrefix);
+  const prevMonthEntriesList=journal.filter(j=>(j.date_op||'').slice(0,7)===prevMonthPrefix);
+  const exoJournal=journal.filter(j=>j.exercice_id===D.currentExo?.id);
+  const totalDebit=exoJournal.reduce((sum,j)=>sum+(+j.debit||0),0);
+  const totalCredit=exoJournal.reduce((sum,j)=>sum+(+j.credit||0),0);
+  const accountingGap=Math.round((totalDebit-totalCredit)*100)/100;
+  const purchasesPending=achats.filter(a=>pendingBuyStatuses.has((a.statut||'').trim().toLowerCase()));
+  const purchasesPaid=achats.filter(a=>paidBuyStatuses.has((a.statut||'').trim().toLowerCase()));
+  const purchasesRefused=achats.filter(a=>(a.statut||'').trim().toLowerCase()==='refuse');
+  const pendingBuyAmount=purchasesPending.reduce((sum,a)=>sum+(+a.montant||0),0);
+  const paidBuyAmount=purchasesPaid.reduce((sum,a)=>sum+(+a.montant||0),0);
+  const invoicesOpen=factures.filter(f=>openInvoiceStatuses.has((f.statut||'').trim()));
+  const invoicesPaid=factures.filter(f=>paidInvoiceStatuses.has((f.statut||'').trim()));
+  const invoiceAmount=rows=>(rows||[]).reduce((sum,f)=>sum+(f.lignes||[]).reduce((acc,l)=>acc+(+l.qte||0)*(+l.pu||0),0),0);
+  const openInvoiceAmount=invoiceAmount(invoicesOpen);
+  const paidInvoiceAmount=invoiceAmount(invoicesPaid);
+  const monthInvoices=factures.filter(f=>(f.date_op||'').slice(0,7)===monthPrefix);
+  const prevMonthInvoices=factures.filter(f=>(f.date_op||'').slice(0,7)===prevMonthPrefix);
+  const monthInvoiceAmount=invoiceAmount(monthInvoices);
+  const prevMonthInvoiceAmount=invoiceAmount(prevMonthInvoices);
+  const monthBuys=achats.filter(a=>(a.date_op||'').slice(0,7)===monthPrefix);
+  const prevMonthBuys=achats.filter(a=>(a.date_op||'').slice(0,7)===prevMonthPrefix);
+  const monthBuyAmount=monthBuys.reduce((sum,a)=>sum+(+a.montant||0),0);
+  const prevMonthBuyAmount=prevMonthBuys.reduce((sum,a)=>sum+(+a.montant||0),0);
+  const donations=factures.filter(isDonationReceipt);
+  const donationAmount=invoiceAmount(donations);
+  const recentInvoices=[...factures].sort((a,b)=>(b.date_op||'').localeCompare(a.date_op||'')).slice(0,4);
+  const recentBuys=[...achats].sort((a,b)=>(b.date_op||'').localeCompare(a.date_op||'')).slice(0,4);
+  const recentEntries=[...journal].sort((a,b)=>(b.date_op||'').localeCompare(a.date_op||'')).slice(0,4);
+  const recentTransactions=[...bankTransactions].sort((a,b)=>(b.date_op||'').localeCompare(a.date_op||'')).slice(0,4);
+  const alerts=[];
+  if(hasPerm('perm_adherents') && renewList.length) alerts.push({title:`${renewList.length} adhÃ©sion(s) Ã  renouveler`,detail:'Statut de renouvellement dÃ©tectÃ© dans la base adhÃ©rents.',tab:'adherents',badge:'bwarn'});
+  if(hasPerm('perm_adherents') && adherentsExpired.length) alerts.push({title:`${adherentsExpired.length} adhÃ©sion(s) expirÃ©e(s)`,detail:'Des adhÃ©rents ont dÃ©passÃ© leur date de fin dâ€™adhÃ©sion.',tab:'adherents',badge:'bno'});
+  if(hasPerm('perm_adherents') && incompleteList.length) alerts.push({title:`${incompleteList.length} dossier(s) incomplet(s)`,detail:'Certificat, droit Ã  lâ€™image ou rÃ¨glement intÃ©rieur manquants.',tab:'adherents',badge:'bwarn'});
+  if(hasPerm('perm_banque') && unreconciledTransactions.length) alerts.push({title:`${unreconciledTransactions.length} transaction(s) non rapprochÃ©e(s)`,detail:'Le rapprochement bancaire reste Ã  finaliser.',tab:'banque',badge:'bwarn'});
+  if(hasPerm('perm_comptabilite') && accountingGap!==0) alerts.push({title:`Journal dÃ©sÃ©quilibrÃ© de ${euro(accountingGap)}`,detail:'Le total dÃ©bit / crÃ©dit de lâ€™exercice actif nâ€™est pas Ã©quilibrÃ©.',tab:'comptabilite',badge:'bno'});
+  if(hasPerm('perm_achats') && purchasesPending.length) alerts.push({title:`${purchasesPending.length} achat(s) Ã  traiter`,detail:'Des dÃ©penses sont encore en attente de validation ou de paiement.',tab:'achat',badge:'bwarn'});
+  if(hasPerm('perm_facturation') && invoicesOpen.length) alerts.push({title:`${invoicesOpen.length} facture(s) ouvertes`,detail:'Des ventes restent Ã  encaisser ou Ã  clÃ´turer.',tab:'facture',badge:'bwarn'});
+  alerts.sort((a,b)=>{
+    const score=x=>x.badge==='bno'?2:x.badge==='bwarn'?1:0;
+    return score(b)-score(a);
+  });
+  return {
+    adherents,achats,factures,journal,comptes,currentSeason,currentSeasonAdherents,
+    adherentsSoon,adherentsExpired,renewList,incompleteList,
+    totalBank,bankTransactions,unreconciledTransactions,monthEntriesList,prevMonthEntriesList,exoJournal,totalDebit,totalCredit,accountingGap,
+    purchasesPending,purchasesPaid,purchasesRefused,pendingBuyAmount,paidBuyAmount,
+    invoicesOpen,invoicesPaid,openInvoiceAmount,paidInvoiceAmount,monthInvoices,prevMonthInvoices,monthInvoiceAmount,prevMonthInvoiceAmount,monthBuys,prevMonthBuys,monthBuyAmount,prevMonthBuyAmount,donations,donationAmount,
+    recentInvoices,recentBuys,recentEntries,recentTransactions,alerts
+  };
+}
+
+function dashboardDelta(current, previous, suffix=''){
+  const delta=(+current||0)-(+previous||0);
+  const cls=delta>0?'up':delta<0?'down':'flat';
+  const sign=delta>0?'+':'';
+  return {
+    delta,
+    cls,
+    label:`${sign}${suffix==='â‚¬'?euro(delta):`${delta}${suffix}`}` + ` vs mois prÃ©cÃ©dent`
+  };
+}
+
+function monthKeyFromOffset(offset){
+  const date=new Date();
+  date.setDate(1);
+  date.setMonth(date.getMonth()+offset);
+  return date.toISOString().slice(0,7);
+}
+
+function monthLabelFromKey(key){
+  const [y,m]=String(key||'').split('-');
+  if(!y||!m) return key||'';
+  return new Date(Number(y),Number(m)-1,1).toLocaleDateString('fr-FR',{month:'short'});
+}
+
+function buildMonthSeries(valuesByMonth, months=6){
+  const items=[];
+  for(let offset=-(months-1);offset<=0;offset++){
+    const key=monthKeyFromOffset(offset);
+    items.push({key,label:monthLabelFromKey(key),value:+(valuesByMonth[key]||0)});
+  }
+  return items;
+}
+
+function sumByMonth(rows,dateKey,valueFn){
+  const out={};
+  (rows||[]).forEach(row=>{
+    const key=(row?.[dateKey]||'').slice(0,7);
+    if(!key) return;
+    out[key]=(out[key]||0)+(+valueFn(row)||0);
+  });
+  return out;
+}
+
+function countByMonth(rows,dateKey){
+  return sumByMonth(rows,dateKey,()=>1);
+}
+
+function achatMatchesFilter(achat, status){
+  const current=(achat?.statut||'').trim().toLowerCase();
+  if(!status) return true;
+  if(status==='pending') return current==='nouveau' || current==='valide';
+  return current===status;
+}
+
+function factureMatchesFilter(facture, status){
+  const current=normalizeFactureStatus(facture?.statut, facture?.date_op);
+  if(!status) return true;
+  if(status==='open') return current==='Ã‰mise' || current==='Brouillon' || current==='En retard';
+  return current===status;
+}
+
+function adherentMatchesSpecialFilter(adherent, special){
+  if(!special) return true;
+  if(special==='incomplete') return !adherent.certificat || !adherent.droit_image || !adherent.reglement;
+  if(special==='renew') return adherent.statut==='Renouvellement';
+  if(special==='expired') return adhStatus(adherent)==='expire';
+  if(special==='soon') return adhStatus(adherent)==='soon';
+  return true;
+}
+
+function renderBarChart(series,color='#B33627'){
+  const width=320, height=120, pad=10, barW=32;
+  const max=Math.max(...series.map(s=>s.value),1);
+  const gap=(width-pad*2-barW*series.length)/Math.max(series.length-1,1);
+  const bars=series.map((item,index)=>{
+    const h=Math.round((item.value/max)*72);
+    const x=pad+index*(barW+gap);
+    const y=84-h;
+    return `<rect x="${x}" y="${y}" width="${barW}" height="${h}" rx="8" fill="${color}" opacity="${index===series.length-1?'1':'0.72'}"></rect>
+      <text x="${x+barW/2}" y="98" text-anchor="middle" font-size="10" fill="#6d6259">${esc(item.label)}</text>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${width} ${height}" aria-hidden="true">
+    <line x1="${pad}" y1="84.5" x2="${width-pad}" y2="84.5" stroke="rgba(62,39,24,.18)" />
+    ${bars}
+  </svg>`;
+}
+
+function renderLineChart(series,color='#245a9b'){
+  const width=320, height=120, padX=12, top=12, bottom=32;
+  const max=Math.max(...series.map(s=>s.value),1);
+  const step=(width-padX*2)/Math.max(series.length-1,1);
+  const points=series.map((item,index)=>{
+    const x=padX+index*step;
+    const y=top+(1-(item.value/max))*(height-top-bottom);
+    return {x,y,item};
+  });
+  const polyline=points.map(p=>`${p.x},${p.y}`).join(' ');
+  return `<svg viewBox="0 0 ${width} ${height}" aria-hidden="true">
+    <polyline fill="none" stroke="${color}" stroke-width="3" points="${polyline}" />
+    ${points.map((p,index)=>`<circle cx="${p.x}" cy="${p.y}" r="${index===points.length-1?4:3}" fill="${color}" />
+      <text x="${p.x}" y="${height-14}" text-anchor="middle" font-size="10" fill="#6d6259">${esc(p.item.label)}</text>`).join('')}
+  </svg>`;
+}
+
+function renderGauge(value,total,color='#1e7e34'){
+  const safeTotal=Math.max(total||0,1);
+  const ratio=Math.max(0,Math.min(1,(value||0)/safeTotal));
+  const radius=42, circumference=2*Math.PI*radius, offset=circumference*(1-ratio);
+  return `<svg viewBox="0 0 120 120" aria-hidden="true">
+    <circle cx="60" cy="60" r="${radius}" fill="none" stroke="rgba(62,39,24,.12)" stroke-width="12"></circle>
+    <circle cx="60" cy="60" r="${radius}" fill="none" stroke="${color}" stroke-width="12" stroke-linecap="round"
+      stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" transform="rotate(-90 60 60)"></circle>
+    <text x="60" y="56" text-anchor="middle" font-size="24" font-weight="700" fill="#26160f">${Math.round(ratio*100)}%</text>
+    <text x="60" y="74" text-anchor="middle" font-size="10" fill="#6d6259">complet</text>
+  </svg>`;
+}
+
+async function focusAdherentsIssue(mode=''){
+  UI.search.adherents='';
+  UI.adhFilters={...UI.adhFilters,special:mode,season:mode?'all':UI.adhFilters.season||'current'};
+  await showTab('adherents');
+  render();
+}
+
+async function focusAchats(status=''){
+  UI.search.achats='';
+  UI.achatFilterStatus=status;
+  await showTab('achat');
+  render();
+}
+
+async function focusFactures(status=''){
+  UI.search.factures='';
+  UI.factureFilterStatus=status;
+  UI.subTab.facture='liste';
+  await showTab('facture');
+  render();
+}
+
+async function focusBanqueRapprochement(autoSuggest=false){
+  UI.subTab.banque='rappr';
+  await showTab('banque');
+  render();
+  if(autoSuggest) setTimeout(()=>preselectRapprochements(),60);
+}
+
+async function focusComptabiliteJournal(){
+  UI.subTab.compta='journal';
+  await showTab('comptabilite');
+  render();
+}
+
+async function focusComptabiliteAssistant(){
+  UI.subTab.compta='journal';
+  await showTab('comptabilite');
+  render();
+  setTimeout(()=>openEquilibreAssistant(),60);
+}
+
+async function openNewFacture(){
+  await showTab('facture');
+  nouvFac();
+}
+
+function buildDashboardAttentionItems(d){
+  const items=[];
+  if(hasPerm('perm_adherents') && d.renewList.length){
+    items.push({
+      title:`${d.renewList.length} adhÃ©sion(s) Ã  renouveler`,
+      detail:'PrÃ©parer la nouvelle saison, confirmer le rÃ¨glement et mettre Ã  jour les piÃ¨ces si besoin.',
+      advice:'Traiter dâ€™abord les renouvellements avec cotisation encaissÃ©e pour fiabiliser les listes de cours et les reÃ§us.',
+      badge:'bwarn',
+      badgeText:'Renouvellement',
+      actions:[
+        {label:'Filtrer les renouvellements',onclick:"focusAdherentsIssue('renew')",primary:true},
+        {label:'Voir les adhÃ©rents',onclick:"showTab('adherents')"}
+      ]
+    });
+  }
+  if(hasPerm('perm_adherents') && d.adherentsExpired.length){
+    items.push({
+      title:`${d.adherentsExpired.length} adhÃ©sion(s) expirÃ©e(s)`,
+      detail:'Des fiches ont dÃ©passÃ© leur date de fin dâ€™adhÃ©sion et doivent Ãªtre rÃ©gularisÃ©es ou clÃ´turÃ©es.',
+      advice:'Archive ou renouvelle rapidement ces dossiers pour Ã©viter des relances inutiles et des listes sportives fausses.',
+      badge:'bno',
+      badgeText:'Bloquant',
+      actions:[
+        {label:'Voir les expirÃ©s',onclick:"focusAdherentsIssue('expired')",primary:true},
+        {label:'Nouvel adhÃ©rent',onclick:"openModal('adh')",show:hasPerm('perm_adherents','write')}
+      ]
+    });
+  }
+  if(hasPerm('perm_adherents') && d.incompleteList.length){
+    items.push({
+      title:`${d.incompleteList.length} dossier(s) incomplet(s)`,
+      detail:'Certificat, droit Ã  lâ€™image ou rÃ¨glement intÃ©rieur manquants sur une partie des fiches.',
+      advice:'Commence par les dossiers actifs de la saison en cours puis demande les piÃ¨ces manquantes en lot, pas au cas par cas.',
+      badge:'bwarn',
+      badgeText:'Documents',
+      actions:[
+        {label:'Filtrer les incomplets',onclick:"focusAdherentsIssue('incomplete')",primary:true},
+        {label:'Exporter les adhÃ©rents',onclick:"exportCSV()"}
+      ]
+    });
+  }
+  if(hasPerm('perm_banque') && d.unreconciledTransactions.length){
+    items.push({
+      title:`${d.unreconciledTransactions.length} transaction(s) non rapprochÃ©e(s)`,
+      detail:'Le rapprochement bancaire nâ€™est pas terminÃ© sur les mouvements importÃ©s.',
+      advice:'Lance une prÃ©-sÃ©lection, contrÃ´le les montants proposÃ©s puis valide chaque ligne douteuse avant le tout-rapprocher.',
+      badge:'bwarn',
+      badgeText:'Banque',
+      actions:[
+        {label:'Ouvrir le rapprochement',onclick:"focusBanqueRapprochement(true)",primary:true},
+        {label:'Voir la banque',onclick:"showTab('banque')"}
+      ]
+    });
+  }
+  if(hasPerm('perm_comptabilite') && d.accountingGap!==0){
+    items.push({
+      title:`Journal dÃ©sÃ©quilibrÃ© de ${euro(d.accountingGap)}`,
+      detail:'Le dÃ©bit et le crÃ©dit ne se compensent pas sur lâ€™exercice actif.',
+      advice:'Passe dâ€™abord par lâ€™assistant de dÃ©sÃ©quilibre, puis rÃ©gularise uniquement les piÃ¨ces justifiÃ©es pour Ã©viter un 471 inutile.',
+      badge:'bno',
+      badgeText:'Compta',
+      actions:[
+        {label:'Ouvrir lâ€™assistant',onclick:"focusComptabiliteAssistant()",primary:true},
+        {label:'Voir le journal',onclick:"focusComptabiliteJournal()"}
+      ]
+    });
+  }
+  if(hasPerm('perm_achats') && d.purchasesPending.length){
+    items.push({
+      title:`${d.purchasesPending.length} achat(s) Ã  traiter`,
+      detail:'Des dÃ©penses sont encore Ã  valider ou Ã  passer en payÃ© avec leur justificatif.',
+      advice:'Traite en prioritÃ© les achats avec montant Ã©levÃ© ou sans justificatif pour garder une vision de trÃ©sorerie exploitable.',
+      badge:'bwarn',
+      badgeText:'Achats',
+      actions:[
+        {label:'Filtrer les achats en attente',onclick:"focusAchats('pending')",primary:true},
+        {label:'Nouvel achat',onclick:"openModal('achat')",show:hasPerm('perm_achats','write')}
+      ]
+    });
+  }
+  if(hasPerm('perm_facturation') && d.invoicesOpen.length){
+    items.push({
+      title:`${d.invoicesOpen.length} facture(s) ouverte(s)`,
+      detail:'Des ventes sont encore Ã©mises ou en retard et doivent Ãªtre suivies jusquâ€™Ã  lâ€™encaissement.',
+      advice:'Passe en payÃ© les ventes rÃ©ellement encaissÃ©es et marque en retard celles Ã  relancer pour distinguer lâ€™encours du retard.',
+      badge:'bwarn',
+      badgeText:'Ventes',
+      actions:[
+        {label:'Filtrer les ventes ouvertes',onclick:"focusFactures('open')",primary:true},
+        {label:'Nouvelle vente',onclick:"openNewFacture()",show:hasPerm('perm_facturation','write')}
+      ]
+    });
+  }
+  return items.map(item=>({
+    ...item,
+    actions:(item.actions||[]).filter(action=>action.show!==false)
+  }));
+}
+
+function buildDashboardOptimizationTips(d){
+  const tips=[];
+  if(hasPerm('perm_banque') && d.unreconciledTransactions.length>5){
+    tips.push('Passe le rapprochement bancaire chaque semaine plutÃ´t quâ€™en fin de mois pour limiter les recherches de piÃ¨ces.');
+  }
+  if(hasPerm('perm_facturation') && d.invoicesOpen.length){
+    tips.push('Utilise les statuts `PayÃ©e` et `En retard` dÃ¨s quâ€™une vente Ã©volue pour fiabiliser lâ€™encours Ã  encaisser.');
+  }
+  if(hasPerm('perm_adherents') && d.incompleteList.length){
+    tips.push('PrÃ©vois une relance groupÃ©e des piÃ¨ces manquantes afin de rÃ©duire les dossiers incomplets en une seule campagne.');
+  }
+  if(hasPerm('perm_achats') && d.purchasesPending.length){
+    tips.push('Ajoute le justificatif PDF et la rÃ©fÃ©rence de paiement au moment du rÃ¨glement pour Ã©viter les reprises comptables plus tard.');
+  }
+  if(hasPerm('perm_comptabilite') && d.accountingGap!==0){
+    tips.push('Corrige les dÃ©sÃ©quilibres avant toute clÃ´ture dâ€™exercice, sinon le contrÃ´le de fin de pÃ©riode perd en valeur.');
+  }
+  if(!tips.length){
+    tips.push('La situation est propre: conserve un rythme hebdomadaire de rapprochement, mensuel de compta et saisonnier sur les adhÃ©sions.');
+  }
+  return tips.slice(0,4);
+}
+
+function vDashboard(){
+  const d=dashboardData();
+  const attentionItems=buildDashboardAttentionItems(d);
+  const optimizationTips=buildDashboardOptimizationTips(d);
+  const activeAlerts=d.alerts.length;
+  const urgentLabel=activeAlerts?`${activeAlerts} point(s) Ã  traiter`:'Aucun blocage prioritaire dÃ©tectÃ©';
+  const financeBalance=d.paidInvoiceAmount-d.paidBuyAmount;
+  const topAlert=d.alerts[0]||null;
+  const nextAction=topAlert
+    ? {
+        title:topAlert.title,
+        detail:topAlert.detail,
+        tab:topAlert.tab,
+        critical:topAlert.badge==='bno'
+      }
+    : {
+        title:'Aucune urgence bloquante',
+        detail:'Les donnÃ©es chargÃ©es ne montrent pas dâ€™anomalie prioritaire. Tu peux te concentrer sur le suivi courant.',
+        tab:hasPerm('perm_adherents')?'adherents':hasPerm('perm_comptabilite')?'comptabilite':hasPerm('perm_banque')?'banque':'',
+        critical:false
+      };
+  const entryDelta=dashboardDelta(d.monthEntriesList.length,d.prevMonthEntriesList.length);
+  const invoiceDelta=dashboardDelta(d.monthInvoiceAmount,d.prevMonthInvoiceAmount,'â‚¬');
+  const buyDelta=dashboardDelta(d.monthBuyAmount,d.prevMonthBuyAmount,'â‚¬');
+  const invoiceSeries=buildMonthSeries(sumByMonth(d.factures,'date_op',f=>(f.lignes||[]).reduce((sum,l)=>sum+(+l.qte||0)*(+l.pu||0),0)));
+  const buySeries=buildMonthSeries(sumByMonth(d.achats,'date_op',a=>+a.montant||0));
+  const entrySeries=buildMonthSeries(countByMonth(d.journal,'date_op'));
+  const docsComplete=d.adherents.length-d.incompleteList.length;
+  const reconciled=d.bankTransactions.length-d.unreconciledTransactions.length;
+  const recentFeed=[
+    ...(hasPerm('perm_facturation')?d.recentInvoices.map(f=>({title:`Vente ${f.numero||'sans numÃ©ro'}`,detail:`${fd(f.date_op)} Â· ${f.destinataire||'Destinataire non renseignÃ©'} Â· ${euro((f.lignes||[]).reduce((sum,l)=>sum+(+l.qte||0)*(+l.pu||0),0))}`,tab:'facture',badge:'bblue',badgeText:f.statut||'Vente'})):[]),
+    ...(hasPerm('perm_achats')?d.recentBuys.map(a=>({title:`Achat ${a.fournisseur||'sans fournisseur'}`,detail:`${fd(a.date_op)} Â· ${a.designation||a.categorie||'Sans dÃ©signation'} Â· ${euro(+a.montant||0)}`,tab:'achat',badge:'bgray',badgeText:a.statut||'Achat'})):[]),
+    ...(hasPerm('perm_banque')?d.recentTransactions.map(t=>({title:`Banque ${t.compte_nom||'Compte'}`,detail:`${fd(t.date_op)} Â· ${t.libelle||'OpÃ©ration'} Â· ${euro((+t.credit||0)-(+t.debit||0))}`,tab:'banque',badge:t.rapproche?'bok':'bwarn',badgeText:t.rapproche?'RapprochÃ©e':'Ã€ rapprocher'})):[]),
+  ].sort((a,b)=>0).slice(0,8);
+  const managementBlocks=[
+    hasPerm('perm_adherents')?{
+      title:'AdhÃ©rents',
+      lines:[
+        `${d.adherents.length} fiche(s) suivie(s)`,
+        `${d.currentSeasonAdherents.length} sur la saison ${d.currentSeason}`,
+        `${d.incompleteList.length} dossier(s) incomplet(s)`,
+      ],
+      cta:'Voir les adhÃ©rents',
+      tab:'adherents'
+    }:null,
+    hasPerm('perm_banque')?{
+      title:'Banque',
+      lines:[
+        `${d.comptes.length} compte(s) visibles`,
+        `${d.bankTransactions.length} transaction(s) importÃ©e(s)`,
+        `${d.unreconciledTransactions.length} non rapprochÃ©e(s)`,
+      ],
+      cta:'Ouvrir la banque',
+      tab:'banque'
+    }:null,
+    hasPerm('perm_comptabilite')?{
+      title:'ComptabilitÃ©',
+      lines:[
+        `${d.exoJournal.length} Ã©criture(s) sur lâ€™exercice actif`,
+        `${d.monthEntriesList.length} mouvement(s) ce mois`,
+        `Ã‰cart exercice : ${euro(d.accountingGap)}`,
+      ],
+      cta:'Ouvrir la compta',
+      tab:'comptabilite'
+    }:null,
+    hasPerm('perm_achats')?{
+      title:'Achats',
+      lines:[
+        `${d.achats.length} achat(s) suivis`,
+        `${d.purchasesPending.length} en attente`,
+        `Montant en cours : ${euro(d.pendingBuyAmount)}`,
+      ],
+      cta:'Voir les achats',
+      tab:'achat'
+    }:null,
+    hasPerm('perm_facturation')?{
+      title:'Ventes',
+      lines:[
+        `${d.factures.length} document(s) Ã©mis`,
+        `${d.invoicesOpen.length} facture(s) ouverte(s)`,
+        `Encours : ${euro(d.openInvoiceAmount)}`,
+      ],
+      cta:'Voir les ventes',
+      tab:'facture'
+    }:null
+  ].filter(Boolean);
+  return `<div class="view-head">
+    <div>
+      <div class="eyebrow">Vue d'ensemble</div>
+      <h2>Pilotage</h2>
+      <p>Tout le club, en un Ã©cran.</p>
+    </div>
+    <div class="exo-badge">Exercice actif : ${esc(D.currentExo?.libelle||'Aucun')}</div>
+  </div>
+  <div class="dash-hero">
+    <div class="dash-hero-main">
+      <div class="dash-hero-kicker">Vision transversale</div>
+      <div class="dash-hero-title">${esc(urgentLabel)}</div>
+      <div class="dash-hero-text">AdhÃ©rents, banque, compta, achats et ventes. PrioritÃ©s visibles immÃ©diatement.</div>
+      <div class="dash-hero-meta">
+        <span class="dash-hero-chip">Exercice : ${esc(D.currentExo?.libelle||'Aucun')}</span>
+        <span class="dash-hero-chip">Profil : ${esc(ROLES[UI.currentUser?.role]||UI.currentUser?.role||'Utilisateur')}</span>
+        <span class="dash-hero-chip">Saison visible : ${esc(d.currentSeason||'â€”')}</span>
+      </div>
+    </div>
+    <div class="dash-hero-side">
+      <div class="dash-mini">
+        <div class="dash-mini-label">Dossiers</div>
+        <div class="dash-mini-value">${hasPerm('perm_adherents')?d.incompleteList.length:'â€”'}</div>
+        <div class="dash-mini-text">${hasPerm('perm_adherents')?`${d.renewList.length} Ã  renouveler Â· ${d.adherentsExpired.length} expirÃ©s`:'Rubrique non accessible.'}</div>
+      </div>
+      <div class="dash-mini">
+        <div class="dash-mini-label">Flux net</div>
+        <div class="dash-mini-value">${hasPerm('perm_facturation')||hasPerm('perm_achats')?euro(financeBalance):'â€”'}</div>
+        <div class="dash-mini-text">${hasPerm('perm_facturation')||hasPerm('perm_achats')?`${euro(d.paidInvoiceAmount)} encaissÃ©s Â· ${euro(d.paidBuyAmount)} dÃ©pensÃ©s`:'Rubrique non accessible.'}</div>
+      </div>
+    </div>
+  </div>
+  <div class="dash-priority" style="margin-bottom:16px">
+    <div class="dash-priority-card ${nextAction.critical?'critical':''}">
+      <div class="dash-priority-head">
+        <div>
+          <div class="eyebrow" style="margin-bottom:8px">Ã€ faire maintenant</div>
+          <div class="dash-priority-title">${esc(nextAction.title)}</div>
+        </div>
+        <span class="badge ${nextAction.critical?'bno':'bok'}">${nextAction.critical?'PrioritÃ© haute':'Situation stable'}</span>
+      </div>
+      <div class="dash-priority-text">${esc(nextAction.detail)}</div>
+      <div class="dash-priority-actions">
+        ${nextAction.tab?`<button class="btn primary" onclick="showTab('${nextAction.tab}')">Traiter maintenant</button>`:''}
+        ${hasPerm('perm_comptabilite')?`<button class="btn" onclick="showTab('comptabilite')">VÃ©rifier la compta</button>`:''}
+        ${hasPerm('perm_banque')?`<button class="btn" onclick="showTab('banque')">ContrÃ´ler la banque</button>`:''}
+      </div>
+    </div>
+  </div>
+  <div class="dash-grid">
+    <div class="dash-card"><h3>AdhÃ©rents</h3><strong>${hasPerm('perm_adherents')?d.adherents.length:'â€”'}</strong><p>${hasPerm('perm_adherents')?`${d.adherentsSoon.length} Ã©chÃ©ances proches`:'Rubrique non accessible.'}</p></div>
+    <div class="dash-card"><h3>TrÃ©sorerie</h3><strong>${hasPerm('perm_banque')?euro(d.totalBank):'â€”'}</strong><p>${hasPerm('perm_banque')?`${d.unreconciledTransactions.length} non rapprochÃ©es`:'Rubrique non accessible.'}</p></div>
+    <div class="dash-card"><h3>Compta</h3><strong>${hasPerm('perm_comptabilite')?d.monthEntriesList.length:'â€”'}</strong><p>${hasPerm('perm_comptabilite')?`Ã‰cart ${euro(d.accountingGap)}`:'Rubrique non accessible.'}</p></div>
+    <div class="dash-card"><h3>Ventes</h3><strong>${hasPerm('perm_facturation')?d.invoicesOpen.length:'â€”'}</strong><p>${hasPerm('perm_facturation')?`${euro(d.openInvoiceAmount)} Ã  encaisser`:'Rubrique non accessible.'}</p></div>
+  </div>
+  <div class="dash-viz-grid">
+    <div class="dash-viz-card">
+      <div class="dash-viz-title">Ventes 6 mois</div>
+      <div class="dash-viz-value">${hasPerm('perm_facturation')?euro(d.monthInvoiceAmount):'â€”'}</div>
+      <div class="dash-viz-sub">${hasPerm('perm_facturation')?'Ce mois':'Rubrique non accessible.'}</div>
+      ${hasPerm('perm_facturation')?`<div class="dash-chart">${renderBarChart(invoiceSeries,'#B33627')}<div class="dash-chart-legend"><span>${esc(invoiceSeries[0]?.label||'')}</span><span>${esc(invoiceSeries.at(-1)?.label||'')}</span></div></div>`:''}
+    </div>
+    <div class="dash-viz-card">
+      <div class="dash-viz-title">Achats 6 mois</div>
+      <div class="dash-viz-value">${hasPerm('perm_achats')?euro(d.monthBuyAmount):'â€”'}</div>
+      <div class="dash-viz-sub">${hasPerm('perm_achats')?'Ce mois':'Rubrique non accessible.'}</div>
+      ${hasPerm('perm_achats')?`<div class="dash-chart">${renderLineChart(buySeries,'#8E6A0C')}<div class="dash-chart-legend"><span>${esc(buySeries[0]?.label||'')}</span><span>${esc(buySeries.at(-1)?.label||'')}</span></div></div>`:''}
+    </div>
+    <div class="dash-viz-card">
+      <div class="dash-viz-title">QualitÃ© des donnÃ©es</div>
+      <div class="dash-viz-value">${hasPerm('perm_adherents')?`${docsComplete}/${d.adherents.length||0}`:'â€”'}</div>
+      <div class="dash-viz-sub">${hasPerm('perm_adherents')?'Dossiers complets':'Rubrique non accessible.'}</div>
+      ${hasPerm('perm_adherents')?`<div class="dash-chart">${renderGauge(docsComplete,d.adherents.length||1,'#1e7e34')}</div>`:''}
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:16px">
+    <div class="stit" style="margin-top:0">Tendances mensuelles</div>
+    <div class="dash-compare">
+      <div class="dash-compare-card">
+        <div class="dash-compare-label">Ã‰critures comptables</div>
+        <div class="dash-compare-value">${hasPerm('perm_comptabilite')?d.monthEntriesList.length:'â€”'}</div>
+        <div class="dash-compare-delta ${entryDelta.cls}">${hasPerm('perm_comptabilite')?entryDelta.label:'Rubrique non accessible.'}</div>
+      </div>
+      <div class="dash-compare-card">
+        <div class="dash-compare-label">Ventes du mois</div>
+        <div class="dash-compare-value">${hasPerm('perm_facturation')?euro(d.monthInvoiceAmount):'â€”'}</div>
+        <div class="dash-compare-delta ${invoiceDelta.cls}">${hasPerm('perm_facturation')?invoiceDelta.label:'Rubrique non accessible.'}</div>
+      </div>
+      <div class="dash-compare-card">
+        <div class="dash-compare-label">Achats du mois</div>
+        <div class="dash-compare-value">${hasPerm('perm_achats')?euro(d.monthBuyAmount):'â€”'}</div>
+        <div class="dash-compare-delta ${buyDelta.cls}">${hasPerm('perm_achats')?buyDelta.label:'Rubrique non accessible.'}</div>
+      </div>
+    </div>
+  </div>
+  <div class="dash-section-grid">
+    <div class="card">
+      <div class="stit" style="margin-top:0">RÃ©capitulatif club</div>
+      <div class="dash-stat-grid">
+        <div class="dash-stat">
+          <div class="dash-stat-label">AdhÃ©rents</div>
+          <div class="dash-stat-value">${hasPerm('perm_adherents')?d.adherents.length:'â€”'}</div>
+          <div class="dash-stat-sub">${hasPerm('perm_adherents')?`${d.renewList.length} Ã  renouveler Â· ${d.incompleteList.length} incomplets`:'Rubrique non accessible.'}</div>
+        </div>
+        <div class="dash-stat">
+          <div class="dash-stat-label">Banque</div>
+          <div class="dash-stat-value">${hasPerm('perm_banque')?euro(d.totalBank):'â€”'}</div>
+          <div class="dash-stat-sub">${hasPerm('perm_banque')?`${d.bankTransactions.length} mouvements Â· ${d.unreconciledTransactions.length} Ã  rapprocher`:'Rubrique non accessible.'}</div>
+        </div>
+        <div class="dash-stat">
+          <div class="dash-stat-label">Achats</div>
+          <div class="dash-stat-value">${hasPerm('perm_achats')?euro(d.pendingBuyAmount):'â€”'}</div>
+          <div class="dash-stat-sub">${hasPerm('perm_achats')?`${d.purchasesPending.length} en attente Â· ${d.purchasesRefused.length} refusÃ©s`:'Rubrique non accessible.'}</div>
+        </div>
+        <div class="dash-stat">
+          <div class="dash-stat-label">Ventes</div>
+          <div class="dash-stat-value">${hasPerm('perm_facturation')?euro(d.openInvoiceAmount):'â€”'}</div>
+          <div class="dash-stat-sub">${hasPerm('perm_facturation')?`${d.invoicesOpen.length} ouvertes Â· ${d.invoicesPaid.length} rÃ©glÃ©es`:'Rubrique non accessible.'}</div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="stit" style="margin-top:0">AccÃ¨s rapides</div>
+      <div class="dash-quick">
+        ${hasPerm('perm_adherents','write')?`<button class="btn primary" onclick="openModal('adh')">+ Nouvel adhÃ©rent</button>`:''}
+        ${hasPerm('perm_adherents')?`<button class="btn" onclick="showTab('adherents')">Voir les adhÃ©rents</button>`:''}
+        ${hasPerm('perm_comptabilite')?`<button class="btn" onclick="showTab('comptabilite')">Ouvrir la compta</button>`:''}
+        ${hasPerm('perm_facturation','write')?`<button class="btn gold" onclick="openNewFacture()">CrÃ©er une vente</button>`:''}
+        ${hasPerm('perm_achats')?`<button class="btn" onclick="focusAchats('pending')">Suivre les achats</button>`:''}
+      </div>
+      <div style="margin-top:14px">
+        <span class="dash-pill ${hasPerm('perm_adherents')&&d.incompleteList.length?'alert':'ok'}">Documents incomplets : ${hasPerm('perm_adherents')?d.incompleteList.length:'â€”'}</span>
+        <span class="dash-pill ${hasPerm('perm_adherents')&&d.renewList.length?'alert':'ok'}">Renouvellements : ${hasPerm('perm_adherents')?d.renewList.length:'â€”'}</span>
+        <span class="dash-pill ${hasPerm('perm_achats')&&d.purchasesPending.length?'alert':'ok'}">Achats Ã  rÃ©gler : ${hasPerm('perm_achats')?d.purchasesPending.length:'â€”'}</span>
+      </div>
+    </div>
+  </div>
+  <div class="dash-list">
+    <div class="card">
+      <div class="stit" style="margin-top:0">Points d'attention</div>
+      ${renderDashboardFeed(attentionItems,'Aucune alerte bloquante dÃ©tectÃ©e sur les donnÃ©es chargÃ©es.')}
+    </div>
+    <div class="card">
+      <div class="stit" style="margin-top:0">Conseils d'optimisation</div>
+      <div class="dash-item-main">
+        ${optimizationTips.map(tip=>`<div class="dash-item"><div class="dash-item-main"><span class="dash-item-sub">${esc(tip)}</span></div><span class="badge bok">Conseil</span></div>`).join('')}
+      </div>
+    </div>
+  </div>
+  <div class="dash-list">
+    <div class="card">
+      <div class="stit" style="margin-top:0">ActivitÃ© rÃ©cente</div>
+      ${renderDashboardFeed(recentFeed,'Aucune activitÃ© rÃ©cente disponible sur les rubriques accessibles.','Suivi')}
+    </div>
+    <div class="card">
+      <div class="stit" style="margin-top:0">Lecture par onglet</div>
+      <div class="dash-split">
+        ${managementBlocks.map(block=>`<div class="dash-stat">
+          <div class="dash-stat-label">${esc(block.title)}</div>
+          <div class="dash-item-main">
+            ${block.lines.map(line=>`<span class="dash-item-sub">${esc(line)}</span>`).join('')}
+            <a href="#" class="dash-link" onclick="showTab('${block.tab}');return false">${esc(block.cta)}</a>
+          </div>
+        </div>`).join('')}
+      </div>
+    </div>
+  </div>
+  `;
+}
+
+function renderDashboardFeed(items, emptyText, badgeLabel){
+  return items.length
+    ? items.map(item=>`<div class="dash-item">
+        <div class="dash-item-main">
+          <span class="dash-item-title">${esc(item.title)}</span>
+          <span class="dash-item-sub">${esc(item.detail)}</span>
+          ${item.advice?`<span class="dash-item-sub"><strong>Conseil:</strong> ${esc(item.advice)}</span>`:''}
+          ${item.tab?`<a href="#" class="dash-link" onclick="showTab('${item.tab}');return false">Ouvrir ${esc((ALL_TABS.find(t=>t.id===item.tab)?.label||item.tab).toLowerCase())}</a>`:''}
+          ${item.actions?.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">${item.actions.map(action=>`<button class="btn sm ${action.primary?'primary':''}" onclick="${action.onclick}">${esc(action.label)}</button>`).join('')}</div>`:''}
+        </div>
+        <span class="badge ${item.badge||'bgray'}">${esc(item.badgeText||badgeLabel||'Suivi')}</span>
+      </div>`).join('')
+    : `<div class="dash-empty">${esc(emptyText)}</div>`;
+}
+
+function vAdh(){
+  const canWrite=hasPerm('perm_adherents','write');
+  const season=currentSeasonLabel();
+  const filtered=D.adherents.filter(a=>{
+    const txt=(a.nom+' '+a.prenom+' '+(a.ville||'')).toLowerCase();
+    const matchesSearch=txt.includes((UI.search.adherents||'').toLowerCase());
+    const matchesStatut=!UI.adhFilters.statut || a.statut===UI.adhFilters.statut;
+    const matchesType=!UI.adhFilters.type || (a.discipline||'Club')===UI.adhFilters.type;
+    const adhSeason=seasonFromDate(a.date_fin_adhesion||a.date_inscription);
+    const matchesSeason=UI.adhFilters.season==='all' || !UI.adhFilters.season || adhSeason===season;
+    const matchesSpecial=adherentMatchesSpecialFilter(a,UI.adhFilters.special);
+    return matchesSearch&&matchesStatut&&matchesType&&matchesSeason&&matchesSpecial;
+  }).sort((a,b)=>compareAlpha(a.nom,b.nom) || compareAlpha(a.prenom,b.prenom));
+  const {rows:f,totalPages}=paginateList(filtered,'adherents');
+  const tot=filtered.reduce((s,a)=>s+(+a.cotisation||0)+(+a.montant_pass_region||0),0);
+  const ok=filtered.filter(a=>a.droit_image&&a.certificat&&a.reglement).length;
+  const exp=filtered.filter(a=>adhStatus(a)==='expire').length;
+  const ren=filtered.filter(a=>a.statut==='Renouvellement').length;
+  return`<div class="view-head">
+    <div>
+      <div class="eyebrow">Suivi sportif et administratif</div>
+      <h2>AdhÃ©rents</h2>
+      <p>Pilotez les dossiers, les cotisations et les piÃ¨ces administratives depuis une vue unique, claire et rapide Ã  parcourir.</p>
+    </div>
+    <div class="exo-badge">Saison en cours : ${season}</div>
+  </div>
+  <div class="g4" style="margin-bottom:14px">
+    <div class="sc"><div class="v vr">${filtered.length}</div><div class="l">AdhÃ©rents</div></div>
+    <div class="sc"><div class="v vgo">${tot.toLocaleString('fr-FR',{minimumFractionDigits:2})} â‚¬</div><div class="l">Total cotisations</div></div>
+    <div class="sc"><div class="v vg">${ok}</div><div class="l">Dossiers complets</div></div>
+    <div class="sc"><div class="v ${ren>0?'vgo':''}">${ren}</div><div class="l">Ã€ renouveler</div></div>
+  </div>
+  <div class="g2" style="margin-bottom:14px">
+    <div class="card" style="padding:12px 16px"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:12px"><span>AnnulÃ©es : <strong>${filtered.filter(a=>a.statut==='AdhÃ©sion annulÃ©e').length}</strong></span><span>Inactives : <strong>${filtered.filter(a=>a.statut==='Inactif').length}</strong></span><span>ExpirÃ©es : <strong>${exp}</strong></span></div></div>
+    <div class="card" style="padding:12px 16px"><div style="font-size:12px;color:var(--txt2)">Tri courant</div><div style="margin-top:4px;font-weight:600">Classement alphabÃ©tique par nom puis prÃ©nom</div></div>
+  </div>
+  <div class="toolbar">
+    <input style="flex:1;min-width:160px" placeholder="Rechercher..." value="${UI.search.adherents||''}" oninput="UI.search.adherents=this.value;render()">
+    <select style="width:auto;min-width:160px" onchange="UI.adhFilters.type=this.value;render()">
+      <option value="" ${!UI.adhFilters.type?'selected':''}>Tous les types</option>
+      ${ADH_TYPES.map(t=>`<option value="${t}" ${UI.adhFilters.type===t?'selected':''}>${t}</option>`).join('')}
+    </select>
+    <select style="width:auto;min-width:170px" onchange="UI.adhFilters.statut=this.value;render()">
+      <option value="" ${!UI.adhFilters.statut?'selected':''}>Tous les statuts</option>
+      ${ADH_STATUTS.map(s=>`<option value="${s}" ${UI.adhFilters.statut===s?'selected':''}>${s}</option>`).join('')}
+    </select>
+    <select style="width:auto;min-width:170px" onchange="UI.adhFilters.season=this.value;render()">
+      <option value="current" ${UI.adhFilters.season==='current'?'selected':''}>Saison en cours</option>
+      <option value="all" ${UI.adhFilters.season==='all'?'selected':''}>Toutes les saisons</option>
+    </select>
+    <select style="width:auto;min-width:180px" onchange="UI.adhFilters.special=this.value;render()">
+      <option value="" ${!UI.adhFilters.special?'selected':''}>Tous les dossiers</option>
+      <option value="incomplete" ${UI.adhFilters.special==='incomplete'?'selected':''}>Dossiers incomplets</option>
+      <option value="renew" ${UI.adhFilters.special==='renew'?'selected':''}>Ã€ renouveler</option>
+      <option value="expired" ${UI.adhFilters.special==='expired'?'selected':''}>ExpirÃ©s</option>
+      <option value="soon" ${UI.adhFilters.special==='soon'?'selected':''}>Ã‰chÃ©ance proche</option>
+    </select>
+    ${canWrite?`<button class="btn primary" onclick="openModal('adh')">+ Nouvel adhÃ©rent</button>`:''}
+    ${canWrite?`<button class="btn gold" onclick="openDiplomeForAdherent()">ðŸŽ“ Nouveau diplÃ´me</button>`:''}
+    <button class="btn" onclick="exportCSV()">â¬‡ Export CSV</button>
+    <button class="btn" onclick="showTab('administration');showST('admin','imp_adh')">Import DoliAsso</button>
+    <button class="btn" onclick="UI.search.adherents='';UI.adhFilters={statut:'',type:'',season:'current',special:''};render()">RÃ©initialiser</button>
+  </div>
+  <div class="wrap"><table>
+    <thead><tr><th>Nom / PrÃ©nom</th><th>Type</th><th>Certif.</th><th>Droit img</th><th>Pass RÃ©gion</th><th>RÃ¨glement</th><th>Cotisation</th><th>Paiement</th><th>Statut</th><th>Saison</th><th>AdhÃ©sion</th><th>PDF</th><th></th></tr></thead>
+    <tbody>${f.map(a=>{
+      const docs=getAdherentDocuments(a.id);
+      return `<tr class="${adhStatus(a)==='expire'?'adh-expire':adhStatus(a)==='soon'?'adh-soon':'adh-valid'}">
+      <td><strong style="font-weight:500">${a.nom} ${a.prenom}</strong>${a.ville?`<br><span style="font-size:10px;color:var(--txt2)">${a.ville}</span>`:''}</td>
+      <td><span class="badge bgray">${a.discipline||'Club'}</span></td>
+      <td>${bdg(a.certificat)}</td><td>${bdg(a.droit_image)}</td>
+      <td>${bdg(a.pass_region)}${+a.montant_pass_region>0?` <span style="font-size:11px;color:var(--gold-d)">+${(+a.montant_pass_region).toFixed(0)}â‚¬</span>`:''}</td>
+      <td>${bdg(a.reglement)}</td>
+      <td><strong style="font-weight:500">${(+a.cotisation).toFixed(2)} â‚¬</strong>${+a.montant_pass_region>0?`<br><span style="font-size:10px;color:var(--txt2)">Pass: ${(+a.montant_pass_region).toFixed(2)}â‚¬</span>`:''}</td>
+      <td style="font-size:11px">${a.paiement||''}</td>
+      <td><span class="badge ${adhStatutBadge(a.statut)}">${a.statut||'â€”'}</span></td>
+      <td>${seasonFromDate(a.date_fin_adhesion||a.date_inscription)||'â€”'}</td>
+      <td>${adhBadge(a)}</td>
+      <td style="white-space:nowrap">
+        ${canWrite?`<button class="btn sm" onclick="trigPDF('adherents','${a.id}')">${a.pdf_public_url?'Remplacer':'Ajouter'}</button>`:''}
+        ${a.pdf_public_url?`<a class="btn sm" style="margin-left:4px" href="${a.pdf_public_url}" target="_blank">Voir</a>`:`<span class="badge bgray" style="margin-left:4px">Aucun</span>`}
+        ${docs.length?`<br><span style="font-size:10px;color:var(--txt2)">${docs.length} justificatif(s)</span>`:''}
+      </td>
+      <td style="white-space:nowrap">
+        ${canWrite?`<button class="btn sm" onclick="openModal('adh','${a.id}')">Modifier</button>
+        <button class="btn sm danger" style="margin-left:4px" onclick="delAdh('${a.id}')">âœ•</button>
+        <button class="btn sm" style="margin-left:4px" onclick="openDiplomeForAdherent('${a.id}')">DiplÃ´me</button>
+        <button class="btn sm gold" style="margin-left:4px" onclick="genRecu('${a.id}')">ReÃ§u</button>`:''}
+      </td>
+    </tr>`;
+    }).join('')}
+    ${f.length===0?`<tr><td colspan="13" class="empty">Aucun adhÃ©rent</td></tr>`:''}
+    </tbody>
+  </table></div>
+  ${renderPager('adherents',totalPages)}`;
+}
+
+function trigPDF(type,id){
+  const perm=type==='adherents'?'perm_adherents':type==='achats'?'perm_achats':'';
+  if(perm && !requireWritePerm(perm)) return;
+  UI.pdfTarget={type,id};document.getElementById('pdf-input').click()
+}
+async function attachPDF(e){
+  const file=e.target.files[0];
+  const target=UI.pdfTarget;
+  e.target.value='';
+  UI.pdfTarget=null;
+  if(!file||!target?.id||!target?.type)return;
+  if(!SB?.storage)return alert(`${storageProviderLabel()} indisponible.`);
+  const safeName=(file.name||'document.pdf').replace(/[^a-zA-Z0-9._-]+/g,'_');
+  const path=`${target.type}/${target.id}/${Date.now()}_${safeName}`;
+  const {error:upErr}=await SB.storage.from('fullfighting-pdf').upload(path,file,{upsert:false,contentType:'application/pdf'});
+  if(upErr)return alert('Upload PDF impossible : '+upErr.message);
+  const {data:pub}=SB.storage.from('fullfighting-pdf').getPublicUrl(path);
+  const patch={pdf_storage_path:path,pdf_public_url:pub?.publicUrl||null,pdf_nom_fichier:file.name,pdf_uploaded_at:new Date().toISOString(),updated_at:new Date().toISOString()};
+  const cfg=target.type==='adherents'
+    ? {table:'adherents',rows:D.adherents,label:'fiche adhÃ©rent'}
+    : target.type==='achats'
+      ? {table:'achats',rows:D.achats,label:'achat'}
+      : null;
+  if(!cfg) return alert('Type de document non supportÃ©.');
+  const row=cfg.rows.find(x=>x.id===target.id);
+  if(!row) return alert(cfg.label==='achat'?'Achat introuvable.':'AdhÃ©rent introuvable.');
+  const {error}=await SB.from(cfg.table).update(patch).eq('id',target.id);
+  if(error)return alert(`PDF tÃ©lÃ©versÃ©, mais ${cfg.label} non mise Ã  jour : `+error.message);
+  Object.assign(row,patch);
+  render();
+  alert(`PDF ${cfg.label} enregistrÃ© dans ${storageProviderLabel()}.`);
+}
+async function delAdh(id){
+  if(!requireWritePerm('perm_adherents')) return;
+  if(!confirm('Supprimer cet adhÃ©rent ?'))return;
+  await SB.from('adherents').delete().eq('id',id);
+  try{await deleteJournalAutoPrefix(autoPiecePrefix('ADH',id));}catch(e){return alert('AdhÃ©rent supprimÃ©, mais Ã©critures comptables non supprimÃ©es : '+e.message);}
+  D.adherents=D.adherents.filter(a=>a.id!==id);render();
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// DIPLÃ”MES
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+function openDiplomeForAdherent(id){
+  const list=sortAdherentsList([...D.adherents]);
+  const adh=(id && D.adherents.find(a=>a.id===id)) || D.adherents.find(a=>a.id===UI.diplome.adherentId) || list[0] || null;
+  if(!adh){
+    alert('Aucun adhÃ©rent disponible pour gÃ©nÃ©rer un diplÃ´me.');
+    return;
+  }
+  UI.diplome.adherentId=adh.id;
+  UI.diplome.date=UI.diplome.date||td();
+  UI.diplome.templatePath=guessDiplomeTemplateForAdherent(adh);
+  UI.tab='diplomes';
+  renderTabs();
+  render();
+}
+
+function selectedDiplomeAdherent(){
+  return D.adherents.find(a=>a.id===UI.diplome.adherentId) || null;
+}
+
+function diplomeFieldAnchorTransform(align){
+  if(align==='right') return 'translate(-100%,-50%)';
+  if(align==='center') return 'translate(-50%,-50%)';
+  return 'translate(0,-50%)';
+}
+
+function diplomeTextStyle(field,interactive){
+  return [
+    'position:absolute',
+    `left:${field.left}%`,
+    `top:${field.top}%`,
+    `width:${field.width}%`,
+    `font-size:${field.fontSize}px`,
+    `text-align:${field.align||'center'}`,
+    `font-family:${field.fontFamily}`,
+    `font-weight:${field.fontWeight||'400'}`,
+    `font-style:${field.fontStyle||'normal'}`,
+    'line-height:1',
+    `color:${field.color||'#16110d'}`,
+    `letter-spacing:${field.letterSpacing||0}px`,
+    `transform:${diplomeFieldAnchorTransform(field.align)}`,
+    interactive?'white-space:nowrap':'',
+    '-webkit-text-stroke:.25px rgba(255,255,255,.35)',
+    'text-shadow:0 1px 0 rgba(255,255,255,.92),0 0 3px rgba(255,255,255,.45),0 1px 2px rgba(0,0,0,.08)'
+  ].join(';');
+}
+
+function diplomeImageBoxStyle(field){
+  return [
+    'position:absolute',
+    `left:${field.left}%`,
+    `top:${field.top}%`,
+    `width:${field.width}%`,
+    `height:${field.height}%`,
+    `transform:${diplomeFieldAnchorTransform(field.align)}`,
+    'display:flex',
+    'align-items:center',
+    'justify-content:center'
+  ].join(';');
+}
+
+function buildDiplomeFieldValues(data){
+  const nom=(data.nom||'').trim();
+  const prenom=(data.prenom||'').trim();
+  return {
+    nomComplet:data.nomComplet||`${nom} ${prenom}`.trim(),
+    prenom,
+    nom,
+    licence:data.licence||'Non renseignÃ©',
+    date:fd(data.date)
+  };
+}
+
+function buildDiplomeImageValues(data){
+  return {
+    logo:data.logoUrl||D.logoUrl||FORCED_LOGO_URL||'',
+    signature:data.signatureUrl||D.clubInfo?.[DIPLOME_SIGNATURE_KEY]||''
+  };
+}
+
+function buildDiplomeTextOverlay(data){
+  const layout=data.layout||normalizeDiplomeTemplateLayout();
+  const textValues=buildDiplomeFieldValues(data);
+  const imageValues=buildDiplomeImageValues(data);
+  return Object.entries(layout.fields)
+    .filter(([,field])=>field?.enabled)
+    .map(([key,field])=>{
+      const meta=diplomeFieldMeta(key);
+      const label=meta.label;
+      const active=UI.diplome.selectedField===key;
+      if(meta.type==='image'){
+        const src=imageValues[key]||'';
+        const inner=src
+          ? `<img class="dipl-field-proxy" src="${esc(src)}" alt="${esc(label)}" style="width:100%;height:100%;object-fit:${field.objectFit||'contain'};display:block">`
+          : `<span class="dipl-field-proxy">${esc(label)}</span>`;
+        return `<div class="dipl-field-box ${active?'active':''}" style="${diplomeImageBoxStyle(field)}" onmousedown="startDiplomeFieldDrag(event,'${key}')" onclick="selectDiplomeField('${key}')"><span class="dipl-field-tag">${esc(label)}</span>${inner}</div>`;
+      }
+      const style=diplomeTextStyle(field,data.mode==='editor');
+      const value=esc(textValues[key]||'');
+      if(data.mode==='editor'){
+        return `<div class="dipl-field-box ${active?'active':''}" style="${style}" onmousedown="startDiplomeFieldDrag(event,'${key}')" onclick="selectDiplomeField('${key}')"><span class="dipl-field-tag">${esc(label)}</span><span class="dipl-field-proxy">${value||'â€”'}</span></div>`;
+      }
+      return `<div style="${style}">${value}</div>`;
+    }).join('');
+}
+
+function buildDiplomeHTML(data,mode){
+  const overlay=buildDiplomeTextOverlay({...data,mode:mode==='preview'?'editor':mode});
+  if(mode==='print'){
+    const bgLayer=data.templateUrl
+      ? `<img src="${data.templateUrl}" alt="ModÃ¨le de diplÃ´me" crossorigin="anonymous" referrerpolicy="no-referrer">`
+      : `<div style="position:absolute;inset:0;background:linear-gradient(135deg,#fcf5e5,#f1e0b8)"></div>`;
+    return `<div style="width:1123px;height:794px;position:relative;font-family:'Avenir Next','Segoe UI',sans-serif;color:#241009;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact">
+      ${bgLayer}
+      ${overlay}
+    </div>`;
+  }
+  return `<div class="dipl-preview is-editor" id="diplome-preview-surface">
+    <img class="dipl-preview-canvas" id="diplome-preview-image" alt="AperÃ§u du diplÃ´me">
+    ${overlay}
+  </div>`;
+}
+
+let jsPdfPromise=null;
+let diplomePreviewToken=0;
+const diplomeImageDataUrlCache=new Map();
+
+function loadScriptSequential(urls,check){
+  return new Promise((resolve,reject)=>{
+    let idx=0;
+    const tryNext=()=>{
+      if(check()) return resolve(check());
+      if(idx>=urls.length) return reject(new Error('Impossible de charger la bibliothÃ¨que PDF.'));
+      const script=document.createElement('script');
+      script.src=urls[idx++];
+      script.async=true;
+      script.onload=()=>check()?resolve(check()):tryNext();
+      script.onerror=tryNext;
+      document.head.appendChild(script);
+    };
+    tryNext();
+  });
+}
+
+function ensureJsPDF(){
+  if(window.jspdf?.jsPDF) return Promise.resolve(window.jspdf.jsPDF);
+  if(jsPdfPromise) return jsPdfPromise;
+  jsPdfPromise=loadScriptSequential([
+    '/vendor/jspdf/jspdf.umd.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+    'https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js'
+  ],()=>window.jspdf?.jsPDF);
+  return jsPdfPromise;
+}
+
+function blobToDataURL(blob){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>resolve(reader.result);
+    reader.onerror=()=>reject(new Error('Lecture du fichier image impossible.'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function fetchImageDataURL(url){
+  if(!url) return null;
+  if(diplomeImageDataUrlCache.has(url)) return diplomeImageDataUrlCache.get(url);
+  const res=await fetch(url,{mode:'cors',cache:'no-store'});
+  if(!res.ok) throw new Error(`Image du diplÃ´me inaccessible (${res.status}).`);
+  const dataUrl=await blobToDataURL(await res.blob());
+  diplomeImageDataUrlCache.set(url,dataUrl);
+  return dataUrl;
+}
+
+function loadImageElement(src){
+  return new Promise((resolve,reject)=>{
+    const img=new Image();
+    img.onload=()=>resolve(img);
+    img.onerror=()=>reject(new Error('Chargement du modÃ¨le de diplÃ´me impossible.'));
+    img.src=src;
+  });
+}
+
+async function buildDiplomeCanvas(data){
+  const width=DIPLOME_PAGE.canvasWidth;
+  const height=DIPLOME_PAGE.canvasHeight;
+  const scale=1;
+  const canvas=document.createElement('canvas');
+  canvas.width=width*scale;
+  canvas.height=height*scale;
+  const ctx=canvas.getContext('2d');
+  ctx.scale(scale,scale);
+
+  ctx.fillStyle='#f7efdf';
+  ctx.fillRect(0,0,width,height);
+
+  if(data.templateUrl){
+    const imageDataUrl=await fetchImageDataURL(data.templateUrl);
+    const img=await loadImageElement(imageDataUrl);
+    ctx.drawImage(img,0,0,width,height);
+  }else{
+    const g=ctx.createLinearGradient(0,0,width,height);
+    g.addColorStop(0,'#fcf5e5');
+    g.addColorStop(1,'#f1e0b8');
+    ctx.fillStyle=g;
+    ctx.fillRect(0,0,width,height);
+  }
+
+  const fields=data.layout?.fields||normalizeDiplomeTemplateLayout().fields;
+  const imageValues=buildDiplomeImageValues(data);
+  const fontsToLoad=[...new Set(Object.values(fields).map(field=>field.fontFamily).filter(Boolean))];
+  if(document.fonts?.load){
+    for(const family of fontsToLoad){
+      try{ await document.fonts.load(`48px ${family}`); }catch(e){}
+    }
+  }
+
+  const imageSources=[...new Set(Object.entries(fields)
+    .filter(([key,field])=>field?.enabled && field.type==='image' && imageValues[key])
+    .map(([key])=>imageValues[key]))];
+  const loadedImages={};
+  for(const src of imageSources){
+    try{
+      const imageDataUrl=await fetchImageDataURL(src);
+      loadedImages[src]=await loadImageElement(imageDataUrl);
+    }catch(e){}
+  }
+
+  const drawText=(text,field)=>{
+    if(!field?.enabled || !text) return;
+    ctx.save();
+    ctx.font=`${field.fontStyle||'normal'} ${field.fontWeight||'400'} ${field.fontSize}px ${field.fontFamily}`;
+    ctx.textAlign=field.align||'center';
+    ctx.textBaseline='middle';
+    ctx.fillStyle=field.color||'#16110d';
+    ctx.strokeStyle='rgba(255,255,255,.35)';
+    ctx.lineWidth=0.7;
+    ctx.shadowColor='rgba(255,255,255,.55)';
+    ctx.shadowBlur=3;
+    ctx.shadowOffsetX=0;
+    ctx.shadowOffsetY=1;
+    const x=width*(field.left/100);
+    const y=height*(field.top/100);
+    const maxWidth=field.width ? width*(field.width/100) : undefined;
+    const spacing=field.letterSpacing||0;
+    if(!spacing){
+      ctx.strokeText(text,x,y,maxWidth);
+      ctx.fillText(text,x,y,maxWidth);
+      ctx.restore();
+      return;
+    }
+    ctx.textAlign='left';
+    const chars=[...text];
+    const metrics=chars.map(ch=>ctx.measureText(ch).width);
+    const totalWidth=metrics.reduce((sum,w)=>sum+w,0) + spacing*Math.max(chars.length-1,0);
+    let startX=x;
+    if(field.align==='center') startX=x-totalWidth/2;
+    if(field.align==='right') startX=x-totalWidth;
+    chars.forEach((ch,idx)=>{
+      const drawX=startX + metrics.slice(0,idx).reduce((sum,w)=>sum+w,0) + spacing*idx;
+      ctx.strokeText(ch,drawX,y);
+      ctx.fillText(ch,drawX,y);
+    });
+    ctx.restore();
+  };
+
+  const drawImageField=(key,field)=>{
+    const src=imageValues[key];
+    const img=src?loadedImages[src]:null;
+    if(!field?.enabled || !img) return;
+    const boxWidth=width*(field.width/100);
+    const boxHeight=height*(field.height/100);
+    let x=width*(field.left/100);
+    if(field.align==='center') x-=boxWidth/2;
+    if(field.align==='right') x-=boxWidth;
+    const y=height*(field.top/100)-boxHeight/2;
+    let drawW=boxWidth;
+    let drawH=boxHeight;
+    let drawX=x;
+    let drawY=y;
+    if((field.objectFit||'contain')!=='fill'){
+      const boxRatio=boxWidth/boxHeight;
+      const imgRatio=img.width/img.height;
+      if(field.objectFit==='cover'){
+        if(imgRatio>boxRatio){
+          drawH=boxHeight;
+          drawW=drawH*imgRatio;
+          drawX=x-(drawW-boxWidth)/2;
+        }else{
+          drawW=boxWidth;
+          drawH=drawW/imgRatio;
+          drawY=y-(drawH-boxHeight)/2;
+        }
+      }else{
+        if(imgRatio>boxRatio){
+          drawW=boxWidth;
+          drawH=drawW/imgRatio;
+          drawY=y+(boxHeight-drawH)/2;
+        }else{
+          drawH=boxHeight;
+          drawW=drawH*imgRatio;
+          drawX=x+(boxWidth-drawW)/2;
+        }
+      }
+    }
+    ctx.drawImage(img,drawX,drawY,drawW,drawH);
+  };
+
+  const values=buildDiplomeFieldValues(data);
+  Object.entries(fields).forEach(([key,field])=>{
+    if(field.type==='image') drawImageField(key,field);
+    else drawText(values[key]||'',field);
+  });
+  return canvas;
+}
+
+async function refreshDiplomePreviewCanvas(){
+  const preview=document.getElementById('diplome-preview-image');
+  if(!preview || UI.tab!=='diplomes') return;
+  const adh=selectedDiplomeAdherent();
+  const tpl=selectedDiplomeTemplate();
+  if(!adh || !tpl){
+    preview.removeAttribute('src');
+    return;
+  }
+  const token=++diplomePreviewToken;
+  preview.alt='AperÃ§u du diplÃ´me en cours de gÃ©nÃ©ration';
+  try{
+    const canvas=await buildDiplomeCanvas({
+      titre:UI.diplome.titre||'DiplÃ´me de ceinture',
+      nomComplet:`${adh.nom||''} ${adh.prenom||''}`.trim(),
+      nom:adh.nom||'',
+      prenom:adh.prenom||'',
+      licence:adh.numero_licence||'Non renseignÃ©',
+      ceinture:adh.couleur_ceinture||'',
+      date:UI.diplome.date||td(),
+      templateUrl:tpl.url,
+      logoUrl:D.logoUrl||FORCED_LOGO_URL,
+      signatureUrl:D.clubInfo?.[DIPLOME_SIGNATURE_KEY]||'',
+      layout:selectedDiplomeLayout()
+    });
+    if(token!==diplomePreviewToken) return;
+    preview.src=canvas.toDataURL('image/png');
+    preview.alt='AperÃ§u du diplÃ´me';
+  }catch(error){
+    if(token!==diplomePreviewToken) return;
+    preview.removeAttribute('src');
+    preview.alt='AperÃ§u du diplÃ´me indisponible';
+    console.error('AperÃ§u diplÃ´me impossible',error);
+  }
+}
+
+async function printDiplome(){
+  const adh=selectedDiplomeAdherent();
+  const tpl=selectedDiplomeTemplate();
+  if(!adh) return alert('SÃ©lectionnez un adhÃ©rent.');
+  if(!tpl) return alert(`Aucun modÃ¨le de diplÃ´me image trouvÃ© dans le bucket "${DIPLOME_BUCKET}".`);
+  try{
+    const jsPDF=await ensureJsPDF();
+    const diplomeData={
+      titre:UI.diplome.titre||'DiplÃ´me de ceinture',
+      nomComplet:`${adh.nom||''} ${adh.prenom||''}`.trim(),
+      nom:adh.nom||'',
+      prenom:adh.prenom||'',
+      licence:adh.numero_licence||'Non renseignÃ©',
+      ceinture:adh.couleur_ceinture||'',
+      date:UI.diplome.date||td(),
+      templateUrl:tpl.url,
+      logoUrl:D.logoUrl||FORCED_LOGO_URL,
+      signatureUrl:D.clubInfo?.[DIPLOME_SIGNATURE_KEY]||'',
+      layout:selectedDiplomeLayout()
+    };
+    const canvas=await buildDiplomeCanvas(diplomeData);
+    const imgData=canvas.toDataURL('image/png');
+    const pdf=new jsPDF({orientation:'landscape',unit:'pt',format:'a4',compress:true});
+    pdf.addImage(imgData,'PNG',0,0,DIPLOME_PAGE.pdfWidthPt,DIPLOME_PAGE.pdfHeightPt,undefined,'FAST');
+    const safeName=`diplome_${(adh.nom||'').trim()}_${(adh.prenom||'').trim()}_${(UI.diplome.date||td())}`
+      .replace(/\s+/g,'_')
+      .replace(/[^a-zA-Z0-9_.-]+/g,'');
+    pdf.save(`${safeName||'diplome'}.pdf`);
+  }catch(error){
+    alert('Export PDF impossible : '+(error?.message||error));
+  }
+}
+
+async function saveDiplomeSignatureUrl(url){
+  if(!requireWritePerm('perm_adherents')) return;
+  const value=(url||'').trim();
+  const {error}=await SB.from('club_info').upsert({cle:DIPLOME_SIGNATURE_KEY,valeur:value},{onConflict:'cle'});
+  if(error) return alert('Enregistrement de la signature impossible : '+error.message);
+  D.clubInfo[DIPLOME_SIGNATURE_KEY]=value;
+  render();
+}
+
+async function importDiplomeSignature(e){
+  const file=e.target.files[0];
+  e.target.value='';
+  if(!file) return;
+  if(!requireWritePerm('perm_adherents')) return;
+  if(!SB?.storage) return alert(`${storageProviderLabel()} indisponible.`);
+  const safeName=(file.name||'signature.png').replace(/[^a-zA-Z0-9._-]+/g,'_');
+  const path=`club-assets/signature/${Date.now()}_${safeName}`;
+  const {error:upErr}=await SB.storage.from(DIPLOME_BUCKET).upload(path,file,{upsert:false,contentType:file.type||'image/png'});
+  if(upErr) return alert('Upload de la signature impossible : '+upErr.message);
+  const {data:pub}=SB.storage.from(DIPLOME_BUCKET).getPublicUrl(path);
+  await saveDiplomeSignatureUrl(pub?.publicUrl||'');
+  alert('Signature importÃ©e.');
+}
+
+function vDiplomes(){
+  const adhList=sortAdherentsList([...D.adherents]);
+  const adh=selectedDiplomeAdherent() || adhList[0] || null;
+  if(!UI.diplome.adherentId && adh) UI.diplome.adherentId=adh.id;
+  const tpl=selectedDiplomeTemplate();
+  const layout=selectedDiplomeLayout();
+  const html=adh?buildDiplomeHTML({
+    titre:UI.diplome.titre||'DiplÃ´me de ceinture',
+    nomComplet:`${adh.nom||''} ${adh.prenom||''}`.trim(),
+    nom:adh.nom||'',
+    prenom:adh.prenom||'',
+    licence:adh.numero_licence||'Non renseignÃ©',
+    ceinture:adh.couleur_ceinture||'',
+    date:UI.diplome.date||td(),
+    templateUrl:tpl?.url||'',
+    layout
+  },'preview'):'';
+  const currentField=selectedDiplomeField();
+  const currentFieldMeta=selectedDiplomeFieldMeta();
+  return `<div class="view-head">
+    <div>
+      <div class="eyebrow">Documents sportifs</div>
+      <h2>DiplÃ´mes</h2>
+      <p>Chaque modÃ¨le dispose maintenant de son propre rÃ©glage libre. Vous pouvez dÃ©placer les champs directement dans lâ€™aperÃ§u puis enregistrer la configuration dans Supabase.</p>
+    </div>
+  </div>
+  <div class="dipl-grid">
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="card">
+        <div class="fg" style="margin-bottom:12px">
+          <label>AdhÃ©rent</label>
+          <select onchange="UI.diplome.adherentId=this.value;render()">
+            ${adhList.map(a=>`<option value="${a.id}" ${UI.diplome.adherentId===a.id?'selected':''}>${a.nom} ${a.prenom}${a.couleur_ceinture?` â€” ${a.couleur_ceinture}`:''}</option>`).join('')}
+          </select>
+        </div>
+        <div class="g2">
+          <div class="fg">
+            <label>Date du diplÃ´me</label>
+            <input type="date" value="${UI.diplome.date||td()}" onchange="UI.diplome.date=this.value;render()">
+          </div>
+          <div class="fg">
+            <label>ModÃ¨le sÃ©lectionnÃ©</label>
+            <input value="${tpl?.label||'Aucun modÃ¨le'}" disabled>
+          </div>
+        </div>
+        ${adh?`<div class="card" style="margin-top:14px;padding:12px 14px;background:rgba(255,255,255,.58)">
+          <div style="font-size:11px;color:var(--txt2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">DonnÃ©es adhÃ©rent utilisÃ©es</div>
+          <div style="font-size:13px;line-height:1.8"><strong>${adh.nom} ${adh.prenom}</strong><br>Nom : ${adh.nom||'â€”'}<br>PrÃ©nom : ${adh.prenom||'â€”'}<br>Licence : ${adh.numero_licence||'Non renseignÃ©'}<br>Date imprimÃ©e : ${fd(UI.diplome.date||td())}</div>
+        </div>`:`<div class="empty">Aucun adhÃ©rent disponible.</div>`}
+        <div class="card" style="margin-top:14px;padding:12px 14px;background:rgba(255,255,255,.58)">
+          <div style="font-size:11px;color:var(--txt2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Fichier de notation</div>
+          ${adh?`<div style="font-size:13px;line-height:1.8">${adh.pdf_public_url?`PDF liÃ© : <strong>${esc(adh.pdf_nom_fichier||'document.pdf')}</strong>`:'Aucun PDF de notation importÃ©.'}</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+            <button class="btn" onclick="trigPDF('adherents','${adh.id}')">${adh.pdf_public_url?'Remplacer le PDF':'Importer le PDF'}</button>
+            ${adh.pdf_public_url?`<a class="btn" href="${adh.pdf_public_url}" target="_blank">Ouvrir le PDF</a>`:''}
+          </div>`:`<div class="empty" style="padding:18px 12px">SÃ©lectionnez un adhÃ©rent.</div>`}
+        </div>
+        <div class="card" style="margin-top:14px;padding:12px 14px;background:rgba(255,255,255,.58)">
+          <div style="font-size:11px;color:var(--txt2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Visuels du diplÃ´me</div>
+          <div style="font-size:13px;line-height:1.8">Logo : ${D.logoUrl?'<strong>logo du club chargÃ©</strong>':'non disponible'}<br>Signature : ${D.clubInfo?.[DIPLOME_SIGNATURE_KEY]?'<strong>signature chargÃ©e</strong>':'non dÃ©finie'}</div>
+          <div class="fg" style="margin-top:10px">
+            <label>URL publique de la signature</label>
+            <input id="diplome-signature-url" value="${esc(D.clubInfo?.[DIPLOME_SIGNATURE_KEY]||'')}" placeholder="https://.../signature.png">
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+            <button class="btn" onclick="document.getElementById('diplome-signature-input').click()">Importer la signature</button>
+            <button class="btn" onclick="saveDiplomeSignatureUrl(document.getElementById('diplome-signature-url').value)">Enregistrer lâ€™URL</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+          <button class="btn primary" onclick="printDiplome()" ${!adh||!tpl?'disabled':''}>â¬‡ TÃ©lÃ©charger le PDF</button>
+          <button class="btn gold" onclick="saveDiplomeLayouts()" ${!tpl?'disabled':''}>ðŸ’¾ Sauvegarder ce modÃ¨le</button>
+          <button class="btn" onclick="resetCurrentDiplomeLayout()" ${!tpl?'disabled':''}>â†º RÃ©initialiser le modÃ¨le</button>
+          <button class="btn" onclick="loadDiplomeTemplates().then(()=>render())">â†» Recharger les modÃ¨les</button>
+        </div>
+      </div>
+      <div class="card dipl-editor-card">
+        <div style="font-size:11px;color:var(--txt2);text-transform:uppercase;letter-spacing:.08em">Ã‰dition libre</div>
+        <div class="dipl-field-list">
+          ${DIPLOME_FIELD_META.map(meta=>`<button class="dipl-field-chip ${UI.diplome.selectedField===meta.key?'active':''}" type="button" onclick="selectDiplomeField('${meta.key}')">${meta.label}</button>`).join('')}
+        </div>
+        <div class="dipl-help">Cliquez sur un champ puis dÃ©placez-le dans lâ€™aperÃ§u. Les rÃ©glages sont mÃ©morisÃ©s par modÃ¨le dâ€™image.</div>
+        <div class="dipl-editor-grid">
+          <div class="fg">
+            <label>Champ actif</label>
+            <input value="${currentFieldMeta.label}" disabled>
+          </div>
+          <div class="fg">
+            <label>Visible</label>
+            <select onchange="updateDiplomeField('${UI.diplome.selectedField}','enabled',this.value==='1')">
+              <option value="1" ${currentField.enabled?'selected':''}>Oui</option>
+              <option value="0" ${!currentField.enabled?'selected':''}>Non</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label>Position X (%)</label>
+            <input type="number" min="0" max="100" step="0.1" value="${currentField.left}" onchange="updateDiplomeField('${UI.diplome.selectedField}','left',this.value)">
+          </div>
+          <div class="fg">
+            <label>Position Y (%)</label>
+            <input type="number" min="0" max="100" step="0.1" value="${currentField.top}" onchange="updateDiplomeField('${UI.diplome.selectedField}','top',this.value)">
+          </div>
+          <div class="fg">
+            <label>Largeur (%)</label>
+            <input type="number" min="4" max="100" step="0.1" value="${currentField.width}" onchange="updateDiplomeField('${UI.diplome.selectedField}','width',this.value)">
+          </div>
+          ${currentFieldMeta.type==='image'?`
+          <div class="fg">
+            <label>Hauteur (%)</label>
+            <input type="number" min="2" max="100" step="0.1" value="${currentField.height}" onchange="updateDiplomeField('${UI.diplome.selectedField}','height',this.value)">
+          </div>
+          <div class="fg">
+            <label>Alignement</label>
+            <select onchange="updateDiplomeField('${UI.diplome.selectedField}','align',this.value)">
+              <option value="left" ${currentField.align==='left'?'selected':''}>Gauche</option>
+              <option value="center" ${currentField.align==='center'?'selected':''}>Centre</option>
+              <option value="right" ${currentField.align==='right'?'selected':''}>Droite</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label>Ajustement image</label>
+            <select onchange="updateDiplomeField('${UI.diplome.selectedField}','objectFit',this.value)">
+              <option value="contain" ${currentField.objectFit==='contain'?'selected':''}>Contain</option>
+              <option value="cover" ${currentField.objectFit==='cover'?'selected':''}>Cover</option>
+              <option value="fill" ${currentField.objectFit==='fill'?'selected':''}>Fill</option>
+            </select>
+          </div>`:`
+          <div class="fg">
+            <label>Taille police (px)</label>
+            <input type="number" min="8" max="96" step="1" value="${currentField.fontSize}" onchange="updateDiplomeField('${UI.diplome.selectedField}','fontSize',this.value)">
+          </div>
+          <div class="fg full">
+            <label>Police</label>
+            <select onchange="updateDiplomeField('${UI.diplome.selectedField}','fontFamily',this.value)">
+              ${DIPLOME_FONT_OPTIONS.map(opt=>`<option value="${esc(opt.value)}" ${currentField.fontFamily===opt.value?'selected':''}>${opt.label}</option>`).join('')}
+            </select>
+          </div>
+          <div class="fg">
+            <label>Alignement</label>
+            <select onchange="updateDiplomeField('${UI.diplome.selectedField}','align',this.value)">
+              <option value="left" ${currentField.align==='left'?'selected':''}>Gauche</option>
+              <option value="center" ${currentField.align==='center'?'selected':''}>Centre</option>
+              <option value="right" ${currentField.align==='right'?'selected':''}>Droite</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label>Graisse</label>
+            <select onchange="updateDiplomeField('${UI.diplome.selectedField}','fontWeight',this.value)">
+              <option value="400" ${currentField.fontWeight==='400'?'selected':''}>Normal</option>
+              <option value="500" ${currentField.fontWeight==='500'?'selected':''}>Medium</option>
+              <option value="600" ${currentField.fontWeight==='600'?'selected':''}>Semi-gras</option>
+              <option value="700" ${currentField.fontWeight==='700'?'selected':''}>Gras</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label>Style</label>
+            <select onchange="updateDiplomeField('${UI.diplome.selectedField}','fontStyle',this.value)">
+              <option value="normal" ${currentField.fontStyle!=='italic'?'selected':''}>Normal</option>
+              <option value="italic" ${currentField.fontStyle==='italic'?'selected':''}>Italique</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label>Interlettrage</label>
+            <input type="number" min="-2" max="20" step="0.1" value="${currentField.letterSpacing||0}" onchange="updateDiplomeField('${UI.diplome.selectedField}','letterSpacing',this.value)">
+          </div>
+          <div class="fg">
+            <label>Couleur</label>
+            <input type="color" value="${currentField.color||'#16110d'}" onchange="updateDiplomeField('${UI.diplome.selectedField}','color',this.value)">
+          </div>`}
+        </div>
+      </div>
+      <div class="card">
+        <div style="font-size:11px;color:var(--txt2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">ModÃ¨les disponibles</div>
+        ${D.diplomeTemplates.length
+          ? `<div class="dipl-thumbs">${D.diplomeTemplates.map(t=>`<button class="dipl-thumb ${UI.diplome.templatePath===t.path?'active':''}" type="button" onclick="UI.diplome.templatePath='${t.path.replace(/'/g,"\\'")}';render()"><img src="${t.url}" alt="${t.label}"><span>${t.label}</span></button>`).join('')}</div>`
+          : `<div class="empty">${D.diplomeTemplatesError?`Impossible de lister le bucket <strong>${DIPLOME_BUCKET}</strong> : ${esc(D.diplomeTemplatesError)}.`:`Aucun modÃ¨le d'image PNG/JPG/WebP trouvÃ© dans le bucket <strong>${DIPLOME_BUCKET}</strong>.`}</div>`}
+      </div>
+    </div>
+    <div class="dipl-preview-wrap">
+      <div class="dipl-preview-toolbar">
+        <div style="font-size:11px;color:var(--txt2);text-transform:uppercase;letter-spacing:.08em">AperÃ§u</div>
+        <div class="dipl-preview-hint">Glissez un champ pour modifier son emplacement.</div>
+      </div>
+      ${adh?`<div>${html}</div>`:`<div class="empty">SÃ©lectionnez un adhÃ©rent pour prÃ©visualiser le diplÃ´me.</div>`}
+    </div>
+  </div>`;
+}
+
+let diplomeDragState=null;
+
+function startDiplomeFieldDrag(ev,key){
+  if(ev.button!==0) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  const preview=document.getElementById('diplome-preview-surface');
+  if(!preview) return;
+  const rect=preview.getBoundingClientRect();
+  const field=selectedDiplomeLayout().fields[key];
+  if(!field) return;
+  const changedField=UI.diplome.selectedField!==key;
+  UI.diplome.selectedField=key;
+  const anchorX=rect.left + rect.width*(field.left/100);
+  const anchorY=rect.top + rect.height*(field.top/100);
+  diplomeDragState={key,rect,offsetX:ev.clientX-anchorX,offsetY:ev.clientY-anchorY,dirty:false};
+  if(changedField) render();
+}
+
+window.addEventListener('mousemove',ev=>{
+  if(!diplomeDragState) return;
+  const {key,rect,offsetX,offsetY}=diplomeDragState;
+  const left=((ev.clientX-offsetX)-rect.left)/rect.width*100;
+  const top=((ev.clientY-offsetY)-rect.top)/rect.height*100;
+  const layout=selectedDiplomeLayout();
+  layout.fields[key]=normalizeDiplomeField(key,{...layout.fields[key],left,top});
+  diplomeDragState.dirty=true;
+  updateDraggedFieldElement(key,layout.fields[key]);
+  syncDiplomeEditorInputs(layout.fields[key]);
+});
+
+window.addEventListener('mouseup',()=>{
+  if(diplomeDragState?.dirty) render();
+  diplomeDragState=null;
+});
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// BANQUE
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+function vBanque(){
+  const canWrite=hasPerm('perm_banque','write');
+  const sub=UI.subTab.banque;
+  return`<div class="stabs">
+    <button class="stab ${sub==='comptes'?'active':''}" onclick="showST('banque','comptes')">Comptes</button>
+    <button class="stab ${sub==='import'?'active':''}" onclick="showST('banque','import')">Import CM</button>
+    <button class="stab ${sub==='rappr'?'active':''}" onclick="showST('banque','rappr')">Rapprochement</button>
+    <button class="stab ${sub==='ecr512'?'active':''}" onclick="showST('banque','ecr512')">Ã‰critures 512</button>
+  </div>
+  ${sub==='comptes'?vComptes():sub==='import'?vBankImport():sub==='rappr'?vRappr():vEcr512()}`;
+}
+
+function vComptes(){
+  const canWrite=hasPerm('perm_banque','write');
+  if(UI.bankAccountId){
+    const c=D.comptes.find(x=>x.id===UI.bankAccountId);
+    if(c) return vCompteDetail(c);
+    UI.bankAccountId=null;
+  }
+  return`${canWrite?`<button class="btn primary" style="margin-bottom:14px" onclick="openModal('compte')">+ Ajouter un compte</button>`:''}
+  ${D.comptes.map(c=>{
+    const tr=c.transactions||[];
+    const cr=tr.reduce((s,t)=>s+(+t.credit),0);
+    const db=tr.reduce((s,t)=>s+(+t.debit),0);
+    const sol=(+c.solde_initial)+cr-db;
+    return`<div class="card" style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div><div style="font-weight:500">${c.nom}</div><div style="font-size:11px;color:var(--txt2)">${c.numero||''}</div></div>
+        <div style="font-size:18px;font-weight:500;color:${sol>=0?'#1e7e34':'var(--red)'}">${sol.toLocaleString('fr-FR',{minimumFractionDigits:2})} â‚¬</div>
+      </div>
+      <div class="g3">
+        <div style="font-size:12px;color:var(--txt2)">Initial : <strong>${(+c.solde_initial).toFixed(2)} â‚¬</strong></div>
+        <div style="font-size:12px;color:#1e7e34">+ ${cr.toFixed(2)} â‚¬</div>
+        <div style="font-size:12px;color:var(--red)">- ${db.toFixed(2)} â‚¬</div>
+      </div>
+      <div style="margin-top:10px;display:flex;justify-content:flex-end">
+        <button class="btn sm" onclick="openBankAccount('${c.id}')">Consulter les opÃ©rations</button>
+      </div>
+      ${tr.length>0?`<div class="wrap" style="margin-top:8px"><table>
+        <thead><tr><th>Date</th><th>Valeur</th><th>LibellÃ©</th><th>DÃ©bit</th><th>CrÃ©dit</th><th>RapprochÃ©</th></tr></thead>
+        <tbody>${tr.slice(-5).map(t=>`<tr><td>${fd(frDateToISO(t.date_op)||t.date_op)||''}</td>
+          <td style="font-size:11px;color:var(--txt2)">${fd(t.date_valeur)||'â€”'}</td>
+          <td>${t.libelle}</td>
+          <td style="color:var(--red);text-align:right">${+t.debit>0?(+t.debit).toFixed(2)+' â‚¬':''}</td>
+          <td style="color:#1e7e34;text-align:right">${+t.credit>0?(+t.credit).toFixed(2)+' â‚¬':''}</td>
+          <td>${t.rapproche?`<span class="badge bok">âœ“</span>`:`<span class="badge bwarn">En attente</span>`}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>`:''} 
+    </div>`;
+  }).join('')}`;
+}
+
+function openBankAccount(id){
+  UI.bankAccountId=id;
+  UI.subTab.banque='comptes';
+  render();
+}
+
+function closeBankAccount(){
+  UI.bankAccountId=null;
+  render();
+}
+
+function vCompteDetail(c){
+  const tr=[...(c.transactions||[])].sort((a,b)=>{
+    return compareFrDates(b.date_op,a.date_op);
+  });
+  const cr=tr.reduce((s,t)=>s+(+t.credit),0);
+  const db=tr.reduce((s,t)=>s+(+t.debit),0);
+  const sol=(+c.solde_initial)+cr-db;
+  return`<div class="view-head">
+    <div>
+      <div class="eyebrow">Consultation bancaire</div>
+      <h2>${c.nom}</h2>
+      <p>Consultez l'ensemble des opÃ©rations importÃ©es pour ce compte, avec le statut de rapprochement et les montants dÃ©bit/crÃ©dit.</p>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" onclick="closeBankAccount()">Retour aux comptes</button>
+    </div>
+  </div>
+  <div class="g4" style="margin-bottom:14px">
+    <div class="sc"><div class="v">${tr.length}</div><div class="l">OpÃ©rations</div></div>
+    <div class="sc"><div class="v vg">${cr.toFixed(2)} â‚¬</div><div class="l">CrÃ©dits</div></div>
+    <div class="sc"><div class="v vr">${db.toFixed(2)} â‚¬</div><div class="l">DÃ©bits</div></div>
+    <div class="sc"><div class="v ${sol>=0?'vg':'vr'}">${sol.toFixed(2)} â‚¬</div><div class="l">Solde thÃ©orique</div></div>
+  </div>
+  <div class="card" style="margin-bottom:14px">
+    <div style="font-size:12px;color:var(--txt2)">NumÃ©ro de compte</div>
+    <div style="font-weight:600;margin-top:4px">${c.numero||'Non renseignÃ©'}</div>
+  </div>
+  <div class="wrap"><table>
+    <thead><tr><th>Date</th><th>Valeur</th><th>LibellÃ©</th><th>DÃ©bit</th><th>CrÃ©dit</th><th>RapprochÃ©</th><th>PiÃ¨ce</th></tr></thead>
+    <tbody>${tr.map(t=>`<tr>
+      <td>${fd(frDateToISO(t.date_op)||t.date_op)||''}</td>
+      <td>${fd(t.date_valeur)||'â€”'}</td>
+      <td>${t.libelle||''}</td>
+      <td style="color:var(--red);text-align:right">${+t.debit>0?(+t.debit).toFixed(2)+' â‚¬':'-'}</td>
+      <td style="color:#1e7e34;text-align:right">${+t.credit>0?(+t.credit).toFixed(2)+' â‚¬':'-'}</td>
+      <td>${t.rapproche?`<span class="badge bok">âœ“</span>`:`<span class="badge bwarn">En attente</span>`}</td>
+      <td style="font-size:11px;color:var(--txt2)">${t.ecriture_piece||'â€”'}</td>
+    </tr>`).join('')}
+    ${tr.length===0?`<tr><td colspan="7" class="empty">Aucune opÃ©ration sur ce compte</td></tr>`:''}
+    </tbody>
+  </table></div>`;
+}
+
+function vBankImport(){
+  const canWrite=hasPerm('perm_banque','write');
+  return`<div style="margin-bottom:12px"><label>Compte cible</label>
+    <select id="cible-cpt" style="max-width:280px">${D.comptes.map(c=>`<option value="${c.id}">${c.nom}</option>`).join('')}</select>
+  </div>
+  <div class="card" style="margin-bottom:12px">
+    <p style="font-weight:600;margin-bottom:6px">PDF CrÃ©dit Mutuel</p>
+    <p style="font-size:12px;color:var(--txt2);margin-bottom:10px">Importe les lignes d'un extrait de compte PDF texte. Si le PDF est scannÃ© comme image, l'import ne pourra pas lire les opÃ©rations.</p>
+    ${canWrite?`<button class="btn primary" onclick="document.getElementById('bank-pdf-input').click()">ðŸ“„ Importer un PDF</button>`:''}
+  </div>
+  <div class="dz" onclick="document.getElementById('csv-bank').click()" style="margin-bottom:10px">
+    <div style="font-size:32px;margin-bottom:8px">ðŸ“„</div>
+    <p style="font-size:13px;font-weight:500">Importer un CSV CrÃ©dit Mutuel</p>
+    <p style="font-size:11px;color:var(--txt2);margin-top:4px">Format : Date;LibellÃ©;DÃ©bit;CrÃ©dit;Solde</p>
+  </div>`;
+}
+
+function vRappr(){
+  const all=D.comptes.flatMap(c=>(c.transactions||[]).map(t=>({...t,cname:c.nom})));
+  const nonR=all.filter(t=>!t.rapproche);
+  return`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <strong>${nonR.length} transaction(s) en attente</strong>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn sm" onclick="preselectRapprochements()">PrÃ©-sÃ©lection auto</button>
+      <button class="btn sm primary" onclick="toutRappr()">Tout rapprocher</button>
+    </div>
+  </div>
+  ${all.length===0?`<div class="empty">Importez d'abord un relevÃ© bancaire</div>`:`
+  <div class="wrap"><table>
+    <thead><tr><th>Date</th><th>LibellÃ©</th><th>Compte</th><th>DÃ©bit</th><th>CrÃ©dit</th><th>Ã‰criture</th><th>Statut</th><th></th></tr></thead>
+    <tbody>${all.map((t,i)=>`<tr>
+      <td>${fd(frDateToISO(t.date_op)||t.date_op)||''}</td><td>${t.libelle}</td><td style="font-size:11px">${t.cname}</td>
+      <td style="color:var(--red);text-align:right">${+t.debit>0?(+t.debit).toFixed(2)+' â‚¬':'-'}</td>
+      <td style="color:#1e7e34;text-align:right">${+t.credit>0?(+t.credit).toFixed(2)+' â‚¬':'-'}</td>
+      <td>${t.rapproche?`<span class="badge bok">${t.ecriture_piece||'âœ“'}</span>`:`<select style="font-size:11px;padding:3px 6px;width:auto" id="ecr-${i}"><option value="">--</option>${D.journal.map(j=>`<option value="${j.piece||j.id.slice(0,8)}" ${suggestRapprochementPiece(t)===(j.piece||j.id.slice(0,8))?'selected':''}>${j.piece||''} ${(j.libelle||'').slice(0,20)}</option>`).join('')}</select>`}</td>
+      <td>${t.rapproche?`<span class="badge bok">âœ“</span>`:`<span class="badge bwarn">En attente</span>`}</td>
+      <td>${!t.rapproche?`<button class="btn sm" onclick="rapprocher('${t.id}',${i})">âœ“</button>`:''}</td>
+    </tr>`).join('')}
+    </tbody>
+  </table></div>`}`;
+}
+
+function vEcr512(){
+  const e=D.journal.filter(j=>j.compte&&j.compte.startsWith('512'));
+  const sol=e.reduce((s,j)=>s+(+j.credit)-(+j.debit),0);
+  return`<div style="margin-bottom:12px"><div class="sc" style="display:inline-block;min-width:200px">
+    <div class="v ${sol>=0?'vg':'vr'}">${sol.toFixed(2)} â‚¬</div><div class="l">Solde 512 â€” Banque</div>
+  </div></div>
+  <div class="gl-acc">
+    <div class="gl-hdr"><strong>512 â€” Banque</strong><span style="font-size:12px;color:var(--txt2)">${e.length} Ã©criture(s)</span></div>
+    <div class="gl-row gl-head"><span>Date</span><span>LibellÃ©</span><span style="text-align:right">DÃ©bit</span><span style="text-align:right">CrÃ©dit</span><span style="text-align:right">Solde</span></div>
+    ${(()=>{let s=0;return e.map(j=>{s+=(+j.credit)-(+j.debit);return`<div class="gl-row">
+      <span>${fd(j.date_op)}</span><span>${j.libelle}<br><span style="font-size:10px;color:var(--txt2)">${j.piece||''}</span></span>
+      <span style="color:var(--red);text-align:right">${+j.debit>0?(+j.debit).toFixed(2)+' â‚¬':''}</span>
+      <span style="color:#1e7e34;text-align:right">${+j.credit>0?(+j.credit).toFixed(2)+' â‚¬':''}</span>
+      <span style="text-align:right;font-weight:500;color:${s>=0?'#1e7e34':'var(--red)'}">${s.toFixed(2)} â‚¬</span>
+    </div>`;}).join('');})()}
+    ${e.length===0?`<div class="empty">Aucune Ã©criture 512</div>`:''}
+  </div>`;
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// COMPTABILITÃ‰
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+function vCompta(){
+  const sub=UI.subTab.compta;
+  return`<div class="stabs">
+    <button class="stab ${sub==='journal'?'active':''}" onclick="showST('compta','journal')">Journal</button>
+    <button class="stab ${sub==='gl'?'active':''}" onclick="showST('compta','gl')">Grand livre</button>
+    <button class="stab ${sub==='bilan'?'active':''}" onclick="showST('compta','bilan')">Bilan</button>
+    <button class="stab ${sub==='res'?'active':''}" onclick="showST('compta','res')">RÃ©sultat</button>
+    <button class="stab ${sub==='exo'?'active':''}" onclick="showST('compta','exo')">Exercices</button>
+  </div>
+  ${sub==='journal'?vJournal():sub==='gl'?vGL():sub==='bilan'?vBilan():sub==='res'?vResultat():vExercices()}`;
+}
+
+function jnlForExo(exoId){return exoId?D.journal.filter(j=>j.exercice_id===exoId):D.journal}
+function jnlExo(){return D.currentExo?jnlForExo(D.currentExo.id):D.journal}
+
+function rowFallsWithinExercice(row, exo){
+  const date=row?.date_op||'';
+  if(!date||!exo) return false;
+  if(exo.date_debut&&date<exo.date_debut) return false;
+  if(exo.date_fin&&date>exo.date_fin) return false;
+  return true;
+}
+
+function normalizePieceGroupKey(piece){
+  const p=(piece||'').trim();
+  if(!p) return '__SANS_PIECE__';
+  if(/^ADH-[^-]+-(ENC|COT|PAS)$/.test(p)) return p.replace(/-(ENC|COT|PAS)$/,'');
+  if(/^(ACH|VTE)-[^-]+-(CHG|CTR|CLI|PRO)$/.test(p)) return p.replace(/-(CHG|CTR|CLI|PRO)$/,'');
+  if(/-L[12]$/.test(p)) return p.replace(/-L[12]$/,'');
+  return p;
+}
+
+function orphanJournalDiagnostics(){
+  const rows=D.journal.filter(j=>!j.exercice_id);
+  const totalDebit=rows.reduce((s,j)=>s+(+j.debit||0),0);
+  const totalCredit=rows.reduce((s,j)=>s+(+j.credit||0),0);
+  const withinCurrent=rows.filter(j=>rowFallsWithinExercice(j,D.currentExo));
+  const beforeCurrent=rows.filter(j=>D.currentExo?.date_debut && (j.date_op||'')<D.currentExo.date_debut);
+  const afterCurrent=rows.filter(j=>D.currentExo?.date_fin && (j.date_op||'')>D.currentExo.date_fin);
+  return {
+    rows,totalDebit,totalCredit,ecart:+(totalDebit-totalCredit).toFixed(2),
+    withinCurrent,beforeCurrent,afterCurrent
+  };
+}
+
+function pieceBalanceDiagnostics(rows){
+  const groups={};
+  (rows||[]).forEach((row,idx)=>{
+    const key=normalizePieceGroupKey(row.piece);
+    if(!groups[key]) groups[key]={key,piece:key==='__SANS_PIECE__'?'Sans piÃ¨ce':key,rows:[],debit:0,credit:0,firstDate:row.date_op||td(),index:idx};
+    groups[key].rows.push(row);
+    groups[key].debit+=+row.debit||0;
+    groups[key].credit+=+row.credit||0;
+  });
+  return Object.values(groups)
+    .map(g=>({...g,ecart:+(g.debit-g.credit).toFixed(2)}))
+    .filter(g=>Math.abs(g.ecart)>=0.01)
+    .sort((a,b)=>Math.abs(b.ecart)-Math.abs(a.ecart));
+}
+
+function compteCode(compte){
+  const m=(compte||'').match(/^(\d+)/);
+  return m?m[1]:'';
+}
+
+function findPlanCompte(codePrefix,fallback='471 - Comptes d attente'){
+  return PLAN.find(p=>p.startsWith(codePrefix))||fallback;
+}
+
+function issueKeywords(issue){
+  const text=[issue.piece,...issue.rows.map(r=>r.libelle||''),...issue.rows.map(r=>r.compte||'')].join(' ').toLowerCase();
+  return{
+    adh:/adh|cotis|licenc|inscription|pass rÃ©gion|pass region/.test(text),
+    don:/don|mÃ©cÃ©nat|mecenat/.test(text),
+    vente:/vente|client|facture|prest|stage|cours/.test(text),
+    achat:/achat|fourn|facture achat|note de frais|matÃ©riel|materiel/.test(text),
+    banque:/virement|cb|carte|banque|vir\b|helloasso|prÃ©lÃ¨vement|prelevement/.test(text),
+    caisse:/esp[eÃ¨]ces|caisse/.test(text),
+    subvention:/subvention|aide|pass rÃ©gion|pass region/.test(text),
+    textile:/textile|tenue|t[- ]?shirt|sweat/.test(text),
+    equipement:/matÃ©riel|materiel|Ã©quipement|equipement/.test(text),
+  };
+}
+
+function buildEquilibreSuggestions(issue){
+  const keywords=issueKeywords(issue);
+  const rows=issue.rows||[];
+  const needSide=issue.ecart>0?'credit':'debit';
+  const amount=Math.abs(issue.ecart);
+  const exactAccounts=[...new Set(rows.map(r=>r.compte).filter(Boolean))];
+  const codes=exactAccounts.map(compteCode).filter(Boolean);
+  const codeSet=new Set(codes);
+  const byPrefix=(prefix)=>codes.some(code=>code.startsWith(prefix));
+  const sideText=needSide==='credit'?'un crÃ©dit':'un dÃ©bit';
+  const pieceType=(issue.piece||'').startsWith('ACH-')||keywords.achat?'achat'
+    :(issue.piece||'').startsWith('VTE-')||keywords.vente?'vente'
+    :(issue.piece||'').startsWith('ADH-')||keywords.adh?'adhesion'
+    :'general';
+  const suggestions=[];
+  const seen=new Set();
+  const addSuggestion=(compte,reason,score)=>{
+    if(!compte || seen.has(compte)) return;
+    seen.add(compte);
+    suggestions.push({compte,reason,score});
+  };
+
+  if(pieceType==='achat'){
+    if(needSide==='credit'){
+      addSuggestion(findPlanCompte('401'),'Piece de type achat avec excedent de debit : un credit fournisseur est souvent la contrepartie attendue.',96);
+      addSuggestion(keywords.caisse?findPlanCompte('5300'):findPlanCompte('512'),'Si la depense a ete reglee immediatement, la contrepartie peut etre la banque ou la caisse.',88);
+    }else{
+      const chargeExistante=exactAccounts.find(c=>/^6/.test(compteCode(c)));
+      addSuggestion(chargeExistante||findPlanCompte(keywords.textile?'6052':keywords.equipement?'6051':'606'),'Le credit depasse le debit : il manque souvent la charge achetee en face du reglement ou de la dette.',94);
+      addSuggestion(findPlanCompte('401'),'Si la facture fournisseur a ete saisie seule, un debit fournisseur peut aussi etre attendu.',72);
+    }
+  }else if(pieceType==='vente'){
+    if(needSide==='debit'){
+      addSuggestion(findPlanCompte('411'),'Piece de vente avec excedent de credit : il manque souvent la creance client.',96);
+      addSuggestion(keywords.caisse?findPlanCompte('5300'):findPlanCompte('512'),'Si la vente a ete reglee tout de suite, le debit peut concerner la banque ou la caisse.',90);
+    }else{
+      const produitExistant=exactAccounts.find(c=>/^7/.test(compteCode(c)));
+      addSuggestion(produitExistant||findPlanCompte('706'),'Le debit depasse le credit : il manque probablement le produit de la vente.',92);
+      addSuggestion(findPlanCompte('7080'),'Alternative utile si la piece concerne un produit annexe ou accessoire.',70);
+    }
+  }else if(pieceType==='adhesion'){
+    if(needSide==='debit'){
+      addSuggestion(keywords.caisse?findPlanCompte('5300'):findPlanCompte('512'),'Pour une adhesion ou licence, le debit manquant correspond souvent au reglement encaisse.',95);
+      addSuggestion(findPlanCompte('411'),'Si le membre n a pas encore regle, la contrepartie peut etre un compte adherent/client.',84);
+    }else{
+      if(keywords.subvention){
+        addSuggestion(findPlanCompte('7410'),'Le libelle evoque une aide ou un Pass Region : un produit de subvention est plausible.',95);
+      }
+      if(keywords.don){
+        addSuggestion(findPlanCompte('754'),'Le libelle evoque un don : un credit en dons manuels est plausible.',94);
+      }
+      addSuggestion(findPlanCompte('7561'),'Pour une adhesion, le credit manquant correspond souvent a la cotisation.',92);
+      addSuggestion(findPlanCompte('7562'),'A utiliser si la piece concerne plutot licence ou adhesion annexe.',82);
+    }
+  }else{
+    if(needSide==='credit'){
+      if(byPrefix('6')) addSuggestion(findPlanCompte('401'),'Des comptes de charges sont presents et le debit depasse le credit : une dette fournisseur est probable.',90);
+      if(byPrefix('2')) addSuggestion(findPlanCompte('401'),'Une immobilisation semble presente : la contrepartie peut etre un fournisseur ou une dette liee a l acquisition.',72);
+      addSuggestion(keywords.caisse?findPlanCompte('5300'):findPlanCompte('512'),'Si l operation est payee comptant, la contrepartie peut etre financiere.',68);
+    }else{
+      if(byPrefix('7')) addSuggestion(findPlanCompte('411'),'Des produits sont presents et le credit depasse le debit : une creance client ou adherent est probable.',90);
+      if(byPrefix('40')) addSuggestion(exactAccounts.find(c=>/^6/.test(compteCode(c)))||findPlanCompte('606'),'Une dette fournisseur est presente : il manque peut etre la charge correspondante.',80);
+      addSuggestion(keywords.caisse?findPlanCompte('5300'):findPlanCompte('512'),'Si l operation est deja reglee, un debit banque ou caisse peut etre la bonne contrepartie.',66);
+    }
+  }
+
+  if(needSide==='debit' && !codeSet.has('512') && !codeSet.has('5300')){
+    addSuggestion(keywords.caisse?findPlanCompte('5300'):findPlanCompte('512'),`Suggestion financiere de repli : la piece semble demander ${sideText} de ${amount.toFixed(2)} â‚¬.`,40);
+  }
+  if(needSide==='credit' && !codeSet.has('401') && byPrefix('6')){
+    addSuggestion(findPlanCompte('401'),`Suggestion de repli : une charge apparait sans contrepartie complete, il manque peut etre ${sideText}.`,38);
+  }
+  if(needSide==='debit' && !codeSet.has('411') && byPrefix('7')){
+    addSuggestion(findPlanCompte('411'),`Suggestion de repli : un produit apparait sans contrepartie complete, il manque peut etre ${sideText}.`,38);
+  }
+  addSuggestion(findPlanCompte('471'),'Compte d attente de securite si la bonne imputation n est pas encore connue.',10);
+
+  return{
+    needSide,
+    amount,
+    pieceType,
+    exactAccounts,
+    suggestions:suggestions.sort((a,b)=>b.score-a.score).slice(0,4)
+  };
+}
+
+function exerciceDiagnostics(exoId){
+  const rows=jnlForExo(exoId);
+  const totalDebit=rows.reduce((s,j)=>s+(+j.debit||0),0);
+  const totalCredit=rows.reduce((s,j)=>s+(+j.credit||0),0);
+  const produits=rows.filter(j=>j.compte&&/^7/.test(j.compte)).reduce((s,j)=>s+(+j.credit||0),0);
+  const charges=rows.filter(j=>j.compte&&/^6/.test(j.compte)).reduce((s,j)=>s+(+j.debit||0),0);
+  const resultat=+(produits-charges).toFixed(2);
+  const ecartJournal=+(totalDebit-totalCredit).toFixed(2);
+  const issues=pieceBalanceDiagnostics(rows);
+  return{rows,totalDebit,totalCredit,produits,charges,resultat,ecartJournal,issues};
+}
+
+function nextExerciceDefaults(exo){
+  const startBase=exo?.date_fin?new Date(exo.date_fin):new Date();
+  const start=new Date(startBase);
+  start.setDate(start.getDate()+1);
+  const end=new Date(start);
+  end.setFullYear(end.getFullYear()+1);
+  end.setDate(end.getDate()-1);
+  const startIso=start.toISOString().split('T')[0];
+  const endIso=end.toISOString().split('T')[0];
+  const startYear=start.getFullYear();
+  const endYear=end.getFullYear();
+  return{
+    libelle:`Exercice ${startYear}-${endYear}`,
+    date_debut:startIso,
+    date_fin:endIso
+  };
+}
+
+async function deleteJournalPiecePrefix(prefix){
+  const rows=D.journal.filter(j=>(j.piece||'').startsWith(prefix));
+  if(!rows.length) return;
+  const ids=rows.map(r=>r.id);
+  const {error}=await SB.from('journal_comptable').delete().in('id',ids);
+  if(error) throw error;
+  D.journal=D.journal.filter(j=>!ids.includes(j.id));
+}
+
+async function regulariserEquilibreExo(){
+  if(!requireWritePerm('perm_comptabilite')) return;
+  if(!D.currentExo) return alert('Aucun exercice sÃ©lectionnÃ©.');
+  const issues=pieceBalanceDiagnostics(jnlExo());
+  if(!issues.length) return alert('Le journal de cet exercice est dÃ©jÃ  Ã©quilibrÃ©.');
+  if(!confirm(`CrÃ©er des Ã©critures de rÃ©gularisation sur le compte 471 pour ${issues.length} piÃ¨ce(s) dÃ©sÃ©quilibrÃ©e(s) ?`)) return;
+  const rows=issues.map((issue,idx)=>({
+    date_op:issue.firstDate||td(),
+    piece:issue.key==='__SANS_PIECE__'?`REGUL-SANSPIECE-${idx+1}`:issue.key,
+    compte:'471 - Comptes d attente',
+    libelle:`RÃ©gularisation Ã©quilibre - ${issue.piece}`,
+    debit:issue.ecart<0?Math.abs(issue.ecart):0,
+    credit:issue.ecart>0?issue.ecart:0,
+    exercice_id:D.currentExo?.id||null
+  }));
+  try{
+    await insertJournalRows(rows);
+  }catch(error){
+    return alert('Erreur : '+error.message);
+  }
+  render();
+  alert(`RÃ©gularisation terminÃ©e : ${rows.length} Ã©criture(s) ajoutÃ©e(s) au compte 471.`);
+}
+
+function openEquilibreAssistant(){
+  UI.modal='equilibre_help';
+  UI.editObj=null;
+  renderModal();
+}
+
+function getEquilibreIssue(issueKey){
+  return pieceBalanceDiagnostics(jnlExo()).find(issue=>issue.key===issueKey)||null;
+}
+
+async function regulariserPieceEquilibre(issueKey){
+  return regulariserPieceEquilibreAvecCompte(issueKey,'471 - Comptes d attente','RÃ©gularisation Ã©quilibre');
+}
+
+async function regulariserPieceEquilibreAvecCompte(issueKey,compte,reason='RÃ©gularisation Ã©quilibre'){
+  if(!requireWritePerm('perm_comptabilite')) return;
+  if(!D.currentExo) return alert('Aucun exercice sÃ©lectionnÃ©.');
+  const issue=getEquilibreIssue(issueKey);
+  if(!issue) return alert('Cette piÃ¨ce semble dÃ©jÃ  Ã©quilibrÃ©e.');
+  if(!confirm(`CrÃ©er ${issue.ecart>0?'un crÃ©dit':'un dÃ©bit'} de ${Math.abs(issue.ecart).toFixed(2)} â‚¬ sur ${compte} pour la piÃ¨ce ${issue.piece} ?`)) return;
+  const row={
+    date_op:issue.firstDate||td(),
+    piece:issue.key==='__SANS_PIECE__'?`REGUL-SANSPIECE-${Date.now()}`:issue.key,
+    compte,
+    libelle:`${reason} - ${issue.piece}`,
+    debit:issue.ecart<0?Math.abs(issue.ecart):0,
+    credit:issue.ecart>0?issue.ecart:0,
+    exercice_id:D.currentExo?.id||null
+  };
+  try{
+    await insertJournalRows([row]);
+  }catch(error){
+    return alert('Erreur : '+error.message);
+  }
+  render();
+}
+
+function vJournal(){
+  const canWrite=hasPerm('perm_comptabilite','write');
+  const jnl=jnlExo();
+  const tD=jnl.reduce((s,j)=>s+(+j.debit),0),tC=jnl.reduce((s,j)=>s+(+j.credit),0);
+  const ecart=+(tD-tC).toFixed(2);
+  const issues=pieceBalanceDiagnostics(jnl);
+  const orphanDiag=orphanJournalDiagnostics();
+  return`<div class="view-head">
+    <div>
+      <div class="eyebrow">Pilotage financier</div>
+      <h2>Journal comptable</h2>
+      <p>Consultez les Ã©critures de l'exercice actif, surveillez l'Ã©quilibre dÃ©bit/crÃ©dit et enregistrez rapidement de nouvelles opÃ©rations.</p>
+    </div>
+  </div>
+  <div class="g3" style="margin-bottom:14px">
+    <div class="sc"><div class="v vr">${tD.toFixed(2)} â‚¬</div><div class="l">Total dÃ©bits</div></div>
+    <div class="sc"><div class="v vg">${tC.toFixed(2)} â‚¬</div><div class="l">Total crÃ©dits</div></div>
+    <div class="sc"><div class="v ${ecart===0?'vg':'vr'}">${ecart.toFixed(2)} â‚¬</div><div class="l">Ã‰cart dÃ©bit/crÃ©dit</div></div>
+  </div>
+  ${orphanDiag.rows.length?`<div class="card" style="margin-bottom:12px;padding:12px 16px;font-size:12px;color:${orphanDiag.withinCurrent.length?'var(--red)':'var(--gold-d)'}">${orphanDiag.withinCurrent.length?`Ã‰critures sans exercice dÃ©tectÃ©es dans lâ€™exercice actif : <strong>${orphanDiag.withinCurrent.length}</strong>.`:`Ã‰critures non rattachÃ©es dÃ©tectÃ©es hors de la pÃ©riode de lâ€™exercice actif : <strong>${orphanDiag.rows.length}</strong>.`}<div style="margin-top:6px;color:var(--txt2)">DÃ©bit : ${orphanDiag.totalDebit.toFixed(2)} â‚¬ Â· CrÃ©dit : ${orphanDiag.totalCredit.toFixed(2)} â‚¬ Â· Ã‰cart : ${orphanDiag.ecart.toFixed(2)} â‚¬</div><div style="margin-top:6px;color:var(--txt2)">${D.currentExo?.date_debut&&D.currentExo?.date_fin?`Exercice actif : ${fd(D.currentExo.date_debut)} â†’ ${fd(D.currentExo.date_fin)}.`:''}${orphanDiag.beforeCurrent.length?` Avant pÃ©riode : ${orphanDiag.beforeCurrent.length}.`:''}${orphanDiag.afterCurrent.length?` AprÃ¨s pÃ©riode : ${orphanDiag.afterCurrent.length}.`:''}${orphanDiag.withinCurrent.length?` Ã€ corriger dans la pÃ©riode active : ${orphanDiag.withinCurrent.length}.`:' Aucune Ã©criture sans exercice dans la pÃ©riode active.'}</div></div>`:''}
+  <div class="card" style="margin-bottom:12px;padding:12px 16px;font-size:12px;color:${ecart===0?'#1e7e34':'var(--red)'}">${ecart===0?'Journal Ã©quilibrÃ© sur lâ€™exercice sÃ©lectionnÃ©.':'Le journal nâ€™est pas Ã©quilibrÃ©. VÃ©rifiez les anciennes Ã©critures manuelles ou importÃ©es.'}${issues.length?`<div style="margin-top:8px;color:var(--txt)">PiÃ¨ces dÃ©sÃ©quilibrÃ©es dÃ©tectÃ©es : <strong>${issues.length}</strong>${issues.slice(0,3).map(i=>`<div style="margin-top:4px;font-size:11px;color:var(--txt2)">${i.piece} : ${i.ecart.toFixed(2)} â‚¬</div>`).join('')}</div>`:''}</div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+    ${canWrite?`<button class="btn primary" onclick="openModal('ecr')">+ Nouvelle Ã©criture</button>`:''}
+    <button class="btn" onclick="openEquilibreAssistant()">Assistant dÃ©sÃ©quilibres${issues.length?` (${issues.length})`:''}</button>
+    ${canWrite&&issues.length?`<button class="btn gold" onclick="regulariserEquilibreExo()">Ã‰quilibrer l'exercice</button>`:''}
+  </div>
+  <div class="wrap">
+    <div style="display:grid;grid-template-columns:90px 70px 1fr 90px 90px;gap:8px;padding:6px 0;font-size:11px;color:var(--txt2);font-weight:500;border-bottom:.5px solid var(--brd2)">
+      <span>Date</span><span>PiÃ¨ce</span><span>Compte / LibellÃ©</span><span style="text-align:right">DÃ©bit</span><span style="text-align:right">CrÃ©dit</span>
+    </div>
+    ${jnl.map(j=>`<div style="display:grid;grid-template-columns:90px 70px 1fr 90px 90px;gap:8px;padding:7px 0;border-bottom:.5px solid var(--brd);font-size:12px;align-items:center">
+      <span>${fd(j.date_op)}</span>
+      <span style="font-size:11px;color:var(--txt2)">${j.piece||''}</span>
+      <span><strong style="font-weight:500">${j.compte}</strong><br><span style="font-size:11px;color:var(--txt2)">${j.libelle}</span></span>
+      <span style="color:var(--red);text-align:right;font-weight:500">${+j.debit>0?(+j.debit).toFixed(2)+' â‚¬':''}</span>
+      <span style="color:#1e7e34;text-align:right;font-weight:500">${+j.credit>0?(+j.credit).toFixed(2)+' â‚¬':''}</span>
+    </div>`).join('')}
+    ${jnl.length===0?`<div class="empty">Aucune Ã©criture</div>`:''}
+  </div>`;
+}
+
+function vGL(){
+  const jnl=jnlExo();
+  const by={};
+  jnl.forEach(j=>{if(!by[j.compte])by[j.compte]=[];by[j.compte].push(j)});
+  return`${Object.keys(by).sort().map(acc=>{
+    const en=by[acc];
+    const tD=en.reduce((s,j)=>s+(+j.debit),0),tC=en.reduce((s,j)=>s+(+j.credit),0),sol=tC-tD;
+    return`<div class="gl-acc">
+      <div class="gl-hdr"><strong>${acc}</strong><span style="font-size:12px;color:${sol>=0?'#1e7e34':'var(--red)'}">Solde : ${sol>=0?'+':''}${sol.toFixed(2)} â‚¬</span></div>
+      <div class="gl-row gl-head"><span>Date</span><span>LibellÃ©</span><span style="text-align:right">DÃ©bit</span><span style="text-align:right">CrÃ©dit</span><span style="text-align:right">CumulÃ©</span></div>
+      ${(()=>{let s=0;return en.map(j=>{s+=(+j.credit)-(+j.debit);return`<div class="gl-row">
+        <span>${fd(j.date_op)}</span><span>${j.libelle}<br><span style="font-size:10px;color:var(--txt2)">${j.piece||''}</span></span>
+        <span style="color:var(--red);text-align:right">${+j.debit>0?(+j.debit).toFixed(2)+' â‚¬':''}</span>
+        <span style="color:#1e7e34;text-align:right">${+j.credit>0?(+j.credit).toFixed(2)+' â‚¬':''}</span>
+        <span style="text-align:right;font-weight:500;color:${s>=0?'#1e7e34':'var(--red)'}">${s.toFixed(2)} â‚¬</span>
+      </div>`;}).join('');})()}
+      <div class="gl-row" style="background:var(--bg2);font-weight:500">
+        <span></span><span>Totaux</span>
+        <span style="color:var(--red);text-align:right">${tD.toFixed(2)} â‚¬</span>
+        <span style="color:#1e7e34;text-align:right">${tC.toFixed(2)} â‚¬</span>
+        <span style="text-align:right;color:${sol>=0?'#1e7e34':'var(--red)'}">${sol.toFixed(2)} â‚¬</span>
+      </div>
+    </div>`;
+  }).join('')}
+  ${Object.keys(by).length===0?`<div class="empty">Aucune Ã©criture</div>`:''}`;
+}
+
+function sumJournal(regex,side){
+  return jnlExo()
+    .filter(j=>j.compte&&regex.test(j.compte))
+    .reduce((s,j)=>s+(+(side==='credit'?j.credit:j.debit)||0),0);
+}
+
+function compteSolde(regex){
+  return jnlExo()
+    .filter(j=>j.compte&&regex.test(j.compte))
+    .reduce((s,j)=>s+(+j.debit||0)-(+j.credit||0),0);
+}
+
+function totalClasse(prefixes,side){
+  return jnlExo()
+    .filter(j=>j.compte&&prefixes.some(prefix=>j.compte.startsWith(prefix)))
+    .reduce((s,j)=>s+(+(side==='credit'?j.credit:j.debit)||0),0);
+}
+
+function journalDiagnostics(){
+  const jnl=jnlExo();
+  const totalDebit=jnl.reduce((s,j)=>s+(+j.debit||0),0);
+  const totalCredit=jnl.reduce((s,j)=>s+(+j.credit||0),0);
+  const ecartJournal=+(totalDebit-totalCredit).toFixed(2);
+  const produits=totalClasse(['7'],'credit');
+  const charges=totalClasse(['6'],'debit');
+  const resultat=+(produits-charges).toFixed(2);
+  const capitauxPropres=totalClasse(['10','12'],'credit')-totalClasse(['10','12'],'debit');
+  const dettes=totalClasse(['16','40','42','43','44','45','46','47','48'],'credit')-totalClasse(['16','40','42','43','44','45','46','47','48'],'debit');
+  const actifs=totalClasse(['20','21','23','26','27','28','29','37','38','39','41','46','47','48','50','51','52','53','54','55','58'],'debit')-totalClasse(['20','21','23','26','27','28','29','37','38','39','41','46','47','48','50','51','52','53','54','55','58'],'credit');
+  const ecartBilan=+(actifs-(Math.max(0,capitauxPropres)+Math.max(0,dettes)+Math.abs(resultat))).toFixed(2);
+  return{totalDebit,totalCredit,ecartJournal,produits,charges,resultat,actifs,capitauxPropres,dettes,ecartBilan};
+}
+
+function calcBilan(){
+  const diag=journalDiagnostics();
+  const banques=Math.max(0,compteSolde(/^512/));
+  const caisse=Math.max(0,compteSolde(/^530/));
+  const creancesAdherents=Math.max(0,compteSolde(/^411/));
+  const immobilisations=Math.max(0,compteSolde(/^2/));
+  const chargesAvance=Math.max(0,compteSolde(/^481/));
+  const autresActifs=Math.max(0,compteSolde(/^47/));
+
+  const fournisseurs=Math.max(0,-compteSolde(/^401/));
+  const dettesSociales=Math.max(0,-compteSolde(/^43/));
+  const comptesAttentePassif=Math.max(0,-compteSolde(/^47/));
+  const produitsConstates=Math.max(0,-compteSolde(/^487/));
+  const emprunts=Math.max(0,-compteSolde(/^164/));
+  const fondsAssociatifs=Math.max(0,sumJournal(/^(10|12)/, 'credit')-sumJournal(/^(10|12)/, 'debit'));
+
+  const cotisations=sumJournal(/^756/, 'credit');
+  const subventions=sumJournal(/^74/, 'credit')+sumJournal(/^751/, 'credit');
+  const autresProduits=sumJournal(/^70/, 'credit')+sumJournal(/^708/, 'credit')+sumJournal(/^75(?!6|1)/, 'credit')+sumJournal(/^758/, 'credit');
+  const produits=diag.produits;
+  const charges=diag.charges;
+  const resultat=diag.resultat;
+
+  const actifRows=[
+    {label:'2150/2180 - Immobilisations',value:immobilisations},
+    {label:'4110 - CrÃ©ances adhÃ©rents et clients',value:creancesAdherents},
+    {label:'4710 - Comptes d attente dÃ©biteurs',value:Math.max(0,autresActifs)},
+    {label:'4810 - Charges constatÃ©es d avance',value:chargesAvance},
+    {label:'5120 - Banque',value:banques},
+    {label:'5300 - Caisse',value:caisse},
+  ];
+  const passifRows=[
+    {label:'1010/1020/1060 - Fonds associatifs et rÃ©serves',value:fondsAssociatifs},
+    {label:'1640 - Emprunts',value:emprunts},
+    {label:'4010 - Fournisseurs',value:fournisseurs},
+    {label:'4310 - Dettes sociales',value:dettesSociales},
+    {label:'4710 - Comptes d attente crÃ©diteurs',value:comptesAttentePassif},
+    {label:'4870 - Produits constatÃ©s d avance',value:produitsConstates},
+    {label:`${resultat>=0?'1200':'1290'} - RÃ©sultat de l exercice`,value:Math.abs(resultat),signed:resultat},
+  ];
+  const totalActif=actifRows.reduce((s,r)=>s+Math.max(0,r.value),0);
+  const totalPassif=passifRows.reduce((s,r)=>s+Math.max(0,r.value),0);
+  return{actifRows,passifRows,totalActif,totalPassif,banques,caisse,creancesAdherents,immobilisations,cotisations,subventions,autresProduits,charges,produits,resultat,ecartJournal:diag.ecartJournal,ecartBilan:diag.ecartBilan};
+}
+
+function vBilan(){
+  const {actifRows,passifRows,totalActif,totalPassif,cotisations,subventions,autresProduits,charges,produits,resultat,ecartJournal,ecartBilan}=calcBilan();
+  const exL=D.currentExo?.libelle||'Exercice actif';
+  const dateEdition=new Date().toLocaleDateString('fr-FR');
+  return`<div class="bilan-shell">
+    <div class="view-head">
+      <div>
+        <div class="eyebrow">Publication comptable</div>
+        <h2>Bilan final</h2>
+        <p>PrÃ©sentation revue pour une lecture officielle, avec hiÃ©rarchie visuelle plus nette, colonnes Ã©quilibrÃ©es et contrÃ´les de cohÃ©rence clairement identifiÃ©s.</p>
+      </div>
+    </div>
+    <div class="bilan-toolbar">
+      <div class="bilan-meta">
+        ${D.currentExo?`<span class="badge bblue">${exL}</span>`:''}
+        <span class="badge bgray">Ã‰ditÃ© le ${dateEdition}</span>
+      </div>
+      <button class="btn green" onclick="printBilan()">ðŸ–¨ Imprimer le bilan</button>
+    </div>
+    <section class="bilan-board">
+      <div class="bilan-board-head">
+        <div>
+          <div class="bilan-board-title">Bilan comptable de clÃ´ture</div>
+          <div class="bilan-board-sub">Document de synthÃ¨se de l'actif et du passif Ã©tabli Ã  partir des Ã©critures de l'exercice sÃ©lectionnÃ©. Les totaux ci-dessous peuvent Ãªtre repris dans une communication institutionnelle ou une annexe diffusÃ©e au bureau et aux adhÃ©rents.</div>
+        </div>
+        <div class="bilan-stamp">
+          <div class="bilan-stamp-label">Exercice concernÃ©</div>
+          <div class="bilan-stamp-value">${exL}</div>
+        </div>
+      </div>
+      <div class="bilan-summary">
+        <div class="bilan-stat"><div class="bilan-stat-label">Produits</div><div class="bilan-stat-value" style="color:#1e7e34">${produits.toFixed(2)} â‚¬</div></div>
+        <div class="bilan-stat"><div class="bilan-stat-label">Charges</div><div class="bilan-stat-value" style="color:var(--red)">${charges.toFixed(2)} â‚¬</div></div>
+        <div class="bilan-stat"><div class="bilan-stat-label">Cotisations</div><div class="bilan-stat-value">${cotisations.toFixed(2)} â‚¬</div></div>
+        <div class="bilan-stat"><div class="bilan-stat-label">Subventions</div><div class="bilan-stat-value">${subventions.toFixed(2)} â‚¬</div></div>
+      </div>
+      <div class="bilan-grid">
+        <section class="bilan-panel">
+          <div class="bilan-panel-head">
+            <div><h3>Actif</h3><p>Emplois durables, crÃ©ances et trÃ©sorerie disponible.</p></div>
+            <span class="badge bgray">Total ${totalActif.toFixed(2)} â‚¬</span>
+          </div>
+          <table class="bilan-table"><tbody>
+            ${actifRows.map(r=>`<tr><td class="label">${r.label}</td><td class="amount">${Math.max(0,r.value).toFixed(2)} â‚¬</td></tr>`).join('')}
+            <tr class="total"><td class="label">Total actif</td><td class="amount">${totalActif.toFixed(2)} â‚¬</td></tr>
+          </tbody></table>
+        </section>
+        <section class="bilan-panel">
+          <div class="bilan-panel-head">
+            <div><h3>Passif</h3><p>Fonds associatifs, dettes et rÃ©sultat de clÃ´ture.</p></div>
+            <span class="badge bgray">Total ${totalPassif.toFixed(2)} â‚¬</span>
+          </div>
+          <table class="bilan-table"><tbody>
+            ${passifRows.map(r=>`<tr class="${typeof r.signed==='number'?'is-result':''}"><td class="label" style="${typeof r.signed==='number'?`color:${r.signed>=0?'#1e7e34':'var(--red)'}`:''}">${r.label}</td><td class="amount" style="${typeof r.signed==='number'?`color:${r.signed>=0?'#1e7e34':'var(--red)'}`:''}">${(r.value||0).toFixed(2)} â‚¬</td></tr>`).join('')}
+            <tr class="total"><td class="label">Total passif</td><td class="amount">${totalPassif.toFixed(2)} â‚¬</td></tr>
+          </tbody></table>
+        </section>
+      </div>
+      <div class="bilan-notes">
+        <div class="bilan-note">
+          <h4>Composition des produits</h4>
+          <div class="bilan-kv"><span>Cotisations</span><strong>${cotisations.toFixed(2)} â‚¬</strong></div>
+          <div class="bilan-kv"><span>Subventions</span><strong>${subventions.toFixed(2)} â‚¬</strong></div>
+          <div class="bilan-kv"><span>Autres produits</span><strong>${autresProduits.toFixed(2)} â‚¬</strong></div>
+        </div>
+        <div class="bilan-note">
+          <h4>Lecture</h4>
+          <p style="font-size:12px;color:var(--txt2);line-height:1.7">Le rÃ©sultat de l'exercice est intÃ©grÃ© au passif. Les classes 2, 4 et 5 structurent principalement l'actif, tandis que les capitaux associatifs et dettes constituent le passif prÃ©sentÃ©.</p>
+        </div>
+        <div class="bilan-note">
+          <h4>ContrÃ´le</h4>
+          <div class="bilan-kv ${ecartJournal===0?'ok':'alert'}"><span>Journal dÃ©bit - crÃ©dit</span><strong>${ecartJournal.toFixed(2)} â‚¬</strong></div>
+          <div class="bilan-kv ${ecartBilan===0?'ok':'alert'}"><span>Actif - passif</span><strong>${ecartBilan.toFixed(2)} â‚¬</strong></div>
+        </div>
+      </div>
+      <div class="bilan-footer">
+        <div class="bilan-footer-text">Version de prÃ©sentation destinÃ©e Ã  une diffusion officielle. Les montants sont issus des Ã©critures de l'exercice actif et le cadrage ci-dessus permet une relecture rapide avant export papier ou PDF.</div>
+        <div class="bilan-result-chip">
+          <span>RÃ©sultat net</span>
+          <strong style="color:${resultat>=0?'#1e7e34':'var(--red)'}">${resultat>=0?'+':''}${resultat.toFixed(2)} â‚¬</strong>
+        </div>
+      </div>
+    </section>
+  </div>`;
+}
+
+function printBilan(){
+  const {actifRows,passifRows,totalActif,totalPassif,charges,produits,resultat,cotisations,subventions,autresProduits,ecartJournal,ecartBilan}=calcBilan();
+  const ci=D.clubInfo||{};
+  const exL=D.currentExo?.libelle||'';
+  const logo=D.logoUrl?`<img src="${D.logoUrl}" style="width:66px;height:66px;object-fit:contain;border-radius:50%;border:1px solid #cdbd9f;padding:6px;background:#fff">` :`<span style="font-size:40px">ðŸ¥Š</span>`;
+  const w=window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Bilan ${exL}</title>
+  <style>
+  body{font-family:"Georgia","Times New Roman",serif;margin:0;color:#1f1a17;font-size:12.5px;background:#fff}
+  .page{padding:18mm 16mm 16mm}
+  .hdr{display:flex;align-items:flex-start;gap:16px;padding-bottom:14px;border-bottom:1.5px solid #2b211b}
+  .club{display:flex;flex-direction:column;gap:3px}
+  .club h1{font-size:18px;font-weight:700;letter-spacing:.01em;margin:0}
+  .club p{margin:0;font-size:11px;color:#5f554d;line-height:1.55}
+  .doc{margin-left:auto;text-align:right}
+  .doc .k{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#7b7067}
+  .doc .v{font-size:20px;font-weight:700;margin-top:4px}
+  .doc .s{font-size:11px;color:#5f554d;margin-top:5px;line-height:1.5}
+  .intro{margin:14px 0 12px;font-size:11px;color:#5f554d;line-height:1.7}
+  .summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:0 0 14px}
+  .stat{border:1px solid #d8cec3;padding:9px 10px;border-radius:10px;background:#faf7f2}
+  .stat .l{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:#7b7067}
+  .stat .v{font-size:16px;font-weight:700;margin-top:4px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .panel{border:1px solid #d8cec3;border-radius:12px;overflow:hidden}
+  .panel-h{padding:10px 12px;border-bottom:1px solid #d8cec3;background:#f6f1ea}
+  .panel-h h2{font-size:12px;font-weight:700;margin:0;text-transform:uppercase;letter-spacing:.08em}
+  .panel-h p{margin:4px 0 0;font-size:10px;color:#6c6158}
+  table{width:100%;border-collapse:collapse}
+  td{padding:8px 12px;border-bottom:.7px solid #ece3d8;vertical-align:top}
+  td:last-child{text-align:right;font-weight:700;white-space:nowrap}
+  .tot td{font-weight:700;border-top:1.2px solid #2b211b;border-bottom:none;background:#faf7f2}
+  .notes{display:grid;grid-template-columns:1.15fr 1fr 1fr;gap:10px;margin-top:14px}
+  .note{border:1px solid #d8cec3;border-radius:12px;padding:10px 12px}
+  .note h3{margin:0 0 8px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#7b7067}
+  .kv{display:flex;justify-content:space-between;gap:10px;padding:4px 0;font-size:11px;border-bottom:.7px dashed #ddd1c6}
+  .kv:last-child{border-bottom:none}
+  .kv strong{font-weight:700}
+  .footer{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;margin-top:14px;padding-top:12px;border-top:1px solid #d8cec3}
+  .footer p{margin:0;max-width:66%;font-size:10px;color:#6c6158;line-height:1.7}
+  .result{border:1px solid #d8cec3;border-radius:10px;padding:10px 12px;min-width:220px;background:#faf7f2}
+  .result .l{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:#7b7067}
+  .result .v{font-size:20px;font-weight:700;margin-top:4px}
+  .sign{margin-top:18px;display:grid;grid-template-columns:1fr 1fr;gap:24px}
+  .sign-box{padding-top:24px;border-top:1px solid #cdbd9f;font-size:10px;color:#6c6158;text-transform:uppercase;letter-spacing:.08em}
+  @media print{@page{size:A4;margin:0}}
+  </style></head>
+  <body>
+  <div class="page">
+    <div class="hdr">
+      ${logo}
+      <div class="club">
+        <h1>${ci.nom||'AFFBC'}</h1>
+        <p>${ci.adresse||''}</p>
+      </div>
+      <div class="doc">
+        <div class="k">Document officiel</div>
+        <div class="v">Bilan comptable</div>
+        <div class="s">${exL}<br>Ã‰ditÃ© le ${new Date().toLocaleDateString('fr-FR')}</div>
+      </div>
+    </div>
+    <p class="intro">Ã‰tat de synthÃ¨se prÃ©sentant la situation patrimoniale de l'association Ã  la clÃ´ture de l'exercice. Les montants ci-dessous sont issus des Ã©critures comptables enregistrÃ©es dans le journal de l'exercice actif.</p>
+    <div class="summary">
+      <div class="stat"><div class="l">Produits</div><div class="v" style="color:#1e7e34">${produits.toFixed(2)} â‚¬</div></div>
+      <div class="stat"><div class="l">Charges</div><div class="v" style="color:#b33627">${charges.toFixed(2)} â‚¬</div></div>
+      <div class="stat"><div class="l">Cotisations</div><div class="v">${cotisations.toFixed(2)} â‚¬</div></div>
+      <div class="stat"><div class="l">Subventions</div><div class="v">${subventions.toFixed(2)} â‚¬</div></div>
+    </div>
+    <div class="grid">
+      <div class="panel"><div class="panel-h"><h2>Actif</h2><p>Immobilisations, crÃ©ances et disponibilitÃ©s.</p></div><table>
+        ${actifRows.map(r=>`<tr><td>${r.label}</td><td>${Math.max(0,r.value).toFixed(2)} â‚¬</td></tr>`).join('')}
+        <tr class="tot"><td>Total actif</td><td>${totalActif.toFixed(2)} â‚¬</td></tr>
+      </table></div>
+      <div class="panel"><div class="panel-h"><h2>Passif</h2><p>Fonds associatifs, dettes et rÃ©sultat.</p></div><table>
+        ${passifRows.map(r=>`<tr><td style="${typeof r.signed==='number'?`color:${r.signed>=0?'#1e7e34':'#b33627'}`:''}">${r.label}</td><td style="${typeof r.signed==='number'?`color:${r.signed>=0?'#1e7e34':'#b33627'}`:''}">${(r.value||0).toFixed(2)} â‚¬</td></tr>`).join('')}
+        <tr class="tot"><td>Total passif</td><td>${totalPassif.toFixed(2)} â‚¬</td></tr>
+      </table></div>
+    </div>
+    <div class="notes">
+      <div class="note">
+        <h3>Composition des produits</h3>
+        <div class="kv"><span>Cotisations</span><strong>${cotisations.toFixed(2)} â‚¬</strong></div>
+        <div class="kv"><span>Subventions</span><strong>${subventions.toFixed(2)} â‚¬</strong></div>
+        <div class="kv"><span>Autres produits</span><strong>${autresProduits.toFixed(2)} â‚¬</strong></div>
+      </div>
+      <div class="note">
+        <h3>ContrÃ´le technique</h3>
+        <div class="kv"><span>Journal dÃ©bit - crÃ©dit</span><strong style="color:${ecartJournal===0?'#1e7e34':'#b33627'}">${ecartJournal.toFixed(2)} â‚¬</strong></div>
+        <div class="kv"><span>Actif - passif</span><strong style="color:${ecartBilan===0?'#1e7e34':'#b33627'}">${ecartBilan.toFixed(2)} â‚¬</strong></div>
+      </div>
+      <div class="note">
+        <h3>Informations de clÃ´ture</h3>
+        <div class="kv"><span>Total produits</span><strong>${produits.toFixed(2)} â‚¬</strong></div>
+        <div class="kv"><span>Total charges</span><strong>${charges.toFixed(2)} â‚¬</strong></div>
+        <div class="kv"><span>Association</span><strong>${ci.nom||'AFFBC'}</strong></div>
+      </div>
+    </div>
+    <div class="footer">
+      <p>${ci.nom||'AFFBC'} â€” Association loi 1901. Document gÃ©nÃ©rÃ© pour diffusion interne ou prÃ©sentation officielle aprÃ¨s validation du bureau.</p>
+      <div class="result"><div class="l">RÃ©sultat net de l'exercice</div><div class="v" style="color:${resultat>=0?'#1e7e34':'#b33627'}">${resultat>=0?'+':''}${resultat.toFixed(2)} â‚¬</div></div>
+    </div>
+    <div class="sign">
+      <div class="sign-box">Visa trÃ©sorerie</div>
+      <div class="sign-box">Validation prÃ©sidence</div>
+    </div>
+  </div>
+  <script>setTimeout(()=>window.print(),300);<\/script></body></html>`);
+  w.document.close();
+}
+
+function vResultat(){
+  const jnl=jnlExo();
+  const prod=jnl.filter(j=>+j.credit>0&&j.compte&&j.compte.match(/^7/));
+  const charg=jnl.filter(j=>+j.debit>0&&j.compte&&j.compte.match(/^6/));
+  const tP=prod.reduce((s,j)=>s+(+j.credit),0),tC=charg.reduce((s,j)=>s+(+j.debit),0);
+  return`<div class="g2">
+    <div><p class="stit">Produits (classe 7)</p>
+      ${prod.map(j=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:.5px solid var(--brd);font-size:12.5px"><span>${j.libelle}</span><span style="color:#1e7e34">${(+j.credit).toFixed(2)} â‚¬</span></div>`).join('')}
+      <div style="display:flex;justify-content:space-between;padding:7px 0;font-weight:500"><span>Total</span><span style="color:#1e7e34">${tP.toFixed(2)} â‚¬</span></div>
+    </div>
+    <div><p class="stit">Charges (classe 6)</p>
+      ${charg.map(j=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:.5px solid var(--brd);font-size:12.5px"><span>${j.libelle}</span><span style="color:var(--red)">${(+j.debit).toFixed(2)} â‚¬</span></div>`).join('')}
+      <div style="display:flex;justify-content:space-between;padding:7px 0;font-weight:500"><span>Total</span><span style="color:var(--red)">${tC.toFixed(2)} â‚¬</span></div>
+    </div>
+  </div>
+  <div style="margin-top:14px;padding:14px;background:var(--bg2);border-radius:var(--r);display:flex;justify-content:space-between;align-items:center">
+    <strong style="font-weight:500">RÃ©sultat de l'exercice</strong>
+    <strong style="font-size:20px;font-weight:500;color:${tP-tC>=0?'#1e7e34':'var(--red)'}">${tP-tC>=0?'+':''}${(tP-tC).toFixed(2)} â‚¬</strong>
+  </div>`;
+}
+
+function vExercices(){
+  const canWrite=hasPerm('perm_comptabilite','write');
+  return`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <strong>Exercices comptables</strong>
+    ${canWrite?`<button class="btn primary" onclick="openModal('exo')">+ Nouvel exercice</button>`:''}
+  </div>
+  <div class="wrap"><table>
+    <thead><tr><th>LibellÃ©</th><th>DÃ©but</th><th>Fin</th><th>Ã‰critures</th><th>Statut</th><th></th></tr></thead>
+    <tbody>${D.exercices.map(e=>{
+      const nb=D.journal.filter(j=>j.exercice_id===e.id).length;
+      return`<tr>
+        <td><strong style="font-weight:500">${e.libelle}</strong></td>
+        <td>${fd(e.date_debut)}</td><td>${fd(e.date_fin)}</td>
+        <td>${nb}</td>
+        <td><span class="badge ${e.statut==='actif'?'bok':e.statut==='cloture'?'bwarn':'barch'}">${e.statut==='actif'?'Actif':e.statut==='cloture'?'ClÃ´turÃ©':'ArchivÃ©'}</span></td>
+        <td style="white-space:nowrap">
+          ${canWrite&&e.statut==='actif'?`<button class="btn sm" onclick="setExoActif('${e.id}')">SÃ©lectionner</button>`:''} 
+          ${e.id===D.currentExo?.id?`<span class="badge bok" style="margin-left:4px">âœ“ En cours</span>`:''}
+          ${canWrite&&e.statut==='actif'?`<button class="btn sm gold" style="margin-left:4px" onclick="openModal('exo_close','${e.id}')">ClÃ´turer</button>`:''}
+          ${canWrite&&e.statut!=='archive'&&e.id!==D.currentExo?.id?`<button class="btn sm danger" style="margin-left:4px" onclick="archiverExo('${e.id}')">Archiver</button>`:''}
+        </td>
+      </tr>`;
+    }).join('')}
+    ${D.exercices.length===0?`<tr><td colspan="6" class="empty">Aucun exercice</td></tr>`:''}
+    </tbody>
+  </table></div>`;
+}
+
+async function setExoActif(id){
+  if(!requireWritePerm('perm_comptabilite')) return;
+  D.currentExo=D.exercices.find(e=>e.id===id)||null;
+  document.getElementById('exo-badge').textContent=D.currentExo?.libelle||'Aucun exercice actif';
+  render();
+}
+async function archiverExo(id){
+  if(!requireWritePerm('perm_comptabilite')) return;
+  if(!confirm('Archiver cet exercice ? Il ne pourra plus recevoir de nouvelles Ã©critures.'))return;
+  const {error}=await SB.from('exercices').update({statut:'archive'}).eq('id',id);
+  if(error) return alert('Erreur : '+error.message);
+  D.exercices=D.exercices.map(e=>e.id===id?{...e,statut:'archive'}:e);
+  refreshCurrentExo();
+  render();
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ACHATS
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+function vAchat(){
+  const canWrite=hasPerm('perm_achats','write');
+  const filtered=D.achats.filter(a=>{
+    const matchesSearch=(a.fournisseur+' '+(a.designation||'')).toLowerCase().includes((UI.search.achats||'').toLowerCase());
+    const matchesStatus=achatMatchesFilter(a,UI.achatFilterStatus);
+    return matchesSearch && matchesStatus;
+  });
+  const {rows:f,totalPages}=paginateList(filtered,'achats');
+  const tP=D.achats.filter(a=>a.statut==='paye').reduce((s,a)=>s+(+a.montant),0);
+  const en=D.achats.filter(a=>a.statut==='nouveau'||a.statut==='valide').reduce((s,a)=>s+(+a.montant),0);
+  return`<div class="view-head">
+    <div>
+      <div class="eyebrow">Fournisseurs et dÃ©penses</div>
+      <h2>Achats</h2>
+      <p>Suivez les validations, les modes de paiement et les justificatifs sans perdre le fil des montants engagÃ©s.</p>
+    </div>
+  </div>
+  <div class="g4" style="margin-bottom:14px">
+    <div class="sc"><div class="v vr">${filtered.length}</div><div class="l">Achats</div></div>
+    <div class="sc"><div class="v vgo">${tP.toLocaleString('fr-FR')} â‚¬</div><div class="l">Total rÃ©glÃ©</div></div>
+    <div class="sc"><div class="v">${en.toLocaleString('fr-FR')} â‚¬</div><div class="l">En cours</div></div>
+    <div class="sc"><div class="v">${D.achats.filter(a=>a.statut==='nouveau').length}</div><div class="l">Ã€ valider</div></div>
+  </div>
+  <div class="toolbar">
+    <input style="flex:1;min-width:160px" placeholder="Rechercher..." value="${UI.search.achats||''}" oninput="UI.search.achats=this.value;render()">
+    <select style="width:auto;min-width:180px" onchange="UI.achatFilterStatus=this.value;render()">
+      <option value="" ${!UI.achatFilterStatus?'selected':''}>Tous les statuts</option>
+      <option value="pending" ${UI.achatFilterStatus==='pending'?'selected':''}>En attente</option>
+      <option value="nouveau" ${UI.achatFilterStatus==='nouveau'?'selected':''}>Nouveaux</option>
+      <option value="valide" ${UI.achatFilterStatus==='valide'?'selected':''}>ValidÃ©s</option>
+      <option value="paye" ${UI.achatFilterStatus==='paye'?'selected':''}>PayÃ©s</option>
+      <option value="refuse" ${UI.achatFilterStatus==='refuse'?'selected':''}>RefusÃ©s</option>
+    </select>
+    ${canWrite?`<button class="btn primary" onclick="openModal('achat')">+ Nouvel achat</button>`:''}
+    <button class="btn" onclick="UI.search.achats='';UI.achatFilterStatus='';render()">RÃ©initialiser</button>
+  </div>
+  <div class="wrap"><table>
+    <thead><tr><th>Date</th><th>Fournisseur</th><th>DÃ©signation</th><th>CatÃ©gorie</th><th>Montant</th><th>Mode paiement</th><th>RÃ©fÃ©rence</th><th>PiÃ¨ce</th><th>PDF</th><th>Statut</th><th></th></tr></thead>
+    <tbody>${f.map(a=>`<tr>
+      <td>${fd(a.date_op)}</td>
+      <td><strong style="font-weight:500">${a.fournisseur}</strong></td>
+      <td>${a.designation||''}</td>
+      <td><span class="badge bgray">${a.categorie}</span></td>
+      <td><strong style="font-weight:500">${(+a.montant).toFixed(2)} â‚¬</strong></td>
+      <td style="font-size:11px">${a.mode_paiement||'â€”'}</td>
+      <td style="font-size:11px;color:var(--txt2)">${a.reference_paiement||'â€”'}</td>
+      <td style="font-size:11px;color:var(--txt2)">${a.piece||'â€”'}</td>
+      <td style="white-space:nowrap">
+        ${a.pdf_public_url?`<a class="btn sm" href="${a.pdf_public_url}" target="_blank">Voir</a>`:`<span class="badge bgray">Aucun</span>`}
+      </td>
+      <td><span class="badge ${a.statut==='paye'?'bok':a.statut==='valide'?'bblue':a.statut==='refuse'?'bno':'bwarn'}">${a.statut==='nouveau'?'Nouveau':a.statut==='valide'?'ValidÃ©':a.statut==='refuse'?'RefusÃ©':'PayÃ©'}</span></td>
+      <td style="white-space:nowrap">
+        ${canWrite?`<button class="btn sm" onclick="openModal('achat','${a.id}')">Modifier</button>
+        ${a.statut==='nouveau'?`<button class="btn sm" style="margin-left:4px" onclick="validerAchat('${a.id}')">Valider</button>`:''}
+        <button class="btn sm" style="margin-left:4px" onclick="trigPDF('achats','${a.id}')">${a.pdf_public_url?'Remplacer PDF':'Ajouter PDF'}</button>
+        <button class="btn sm danger" style="margin-left:4px" onclick="delAchat('${a.id}')">âœ•</button>`:''}
+      </td>
+    </tr>`).join('')}
+    ${f.length===0?`<tr><td colspan="11" class="empty">Aucun achat</td></tr>`:''}
+    </tbody>
+  </table></div>
+  ${renderPager('achats',totalPages)}`;
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// FACTURATION
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+function vFacture(){
+  const canWrite=hasPerm('perm_facturation','write');
+  const sub=UI.subTab.facture;
+  return`<div class="view-head">
+    <div>
+      <div class="eyebrow">Produits et encaissements</div>
+      <h2>Ventes</h2>
+      <p>Enregistrez les ventes du club, Ã©ditez un document commercial et alimentez automatiquement les Ã©critures de produits en comptabilitÃ©.</p>
+    </div>
+  </div>
+  <div class="stabs">
+    <button class="stab ${sub==='liste'?'active':''}" onclick="showST('facture','liste')">Liste des ventes</button>
+    ${canWrite?`<button class="stab ${sub==='edit'?'active':''}" onclick="nouvFac()">+ Nouvelle vente</button>`:''}
+    <button class="stab ${sub==='dons'?'active':''}" onclick="showST('facture','dons')">ReÃ§us de dons</button>
+  </div>
+  ${sub==='liste'?vFacListe():sub==='dons'?vDonListe():vFacEditor()}`;
+}
+
+function vFacListe(){
+  const canWrite=hasPerm('perm_facturation','write');
+  const ventesRaw=D.factures.filter(f=>!isDonationReceipt(f)).map(f=>({...f,statut:normalizeFactureStatus(f.statut,f.date_op)}));
+  const filtered=ventesRaw.filter(f=>{
+    const haystack=`${f.numero||''} ${f.destinataire||''} ${f.objet||''}`.toLowerCase();
+    const matchesSearch=haystack.includes((UI.search.factures||'').toLowerCase());
+    const matchesStatus=factureMatchesFilter(f,UI.factureFilterStatus);
+    return matchesSearch && matchesStatus;
+  });
+  const {rows:ventes,totalPages}=paginateList(filtered,'factures');
+  return`<div>
+  <div class="toolbar">
+    <input style="flex:1;min-width:180px" placeholder="Rechercher une vente..." value="${UI.search.factures||''}" oninput="UI.search.factures=this.value;render()">
+    <select style="width:auto;min-width:180px" onchange="UI.factureFilterStatus=this.value;render()">
+      <option value="" ${!UI.factureFilterStatus?'selected':''}>Tous les statuts</option>
+      <option value="open" ${UI.factureFilterStatus==='open'?'selected':''}>Ouvertes</option>
+      <option value="Ã‰mise" ${UI.factureFilterStatus==='Ã‰mise'?'selected':''}>Ã‰mises</option>
+      <option value="En retard" ${UI.factureFilterStatus==='En retard'?'selected':''}>En retard</option>
+      <option value="PayÃ©e" ${UI.factureFilterStatus==='PayÃ©e'?'selected':''}>PayÃ©es</option>
+      <option value="Brouillon" ${UI.factureFilterStatus==='Brouillon'?'selected':''}>Brouillons</option>
+      <option value="AnnulÃ©e" ${UI.factureFilterStatus==='AnnulÃ©e'?'selected':''}>AnnulÃ©es</option>
+    </select>
+    ${canWrite?`<button class="btn primary" onclick="nouvFac()">+ Nouvelle vente</button>`:''}
+    <button class="btn" onclick="UI.search.factures='';UI.factureFilterStatus='';render()">RÃ©initialiser</button>
+  </div>
+  <div class="wrap"><table>
+    <thead><tr><th>NÂ° vente</th><th>Date</th><th>Client / destinataire</th><th>Objet</th><th>Total</th><th>Statut</th><th></th></tr></thead>
+    <tbody>${ventes.map(f=>{
+      const tot=(f.lignes||[]).reduce((s,l)=>s+(+l.qte||0)*(+l.pu||0),0);
+      return`<tr>
+        <td><strong style="font-weight:500">${f.numero}</strong></td>
+        <td>${fd(f.date_op)}</td><td>${f.destinataire||''}</td><td>${f.objet||''}</td>
+        <td><strong>${tot.toFixed(2)} â‚¬</strong></td>
+        <td><span class="badge ${factureStatusBadge(f.statut)}">${f.statut}</span></td>
+        <td style="white-space:nowrap">
+          <button class="btn sm" onclick="printFac('${f.id}')">ðŸ–¨ Imprimer</button>
+          ${canWrite&&f.statut!=='PayÃ©e'?`<button class="btn sm" style="margin-left:4px" onclick="setFactureStatus('${f.id}','PayÃ©e')">PayÃ©e</button>`:''}
+          ${canWrite&&f.statut!=='En retard'?`<button class="btn sm gold" style="margin-left:4px" onclick="setFactureStatus('${f.id}','En retard')">Retard</button>`:''}
+          ${canWrite?`<button class="btn sm danger" style="margin-left:4px" onclick="delFac('${f.id}')">âœ•</button>`:''}
+        </td>
+      </tr>`;
+    }).join('')}
+    ${ventes.length===0?`<tr><td colspan="7" class="empty">Aucune vente${UI.search.factures||UI.factureFilterStatus?' pour ce filtre':''}</td></tr>`:''}
+    </tbody>
+  </table></div>
+  ${renderPager('factures',totalPages)}</div>`;
+}
+
+function vDonListe(){
+  const canWrite=hasPerm('perm_facturation','write');
+  const donsRaw=D.factures.filter(isDonationReceipt).map(f=>({...f,statut:normalizeFactureStatus(f.statut,f.date_op)}));
+  const {rows:dons,totalPages}=paginateList(donsRaw,'dons');
+  return`<div>
+    <div class="toolbar">
+      <div style="font-size:12px;color:var(--txt2);flex:1;min-width:180px">CrÃ©ez et imprimez des reÃ§us pour les dons manuels du club.</div>
+      ${canWrite?`<button class="btn primary" onclick="nouvDon()">+ Nouveau reÃ§u de don</button>`:''}
+    </div>
+    <div class="wrap"><table>
+    <thead><tr><th>NÂ° reÃ§u</th><th>Date</th><th>Donateur</th><th>Objet</th><th>Montant</th><th></th></tr></thead>
+    <tbody>${dons.map(f=>{
+      const tot=(f.lignes||[]).reduce((s,l)=>s+(+l.qte||0)*(+l.pu||0),0);
+      return`<tr>
+        <td><strong style="font-weight:500">${f.numero}</strong></td>
+        <td>${fd(f.date_op)}</td>
+        <td>${f.destinataire||''}</td>
+        <td>${f.objet||''}</td>
+        <td><strong>${tot.toFixed(2)} â‚¬</strong></td>
+        <td style="white-space:nowrap">
+          ${canWrite?`<button class="btn sm" onclick="loadDon('${f.id}')">Modifier</button>`:''}
+          <button class="btn sm gold" style="margin-left:4px" onclick="printFac('${f.id}')">ðŸ–¨ Imprimer</button>
+          ${canWrite?`<button class="btn sm danger" style="margin-left:4px" onclick="delFac('${f.id}')">âœ•</button>`:''}
+        </td>
+      </tr>`;
+    }).join('')}
+    ${dons.length===0?`<tr><td colspan="6" class="empty">Aucun reÃ§u de don</td></tr>`:''}
+    </tbody>
+  </table></div>
+  ${renderPager('dons',totalPages)}`;
+}
+
+function vFacEditor(){
+  if(!hasPerm('perm_facturation','write')) return `<div class="empty">AccÃ¨s en lecture seule sur les ventes.</div>`;
+  const inv=UI.invState;
+  const meta=currentInvMeta();
+  return`<div class="g2" style="gap:20px;align-items:start">
+    <div>
+      <p class="stit" style="margin-top:0">${meta.infoTitle}</p>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div class="fg"><label>${meta.numberLabel}</label><input id="inv-num" value="${inv.numero}" oninput="UI.invState.numero=this.value;updPrev()"></div>
+        <div class="fg"><label>Date</label><input id="inv-date" type="date" value="${inv.date}" oninput="UI.invState.date=this.value;updPrev()"></div>
+        <div class="fg"><label>${meta.partyLabel}</label>
+          <input id="inv-dest" value="${inv.destinataire}" list="adh-dl" oninput="UI.invState.destinataire=this.value;updPrev()">
+          <datalist id="adh-dl">${D.adherents.map(a=>`<option value="${a.nom} ${a.prenom}">`).join('')}</datalist>
+        </div>
+        <div class="fg"><label>${meta.addressLabel}</label><textarea id="inv-addr" rows="2" style="resize:vertical" oninput="UI.invState.adresse=this.value;updPrev()">${inv.adresse}</textarea></div>
+        <div class="fg"><label>Objet</label><input id="inv-objet" value="${inv.objet}" oninput="UI.invState.objet=this.value;updPrev()"></div>
+      </div>
+      <p class="stit">Lignes</p>
+      <div id="lgwrap">${renderLignes()}</div>
+      <button class="btn sm" onclick="addL()">+ Ligne</button>
+      <p class="stit">Notes</p>
+      <textarea id="inv-notes" rows="2" style="resize:vertical;margin-bottom:12px" oninput="UI.invState.notes=this.value;updPrev()">${inv.notes}</textarea>
+      <div style="display:flex;gap:8px">
+        <button class="btn primary" onclick="saveFac()">${meta.saveLabel}</button>
+        <button class="btn gold" onclick="printFacEditor()">ðŸ–¨ Imprimer</button>
+      </div>
+    </div>
+    <div>
+      <p class="stit" style="margin-top:0">${meta.previewLabel}</p>
+      <div id="inv-prev">${buildFacHTML(inv)}</div>
+    </div>
+  </div>`;
+}
+
+function renderLignes(){
+  return UI.invState.lignes.map((l,i)=>`<div style="display:grid;grid-template-columns:1fr 55px 80px 24px;gap:6px;margin-bottom:6px;align-items:center">
+    <input placeholder="Description" value="${l.desc}" oninput="updL(${i},'desc',this.value)">
+    <input type="number" placeholder="QtÃ©" value="${l.qte}" min="1" oninput="updL(${i},'qte',+this.value)">
+    <input type="number" placeholder="P.U." value="${l.pu}" min="0" step="0.01" oninput="updL(${i},'pu',+this.value)">
+    <button class="btn sm danger" onclick="rmL(${i})" style="padding:4px 6px">âœ•</button>
+  </div>`).join('');
+}
+
+function currentInvMeta(kind=UI.invKind){
+  return kind==='don'
+    ? {
+        docTitle:'REÃ‡U DE DON',
+        infoTitle:'Informations du reÃ§u',
+        numberLabel:'NÂ° reÃ§u',
+        partyLabel:'Donateur',
+        addressLabel:'Adresse du donateur',
+        saveLabel:'ðŸ’¾ Enregistrer le reÃ§u',
+        previewLabel:'AperÃ§u du reÃ§u'
+      }
+    : {
+        docTitle:'FACTURE',
+        infoTitle:'Informations de vente',
+        numberLabel:'NÂ° vente',
+        partyLabel:'Destinataire',
+        addressLabel:'Adresse destinataire',
+        saveLabel:'ðŸ’¾ Enregistrer la vente',
+        previewLabel:'AperÃ§u du document'
+      };
+}
+
+function isDonationReceipt(f){
+  return (f?.numero||'').startsWith('DON-') || /reÃ§u de don/i.test(f?.objet||'');
+}
+
+function buildFacHTML(f){
+  const logo=D.logoUrl?`<img src="${D.logoUrl}" style="width:100%;height:100%;object-fit:contain">`:`<span style="font-size:26px">ðŸ¥Š</span>`;
+  const tot=(f.lignes||[]).reduce((s,l)=>s+(+l.qte||0)*(+l.pu||0),0);
+  const deductible=tot*0.66;
+  const ci=D.clubInfo||{};
+  const clubName=ci.nom||DEFAULT_CLUB_NAME;
+  const clubSiret=ci.siret||DEFAULT_SIRET;
+  const meta=currentInvMeta(f?.kind||(isDonationReceipt(f)?'don':'facture'));
+  const isDon=meta.docTitle==='REÃ‡U DE DON';
+  return`<div style="background:#fff;border:.5px solid #ddd;border-radius:10px;overflow:hidden;font-family:sans-serif;font-size:12px;color:#222">
+    <div style="background:#111;padding:16px 20px;display:flex;justify-content:space-between;align-items:center">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:44px;height:44px;border-radius:50%;overflow:hidden;border:2px solid #D4AC0D;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0">${logo}</div>
+        <div><div style="color:#fff;font-size:12px;font-weight:500">${clubName}</div><div style="color:#aaa;font-size:10px;line-height:1.6">${ci.adresse||''}<br>${ci.email||''}</div></div>
+      </div>
+      <div style="text-align:right">
+        <div style="color:#D4AC0D;font-size:15px;font-weight:500">${meta.docTitle}</div>
+        <div style="color:#fff;font-size:11px;margin-top:2px">${f.numero||'â€”'}</div>
+        <div style="color:#888;font-size:10px">${fd(f.date||f.date_op)}</div>
+      </div>
+    </div>
+    <div style="padding:16px 20px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div><div style="font-size:9px;font-weight:500;color:#888;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Ã‰metteur</div>
+          <p style="font-size:11px;line-height:1.6">${clubName}<br>${ci.adresse||''}<br>SIRET : ${clubSiret}</p></div>
+        <div><div style="font-size:9px;font-weight:500;color:#888;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">${meta.partyLabel}</div>
+          <p style="font-size:11px;line-height:1.6">${f.destinataire||'â€”'}<br>${(f.adresse||'').replace(/\n/g,'<br>')}</p></div>
+      </div>
+      ${f.objet?`<p style="font-size:10px;color:#888;margin-bottom:10px;padding:5px 8px;background:#f5f5f5;border-radius:4px;border-left:3px solid #111">Objet : ${f.objet}</p>`:''}
+      <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:10px">
+        <thead><tr style="background:#111;color:#fff">
+          <th style="padding:5px 8px;text-align:left;font-weight:500">DÃ©signation</th>
+          <th style="padding:5px 8px;text-align:right;font-weight:500">QtÃ©</th>
+          <th style="padding:5px 8px;text-align:right;font-weight:500">P.U.</th>
+          <th style="padding:5px 8px;text-align:right;font-weight:500">Total</th>
+        </tr></thead>
+        <tbody>${(f.lignes||[]).map((l,i)=>`<tr style="background:${i%2===0?'#fff':'#fafafa'}">
+          <td style="padding:5px 8px;border-bottom:.5px solid #eee">${l.desc||'â€”'}</td>
+          <td style="padding:5px 8px;border-bottom:.5px solid #eee;text-align:right">${l.qte}</td>
+          <td style="padding:5px 8px;border-bottom:.5px solid #eee;text-align:right">${(+l.pu).toFixed(2)} â‚¬</td>
+          <td style="padding:5px 8px;border-bottom:.5px solid #eee;text-align:right;font-weight:500">${((+l.qte)*(+l.pu)).toFixed(2)} â‚¬</td>
+        </tr>`).join('')}</tbody>
+      </table>
+      <div style="display:flex;justify-content:flex-end">
+        <div style="min-width:200px">
+          ${isDon
+            ? `
+              <div style="display:flex;justify-content:space-between;padding:3px 0;font-size:10px;color:#666"><span>Montant du don</span><span>${tot.toFixed(2)} â‚¬</span></div>
+              <div style="display:flex;justify-content:space-between;padding:6px 10px;font-size:12px;font-weight:600;background:#f3efe7;color:#111;border:.5px solid #ddd;border-radius:4px;margin-top:4px"><span>Montant dÃ©ductible des impÃ´ts (66 %)</span><span>${deductible.toFixed(2)} â‚¬</span></div>
+            `
+            : `
+              <div style="display:flex;justify-content:space-between;padding:3px 0;font-size:10px;color:#666"><span>Sous-total HT</span><span>${tot.toFixed(2)} â‚¬</span></div>
+              <div style="display:flex;justify-content:space-between;padding:3px 0;font-size:10px;color:#666"><span>TVA (exonÃ©rÃ©e art. 261-7-1Â°b)</span><span>0,00 â‚¬</span></div>
+              <div style="display:flex;justify-content:space-between;padding:6px 10px;font-size:13px;font-weight:500;background:#111;color:#fff;border-radius:4px;margin-top:4px"><span>Total TTC</span><span>${tot.toFixed(2)} â‚¬</span></div>
+            `}
+        </div>
+      </div>
+      ${isDon?`<p style="font-size:10px;color:#666;margin-top:10px;padding:8px 10px;background:#f8f6f1;border-left:3px solid #D4AC0D;border-radius:4px">RÃ©duction d'impÃ´t indicative pour un particulier : <strong>${deductible.toFixed(2)} â‚¬</strong>, soit 66 % du montant versÃ©.</p>`:''}
+      ${f.notes?`<p style="font-size:10px;color:#888;margin-top:10px;padding-top:8px;border-top:.5px solid #eee">${f.notes}</p>`:''}
+    </div>
+    <div style="background:#111;padding:7px 20px;font-size:9px;color:#888;text-align:center">${clubName} â€” SIRET ${clubSiret} â€” Association loi 1901 â€” TVA non applicable, art. 261-7-1Â°b CGI</div>
+  </div>`;
+}
+
+function updPrev(){const el=document.getElementById('inv-prev');if(el)el.innerHTML=buildFacHTML(UI.invState)}
+function updL(i,k,v){UI.invState.lignes[i][k]=v;updPrev()}
+function addL(){UI.invState.lignes.push({desc:'',qte:1,pu:0});const c=document.getElementById('lgwrap');if(c)c.innerHTML=renderLignes();updPrev()}
+function rmL(i){if(UI.invState.lignes.length===1)return;UI.invState.lignes.splice(i,1);const c=document.getElementById('lgwrap');if(c)c.innerHTML=renderLignes();updPrev()}
+
+function nouvFac(){
+  const n=D.factures.length+1;
+  UI.invKind='facture';
+  UI.invState={numero:`FAC-${new Date().getFullYear()}-${String(n).padStart(3,'0')}`,date:td(),destinataire:'',adresse:'',objet:'',lignes:[{desc:'',qte:1,pu:0}],notes:''};
+  UI.subTab.facture='edit';render();setTimeout(updPrev,80);
+}
+function nouvDon(){
+  const n=D.factures.filter(isDonationReceipt).length+1;
+  UI.invKind='don';
+  UI.invState={numero:`DON-${new Date().getFullYear()}-${String(n).padStart(3,'0')}`,date:td(),destinataire:'',adresse:'',objet:'ReÃ§u de don manuel',lignes:[{desc:'Don manuel au club',qte:1,pu:0}],notes:''};
+  UI.subTab.facture='edit';render();setTimeout(updPrev,80);
+}
+function loadDon(id){
+  const f=D.factures.find(x=>x.id===id);
+  if(!f) return;
+  UI.invKind='don';
+  UI.invState={id:f.id,numero:f.numero||'',date:f.date_op||td(),destinataire:f.destinataire||'',adresse:f.adresse||'',objet:f.objet||'ReÃ§u de don manuel',lignes:Array.isArray(f.lignes)&&f.lignes.length?f.lignes:[{desc:'Don manuel au club',qte:1,pu:0}],notes:f.notes||'',kind:'don'};
+  UI.subTab.facture='edit';render();setTimeout(updPrev,80);
+}
+async function saveFac(){
+  if(!requireExerciceActif()) return;
+  if(!UI.invState.destinataire)return alert('Destinataire obligatoire');
+  const payload={numero:UI.invState.numero,date_op:UI.invState.date,destinataire:UI.invState.destinataire,adresse:UI.invState.adresse,objet:UI.invState.objet,lignes:UI.invState.lignes,statut:normalizeFactureStatus(UI.invState.statut||'Ã‰mise',UI.invState.date),notes:UI.invState.notes,exercice_id:D.currentExo?.id||null};
+  if(UI.invState.id){
+    const {error}=await SB.from('factures').update(payload).eq('id',UI.invState.id);
+    if(error)return alert('Erreur : '+error.message);
+    const idx=D.factures.findIndex(f=>f.id===UI.invState.id);
+    if(idx>=0) D.factures[idx]=normalizeFactureRow({...D.factures[idx],...payload});
+    if(UI.invKind!=='don'){
+      try{
+        await syncVenteJournal(idx>=0?{...D.factures[idx],id:UI.invState.id}:{...payload,id:UI.invState.id});
+      }catch(e){
+        return alert('Vente enregistrÃ©e, mais Ã©criture comptable non synchronisÃ©e : '+e.message);
+      }
+    }
+  }else{
+    const {data,error}=await SB.from('factures').insert(payload).select().single();
+    if(error)return alert('Erreur : '+error.message);
+    D.factures.unshift(normalizeFactureRow(data));
+    if(UI.invKind!=='don'){
+      try{
+        await syncVenteJournal(normalizeFactureRow(data));
+      }catch(e){
+        return alert('Vente enregistrÃ©e, mais Ã©criture comptable non crÃ©Ã©e : '+e.message);
+      }
+    }
+  }
+  alert(UI.invKind==='don'?'ReÃ§u de don enregistrÃ©.':'Vente enregistrÃ©e et Ã©criture comptable crÃ©Ã©e.');
+  UI.subTab.facture=UI.invKind==='don'?'dons':'liste';
+  render();
+}
+async function setFactureStatus(id,status){
+  if(!requireWritePerm('perm_facturation')) return;
+  const next=normalizeFactureStatus(status,td());
+  const {error}=await SB.from('factures').update({statut:next}).eq('id',id);
+  if(error) return alert('Erreur : '+error.message);
+  const idx=D.factures.findIndex(f=>f.id===id);
+  if(idx>=0) D.factures[idx]={...D.factures[idx],statut:next};
+  render();
+}
+async function delFac(id){
+  if(!confirm('Supprimer ?'))return;
+  await SB.from('factures').delete().eq('id',id);
+  try{await deleteJournalAuto(autoPiece('vente',id));}catch(e){return alert('Vente supprimÃ©e, mais Ã©criture comptable non supprimÃ©e : '+e.message);}
+  D.factures=D.factures.filter(f=>f.id!==id);render();
+}
+function printFac(id){const f=D.factures.find(x=>x.id===id);if(f)pwPrint(buildFacHTML(f),`Vente ${f.numero}`)}
+function printFacEditor(){pwPrint(buildFacHTML(UI.invState),'AperÃ§u vente')}
+function pwPrint(html,title){
+  const w=window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title}</title><style>@import url('https://fonts.googleapis.com/css2?family=Petit+Formal+Script&display=swap');body{margin:20px;font-family:sans-serif}@media print{body{margin:0}}</style></head><body>${html}<script>setTimeout(()=>window.print(),300);<\/script></body></html>`);
+  w.document.close();
+}
+function genRecu(id){
+  const a=D.adherents.find(x=>x.id===id);if(!a)return;
+  const n=D.factures.length+1;
+  const season=seasonFromDate(a.date_fin_adhesion||a.date_inscription)||currentSeasonLabel();
+  UI.invKind='facture';
+  UI.invState={
+    numero:`REC-${new Date().getFullYear()}-${String(n).padStart(3,'0')}`,
+    date:td(),destinataire:`${a.nom} ${a.prenom}`,
+    adresse:[a.adresse,a.code_postal,a.ville].filter(Boolean).join(', '),
+    objet:`ReÃ§u de cotisation â€” Saison ${season}`,
+    lignes:[
+      {desc:`Cotisation ${a.discipline||'Club'} â€” saison ${season}`,qte:1,pu:+a.cotisation},
+      ...(+a.montant_pass_region>0?[{desc:'Pass RÃ©gion',qte:1,pu:+a.montant_pass_region}]:[])
+    ],
+    notes:`Mode de paiement : ${a.paiement}`
+  };
+  UI.tab='facture';UI.subTab.facture='edit';renderTabs();render();setTimeout(updPrev,100);
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ADMINISTRATION
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+function vAdmin(){
+  const sub=UI.subTab.admin;
+  return`<div class="stabs">
+    <button class="stab ${sub==='users'?'active':''}" onclick="showST('admin','users')">Utilisateurs & accÃ¨s</button>
+    <button class="stab ${sub==='audit'?'active':''}" onclick="showST('admin','audit')">Journal d'audit</button>
+    <button class="stab ${sub==='club'?'active':''}" onclick="showST('admin','club')">Infos club</button>
+    <button class="stab ${sub==='logo'?'active':''}" onclick="showST('admin','logo')">Logo</button>
+    <button class="stab ${sub==='imp_adh'?'active':''}" onclick="showST('admin','imp_adh')">ðŸ“¥ Import adhÃ©rents</button>
+    <button class="stab ${sub==='imp_ecr'?'active':''}" onclick="showST('admin','imp_ecr')">ðŸ“¥ Import Ã©critures</button>
+    <button class="stab ${sub==='backup'?'active':''}" onclick="showST('admin','backup')">Sauvegarde</button>
+  </div>
+  ${sub==='users'?vUsers():sub==='audit'?vAudit():sub==='club'?vClub():sub==='logo'?vLogo():sub==='imp_adh'?vImpAdh():sub==='imp_ecr'?vImpEcr():vBackup()}`;
+}
+
+function vUsers(){
+  if(!hasPerm('perm_administration'))return`<div class="empty">AccÃ¨s rÃ©servÃ© Ã  l'administrateur</div>`;
+  return`<div class="card" style="margin-bottom:14px">
+    <div style="display:flex;justify-content:space-between;align-items:end;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+      <div>
+        <p style="font-size:11px;font-weight:500;color:var(--txt2);margin-bottom:4px">PROFILS UTILISATEUR</p>
+        <p style="font-size:12px;color:var(--txt2)">DÃ©finissez pour chaque rubrique si le profil n'a aucun accÃ¨s, un accÃ¨s en lecture seule, ou un accÃ¨s complet en lecture et Ã©criture. Les administrateurs conservent toujours l'accÃ¨s complet.</p>
+      </div>
+    </div>
+    <div style="display:grid;gap:10px">
+      ${Object.entries(ROLES).map(([role,label])=>{
+        const perms=getRolePerms(role);
+        return `<div style="border:1px solid var(--brd);border-radius:14px;padding:12px;background:rgba(255,255,255,.56)">
+          <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+            <strong>${label}</strong>
+            ${role==='admin'
+              ? `<span class="badge bblue">AccÃ¨s complet</span>`
+              : `<span style="font-size:11px;color:var(--txt2)">${D.users.filter(u=>u.role===role).length} utilisateur(s)</span>`}
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px">
+            ${PERM_META.map(([perm,txt])=>`
+              <div style="display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;padding:4px 0;gap:6px">
+                <span style="font-size:12px">${txt}</span>
+                ${role==='admin'
+                  ? `<span class="badge bblue">Lecture / Ã©criture</span>`
+                  : `<select style="font-size:12px;width:100%" onchange="toggleRolePerm('${role}','${perm}',this.value)">
+                      ${Object.entries(PERM_LEVELS).map(([level,meta])=>`<option value="${level}" ${perms[perm]===level?'selected':''}>${meta.label}</option>`).join('')}
+                    </select>`}
+              </div>`).join('')}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>
+  <button class="btn primary" style="margin-bottom:14px" onclick="openModal('user')">+ Ajouter un utilisateur</button>
+  ${D.users.map(u=>{
+    const col=AVC[D.users.indexOf(u)%AVC.length];
+    const isMe=UI.currentUser?.id===u.id;
+    const perms=getRolePerms(u.role);
+    return`<div class="card" style="margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:${UI.currentUser?.role==='admin'?'12':'0'}px">
+        <div style="width:40px;height:40px;border-radius:50%;background:${col}22;color:${col};display:flex;align-items:center;justify-content:center;font-weight:500;flex-shrink:0">${(u.prenom[0]||'')+(u.nom[0]||'')}</div>
+        <div style="flex:1"><div style="font-weight:500">${u.prenom} ${u.nom} ${isMe?'<span class="badge bok">Vous</span>':''}</div><div style="font-size:11px;color:var(--txt2)">${u.email}</div></div>
+        <span style="font-size:11px;padding:3px 8px;border-radius:99px;font-weight:500;background:${u.role==='admin'?'#dfe6fd':'var(--bg3)'};color:${u.role==='admin'?'#1a3a9e':'var(--txt2)'}">${ROLES[u.role]||u.role}</span>
+        <span class="badge ${u.actif?'bok':'bno'}" style="margin-left:6px">${u.actif?'Actif':'Inactif'}</span>
+        <button class="btn sm" style="margin-left:8px" onclick="openModal('user','${u.id}')">Modifier</button>
+        ${isMe?`<button class="btn sm" style="margin-left:4px" onclick="openPasswordModal()">Mot de passe</button>`:''}
+      </div>
+      ${UI.currentUser?.role==='admin'?`
+      <div style="background:var(--bg2);border-radius:var(--r);padding:10px 12px">
+        <p style="font-size:11px;font-weight:500;color:var(--txt2);margin-bottom:8px">ONGLETS HÃ‰RITÃ‰S DU PROFIL</p>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          ${u.role==='admin'
+            ? `<span class="badge bblue">Tous les onglets</span>`
+            : PERM_META.filter(([perm])=>perms[perm] && perms[perm]!=='none').map(([perm,txt])=>`<span class="badge bgray">${txt} Â· ${PERM_LEVELS[perms[perm]]?.label||perms[perm]}</span>`).join('') || `<span class="badge bno">Aucun onglet actif</span>`}
+        </div>
+      </div>`:''}
+    </div>`;
+  }).join('')}`;
+}
+
+function vAudit(){
+  if(!hasPerm('perm_administration')) return`<div class="empty">AccÃ¨s rÃ©servÃ© Ã  l'administrateur</div>`;
+  return `<div class="wrap"><table>
+    <thead><tr><th>Date</th><th>Action</th><th>EntitÃ©</th><th>Utilisateur</th><th>DÃ©tails</th></tr></thead>
+    <tbody>${(D.auditLogs||[]).map(log=>`<tr>
+      <td>${fd(log.created_at)}</td>
+      <td><span class="badge bblue">${esc(log.action||'')}</span></td>
+      <td>${esc(log.entity_type||'')}</td>
+      <td>${esc(D.users.find(u=>u.id===log.user_id)?.email || log.user_id || 'systÃ¨me')}</td>
+      <td style="font-size:11px;color:var(--txt2)">${esc(log.details||'').slice(0,160)}</td>
+    </tr>`).join('')}
+    ${(D.auditLogs||[]).length===0?`<tr><td colspan="5" class="empty">Aucun Ã©vÃ©nement</td></tr>`:''}
+    </tbody>
+  </table></div>`;
+}
+
+async function toggleRolePerm(role,perm,val){
+  if(!requireWritePerm('perm_administration')) return;
+  const next=normalizeRolePerms(D.rolePerms);
+  if(role==='admin') return;
+  next[role][perm]=val;
+  const payload=JSON.stringify(next);
+  const {error}=await SB.from('club_info').upsert({cle:'role_permissions',valeur:payload},{onConflict:'cle'});
+  if(error) return alert('Erreur : '+error.message);
+  D.rolePerms=next;
+  D.clubInfo.role_permissions=payload;
+  renderTabs();
+  render();
+}
+
+function vClub(){
+  const canWrite=hasPerm('perm_administration','write');
+  const ci=D.clubInfo||{};
+  return`<div style="max-width:460px;display:flex;flex-direction:column;gap:12px">
+    <div class="fg"><label>Nom du club</label><input id="ci-nom" value="${ci.nom||''}"></div>
+    <div class="fg"><label>Adresse</label><input id="ci-adr" value="${ci.adresse||''}"></div>
+    <div class="fg"><label>TÃ©lÃ©phone</label><input id="ci-tel" value="${ci.telephone||''}"></div>
+    <div class="fg"><label>Email</label><input id="ci-email" value="${ci.email||''}"></div>
+    <div class="fg"><label>SIRET</label><input id="ci-siret" value="${ci.siret||''}"></div>
+    <div class="fg"><label>Code APE</label><input id="ci-ape" value="${ci.ape||''}"></div>
+    ${canWrite?`<button class="btn primary" style="align-self:flex-start" onclick="saveClub()">ðŸ’¾ Sauvegarder</button>`:''}
+  </div>`;
+}
+
+function vLogo(){
+  const canWrite=hasPerm('perm_administration','write');
+  return`<div style="max-width:440px">
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
+      <div style="width:80px;height:80px;border-radius:50%;border:2px solid var(--gold);overflow:hidden;display:flex;align-items:center;justify-content:center;background:#fff">
+        ${D.logoUrl?`<img src="${D.logoUrl}" style="width:100%;height:100%;object-fit:contain">`:`<span style="font-size:36px">ðŸ¥Š</span>`}
+      </div>
+      <div><p style="font-weight:500;margin-bottom:4px">Logo du club</p><p style="font-size:11px;color:var(--txt2)">PNG, JPG ou SVG</p></div>
+    </div>
+    ${canWrite?`<div class="dz" style="margin-bottom:12px" onclick="document.getElementById('logo-input').click()">
+      <div style="font-size:28px;margin-bottom:6px">ðŸ–¼</div>
+      <p style="font-size:13px;font-weight:500">Importer depuis votre ordinateur</p>
+    </div>
+    <p style="font-size:12px;color:var(--txt2);margin-bottom:6px">Ou via URL Google Drive (fichier partagÃ© publiquement) :</p>
+    <div style="display:flex;gap:8px">
+      <input id="logo-url" placeholder="https://drive.google.com/uc?id=..." style="flex:1">
+      <button class="btn primary" onclick="loadLogoUrl()">Charger</button>
+    </div>`:`<div class="empty">AccÃ¨s en lecture seule sur l'administration.</div>`}
+  </div>`;
+}
+
+// â”€â”€ IMPORT ADHÃ‰RENTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function vImpAdh(){
+  const st=IMP.adh;
+  return`<div>
+    <div class="import-step">
+      <h3><span class="step-num">1</span> Charger votre export DoliAsso ou CSV</h3>
+      <p style="font-size:12px;color:var(--txt2);margin-bottom:12px">Compatible avec DoliAsso et tout export CSV proche. Seuls <strong>Nom</strong> et <strong>PrÃ©nom</strong> sont obligatoires.</p>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button class="btn primary" onclick="document.getElementById('imp-adh-file').click()">ðŸ“‚ Choisir un fichier</button>
+        <select id="adh-sep" style="width:auto" onchange="IMP.adh.sep=this.value;if(IMP.adh.raw)parseImpAdh(IMP.adh.raw)">
+          <option value=";">SÃ©parateur : ; (point-virgule)</option>
+          <option value=",">SÃ©parateur : , (virgule)</option>
+          <option value="&#9;">SÃ©parateur : tabulation</option>
+          <option value="|">SÃ©parateur : | (pipe)</option>
+        </select>
+      </div>
+      ${st.headers.length>0?`<div style="margin-top:10px"><span class="badge bok">âœ“ ChargÃ©</span> <span style="font-size:12px;color:var(--txt2);margin-left:6px">${st.rows.length} ligne(s) â€” ${st.headers.length} colonne(s)</span></div>`:''}
+    </div>
+    ${st.headers.length>0?`
+    <div class="import-step">
+      <h3><span class="step-num">2</span> Correspondance des colonnes</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 20px">
+        ${ADH_FIELDS.map(f=>`<div class="col-map">
+          <span style="font-weight:500;font-size:12px">${f.label}</span>
+          <span style="color:var(--txt2)">â†’</span>
+          <select id="map-adh-${f.key}" style="font-size:12px" onchange="IMP.adh.mapping['${f.key}']=this.value">
+            <option value="">â€” Ignorer â€”</option>
+            ${st.headers.map(h=>`<option value="${h}" ${IMP.adh.mapping[f.key]===h?'selected':''}>${h}</option>`).join('')}
+          </select>
+        </div>`).join('')}
+      </div>
+    </div>
+    <div class="import-step">
+      <h3><span class="step-num">3</span> AperÃ§u (5 premiÃ¨res lignes)</h3>
+      <div class="wrap">
+        <table class="preview-table">
+          <thead><tr>${ADH_FIELDS.filter(f=>IMP.adh.mapping[f.key]).map(f=>`<th>${f.label}</th>`).join('')}</tr></thead>
+          <tbody>${st.rows.slice(0,5).map(r=>`<tr>${ADH_FIELDS.filter(f=>IMP.adh.mapping[f.key]).map(f=>`<td title="${r[IMP.adh.mapping[f.key]]||''}">${(r[IMP.adh.mapping[f.key]]||'').slice(0,25)||'â€”'}</td>`).join('')}</tr>`).join('')}</tbody>
+        </table>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="btn green" style="padding:10px 20px" onclick="doImportAdh()" ${st.importing?'disabled':''}>
+        ${st.importing?'â³ Import en cours...':'âœ“ Importer '+st.rows.length+' adhÃ©rent(s)'}
+      </button>
+      <button class="btn" onclick="IMP.adh={raw:'',headers:[],rows:[],mapping:{},sep:';',importing:false};render()">Recommencer</button>
+    </div>
+    <div id="adh-imp-res"></div>`:''}
+    <div class="import-step" style="background:var(--bg2);margin-top:14px">
+      <h3 style="font-size:12px;margin-bottom:8px">ðŸ“„ Format CSV exemple</h3>
+      <code style="font-size:11px;color:var(--txt2);line-height:2;display:block;font-family:monospace">
+        Nom;PrÃ©nom;Date naissance;Email;Type adhÃ©sion;Cotisation;Statut;Fin adhÃ©sion<br>
+        DUPONT;Lucas;12/03/2005;lucas@mail.com;Club;320;Actif;31/08/2026<br>
+        MARTIN;Emma;20/07/1998;emma@mail.com;CSE ThalÃ¨s;280;Renouvellement;31/08/2026
+      </code>
+    </div>
+  </div>`;
+}
+
+// â”€â”€ IMPORT Ã‰CRITURES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function vImpEcr(){
+  const st=IMP.ecr;
+  return`<div>
+    <div class="import-step">
+      <h3><span class="step-num">1</span> Charger votre export comptable DoliAsso ou CSV</h3>
+      <p style="font-size:12px;color:var(--txt2);margin-bottom:12px">Compatible avec DoliAsso, Ciel Compta, EBP, Sage, Quadratus ou tout export CSV. <strong>Date, LibellÃ© et DÃ©bit/CrÃ©dit</strong> sont obligatoires.</p>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button class="btn primary" onclick="document.getElementById('imp-ecr-file').click()">ðŸ“‚ Choisir un fichier</button>
+        <select id="ecr-sep" style="width:auto" onchange="IMP.ecr.sep=this.value;if(IMP.ecr.raw)parseImpEcr(IMP.ecr.raw)">
+          <option value=";">SÃ©parateur : ; (point-virgule)</option>
+          <option value=",">SÃ©parateur : , (virgule)</option>
+          <option value="&#9;">SÃ©parateur : tabulation</option>
+          <option value="|">SÃ©parateur : | (pipe)</option>
+        </select>
+      </div>
+      ${st.headers.length>0?`<div style="margin-top:10px"><span class="badge bok">âœ“ ChargÃ©</span> <span style="font-size:12px;color:var(--txt2);margin-left:6px">${st.rows.length} ligne(s) â€” ${st.headers.length} colonne(s)</span></div>`:''}
+    </div>
+    ${st.headers.length>0?`
+    <div class="import-step">
+      <h3><span class="step-num">2</span> Correspondance des colonnes</h3>
+      <p style="font-size:12px;color:var(--txt2);margin-bottom:10px">Si votre logiciel exporte un montant unique (positif = crÃ©dit, nÃ©gatif = dÃ©bit), mappez-le sur <em>DÃ©bit</em>.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 20px">
+        ${ECR_FIELDS.map(f=>`<div class="col-map">
+          <span style="font-weight:500;font-size:12px">${f.label}</span>
+          <span style="color:var(--txt2)">â†’</span>
+          <select id="map-ecr-${f.key}" style="font-size:12px" onchange="IMP.ecr.mapping['${f.key}']=this.value">
+            <option value="">â€” Ignorer â€”</option>
+            ${st.headers.map(h=>`<option value="${h}" ${IMP.ecr.mapping[f.key]===h?'selected':''}>${h}</option>`).join('')}
+          </select>
+        </div>`).join('')}
+      </div>
+    </div>
+    <div class="import-step">
+      <h3><span class="step-num">3</span> AperÃ§u (5 premiÃ¨res lignes)</h3>
+      <div class="wrap">
+        <table class="preview-table">
+          <thead><tr>${ECR_FIELDS.filter(f=>IMP.ecr.mapping[f.key]).map(f=>`<th>${f.label}</th>`).join('')}<th>Exercice</th></tr></thead>
+          <tbody>${st.rows.slice(0,5).map(r=>`<tr>${ECR_FIELDS.filter(f=>IMP.ecr.mapping[f.key]).map(f=>`<td>${(r[IMP.ecr.mapping[f.key]]||'').slice(0,25)||'â€”'}</td>`).join('')}<td style="font-size:10px;color:var(--txt2)">${D.currentExo?.libelle||'â€”'}</td></tr>`).join('')}</tbody>
+        </table>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="btn green" style="padding:10px 20px" onclick="doImportEcr()" ${st.importing?'disabled':''}>
+        ${st.importing?'â³ Import en cours...':'âœ“ Importer '+st.rows.length+' Ã©criture(s)'}
+      </button>
+      <button class="btn" onclick="IMP.ecr={raw:'',headers:[],rows:[],mapping:{},sep:';',importing:false};render()">Recommencer</button>
+    </div>
+    <div id="ecr-imp-res"></div>`:''}
+    <div class="import-step" style="background:var(--bg2);margin-top:14px">
+      <h3 style="font-size:12px;margin-bottom:8px">ðŸ“„ Format CSV exemple</h3>
+      <code style="font-size:11px;color:var(--txt2);line-height:2;display:block;font-family:monospace">
+        Date;NÂ° PiÃ¨ce;Compte;LibellÃ©;DÃ©bit;CrÃ©dit<br>
+        05/09/2025;REC-001;7561 - Cotisations membres actifs;Cotisation Lucas Dupont;;320.00<br>
+        01/10/2025;FAC-089;6061 - Fournitures non stockÃ©es;Gants de boxe;150.00;
+      </code>
+    </div>
+  </div>`;
+}
+
+function vBackup(){
+  return`<div>
+    <div class="view-head">
+      <div>
+        <div class="eyebrow">SÃ©curitÃ© des donnÃ©es</div>
+        <h2>Sauvegarde et exports</h2>
+        <p>Centralisez les sauvegardes du club et rÃ©cupÃ©rez rapidement les exports nÃ©cessaires pour le suivi administratif ou comptable.</p>
+      </div>
+    </div>
+    <div class="g2" style="margin-bottom:14px">
+      <div class="card"><p style="font-weight:500;margin-bottom:6px">ðŸ’¾ Export JSON</p>
+        <p style="font-size:12px;color:var(--txt2);margin-bottom:10px">Sauvegarde complÃ¨te de toutes les donnÃ©es.</p>
+        <button class="btn primary" onclick="backupJSON()">TÃ©lÃ©charger</button>
+      </div>
+      <div class="card"><p style="font-weight:500;margin-bottom:6px">ðŸ“¥ Import JSON</p>
+        <p style="font-size:12px;color:var(--txt2);margin-bottom:10px">Restaure une sauvegarde complÃ¨te et remplace les donnÃ©es courantes dans Supabase.</p>
+        <button class="btn ${IMP.backup.restoring?'':'gold'}" onclick="triggerBackupImport()" ${IMP.backup.restoring?'disabled':''}>${IMP.backup.restoring?'Import en cours...':'Choisir un fichier'}</button>
+        ${IMP.backup.lastMessage?`<div class="${IMP.backup.lastMessage.includes('Erreur')?'imp-err':'imp-ok'}" style="margin-top:10px">${IMP.backup.lastMessage}</div>`:''}
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:14px"><p style="font-weight:500;margin-bottom:6px">ðŸ“ Drive du club</p>
+      <p style="font-size:12px;color:var(--txt2);margin-bottom:10px">DÃ©posez le backup dans le dossier partagÃ©.</p>
+      <a href="https://drive.google.com/drive/folders/1CJc6yK6XBvpz4n78kasiLLKbJCk9y6-m" target="_blank" class="btn">Ouvrir Drive â†—</a>
+    </div>
+    <div class="card">
+      <p style="font-weight:500;margin-bottom:8px">ðŸ“Š Exports CSV</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn sm" onclick="exportCSV()">AdhÃ©rents</button>
+        <button class="btn sm" onclick="exportAchatsCSV()">Achats</button>
+        <button class="btn sm" onclick="exportJournalCSV()">Journal</button>
+      </div>
+    </div>
+    <p style="font-size:12px;color:var(--txt2);margin-top:12px">âœ“ DonnÃ©es sauvegardÃ©es automatiquement dans Supabase Ã  chaque action.</p>
+  </div>`;
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// MODALS
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+function renderModal(){
+  document.querySelector('.modal-bg')?.remove();
+  if(!UI.modal) return;
+  let html='';
+
+  if(UI.modal==='adh'){
+    const a=UI.editObj||{nom:'',prenom:'',naissance:'',couleur_ceinture:'',numero_licence:'',email:'',telephone:'',adresse:'',code_postal:'',ville:'',discipline:'Club',droit_image:false,certificat:false,pass_region:false,montant_pass_region:0,reglement:false,cotisation:0,paiement:'Virement',statut:'Actif',date_inscription:td(),date_fin_adhesion:'',urgence_nom:'',urgence_telephone:'',urgence_lien:'',notes:'',pdf_public_url:'',pdf_nom_fichier:''};
+    const signupDocs=getAdherentDocuments(a.id);
+    html=`<div class="modal" style="max-width:720px"><h2>ðŸ‘¥ ${UI.editObj?'Modifier':'Nouvel'} adhÃ©rent</h2>
+    <div class="g2">
+      <div class="fg"><label>Nom</label><input id="f-nom" value="${a.nom}"></div>
+      <div class="fg"><label>PrÃ©nom</label><input id="f-prn" value="${a.prenom}"></div>
+      <div class="fg"><label>Date de naissance</label><input id="f-nai" type="date" value="${a.naissance||''}"></div>
+      <div class="fg"><label>Type adhÃ©sion</label><select id="f-dis" onchange="onAdhTypeChange(this.value)">${ADH_TYPES.map(d=>`<option ${a.discipline===d?'selected':''}>${d}</option>`).join('')}</select></div>
+      <div class="fg"><label>Couleur de ceinture</label><select id="f-cei"><option value="">â€”</option>${CEINTURE_COLORS.map(c=>`<option value="${c}" ${a.couleur_ceinture===c?'selected':''}>${c}</option>`).join('')}${a.couleur_ceinture&&!CEINTURE_COLORS.includes(a.couleur_ceinture)?`<option value="${a.couleur_ceinture}" selected>${a.couleur_ceinture}</option>`:''}</select></div>
+      <div class="fg"><label>NumÃ©ro de licence</label><input id="f-lic" value="${a.numero_licence||''}" placeholder="Ex. 12345678"></div>
+      <div class="fg"><label>Email</label><input id="f-eml" value="${a.email||''}"></div>
+      <div class="fg"><label>TÃ©lÃ©phone</label><input id="f-tel" value="${a.telephone||''}"></div>
+      <div class="fg full"><label>Adresse</label><input id="f-adr" value="${a.adresse||''}"></div>
+      <div class="fg"><label>Code postal</label><input id="f-cp" value="${a.code_postal||''}"></div>
+      <div class="fg"><label>Ville</label><input id="f-vil" value="${a.ville||''}"></div>
+      <div class="fg full" style="background:var(--bg2);padding:10px;border-radius:var(--r)">
+        <p style="font-size:12px;font-weight:500;margin-bottom:8px">Documents administratifs</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer"><input type="checkbox" id="f-di" ${a.droit_image?'checked':''} style="width:auto;accent-color:var(--red)"> Droit Ã  l'image</label>
+          <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer"><input type="checkbox" id="f-ce" ${a.certificat?'checked':''} style="width:auto;accent-color:var(--red)"> Certificat mÃ©dical</label>
+          <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer"><input type="checkbox" id="f-ri" ${a.reglement?'checked':''} style="width:auto;accent-color:var(--red)"> RÃ¨glement intÃ©rieur</label>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer">
+            <input type="checkbox" id="f-pr" ${a.pass_region?'checked':''} style="width:auto;accent-color:var(--red)" onchange="document.getElementById('f-mpr').style.display=this.checked?'flex':'none'"> Pass RÃ©gion
+          </label>
+          <div id="f-mpr" style="display:${a.pass_region?'flex':'none'};align-items:center;gap:6px">
+            <span style="font-size:12px;color:var(--txt2)">Montant pass :</span>
+            <input id="f-mpr-val" type="number" value="${a.montant_pass_region||0}" min="0" step="0.01" style="width:80px">
+            <span style="font-size:12px;color:var(--txt2)">â‚¬</span>
+          </div>
+        </div>
+      </div>
+      <div class="fg"><label>Cotisation (â‚¬)</label><input id="f-cot" type="number" value="${a.cotisation||0}" min="0" step="0.01"></div>
+      <div class="fg"><label>Mode de paiement</label><select id="f-pay">${MODES_PAIE.map(p=>`<option ${a.paiement===p?'selected':''}>${p}</option>`).join('')}</select></div>
+      <div class="fg"><label>Date d'inscription</label><input id="f-di2" type="date" value="${a.date_inscription||td()}" onchange="if(!document.getElementById('f-fin').value)document.getElementById('f-fin').value=defaultAdhesionEnd(this.value)"></div>
+      <div class="fg"><label>Date fin d'adhÃ©sion</label><input id="f-fin" type="date" value="${a.date_fin_adhesion||defaultAdhesionEnd(a.date_inscription||td())}"></div>
+      <div class="fg"><label>Statut</label><select id="f-sta">${ADH_STATUTS.map(s=>`<option ${a.statut===s?'selected':''}>${s}</option>`).join('')}</select></div>
+      <div class="fg full" style="background:var(--bg2);padding:10px;border-radius:var(--r)">
+        <p style="font-size:12px;font-weight:500;margin-bottom:8px">Personne Ã  prÃ©venir en cas d'urgence</p>
+        <div class="g3">
+          <div class="fg"><label>Nom</label><input id="f-urn" value="${a.urgence_nom||''}"></div>
+          <div class="fg"><label>TÃ©lÃ©phone</label><input id="f-urt" value="${a.urgence_telephone||''}"></div>
+          <div class="fg"><label>Lien (parent, conjoint...)</label><input id="f-url" value="${a.urgence_lien||''}"></div>
+        </div>
+      </div>
+      <div class="fg full" style="background:var(--bg2);padding:10px;border-radius:var(--r)">
+        <p style="font-size:12px;font-weight:500;margin-bottom:8px">Document PDF adhÃ©rent</p>
+        ${a.id?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="btn sm" onclick="trigPDF('adherents','${a.id}')">${a.pdf_public_url?'Remplacer le PDF':'TÃ©lÃ©verser un PDF'}</button>
+          ${a.pdf_public_url?`<a class="btn sm" href="${a.pdf_public_url}" target="_blank">Ouvrir</a><span style="font-size:12px;color:var(--txt2)">${a.pdf_nom_fichier||'document.pdf'}</span>`:`<span style="font-size:12px;color:var(--txt2)">Aucun fichier stockÃ©</span>`}
+        </div>`:`<p style="font-size:12px;color:var(--txt2)">Enregistrez d'abord l'adhÃ©rent, puis ajoutez son PDF.</p>`}
+      </div>
+      <div class="fg full" style="background:var(--bg2);padding:10px;border-radius:var(--r)">
+        <p style="font-size:12px;font-weight:500;margin-bottom:8px">PiÃ¨ces de l'inscription en ligne</p>
+        ${signupDocs.length?`<div style="display:flex;flex-direction:column;gap:8px">
+          ${signupDocs.map(doc=>`<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
+            <div>
+              <div style="font-size:13px;font-weight:600">${esc(doc.label)}</div>
+              <div style="font-size:12px;color:var(--txt2)">${esc(doc.name)}</div>
+            </div>
+            <a class="btn sm" href="${doc.url}" target="_blank">Ouvrir</a>
+          </div>`).join('')}
+        </div>`:`<p style="font-size:12px;color:var(--txt2)">Aucune piÃ¨ce issue de l'inscription web n'est rattachÃ©e Ã  cet adhÃ©rent.</p>`}
+      </div>
+      <div class="fg full"><label>Notes</label><textarea id="f-not" rows="2" style="resize:vertical">${a.notes||''}</textarea></div>
+    </div>
+    <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="saveAdh('${a.id||''}')">Enregistrer</button></div>
+    </div>`;
+
+  }else if(UI.modal==='compte'){
+    html=`<div class="modal" style="max-width:380px"><h2>ðŸ¦ Nouveau compte</h2>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div class="fg"><label>Nom</label><input id="c-nom" placeholder="Compte principal CM"></div>
+      <div class="fg"><label>NumÃ©ro</label><input id="c-num" placeholder="30027 xxxxx"></div>
+      <div class="fg"><label>Solde initial (â‚¬)</label><input id="c-sol" type="number" value="0" step="0.01"></div>
+    </div>
+    <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="saveCpt()">CrÃ©er</button></div>
+    </div>`;
+
+  }else if(UI.modal==='ecr'){
+    const e=UI.editObj||{date_op:td(),piece:'',compte:'471 - Comptes d attente',contrepartie:'512 - Banque',libelle:'',debit:0,credit:0};
+    html=`<div class="modal" style="max-width:540px"><h2>ðŸ“Š Nouvelle Ã©criture</h2>
+    <div class="g2">
+      <div class="fg"><label>Date</label><input id="e-dat" type="date" value="${e.date_op||td()}"></div>
+      <div class="fg"><label>NÂ° piÃ¨ce</label><input id="e-pie" value="${esc(e.piece||'')}" placeholder="FAC-2025-001"></div>
+      <div class="fg full"><label>Compte â€” Plan comptable loi 1901</label><select id="e-cpt" style="width:100%">${PLAN.map(p=>`<option value="${p}" ${p===e.compte?'selected':''}>${p}</option>`).join('')}</select></div>
+      <div class="fg full"><label>Compte de contrepartie</label><select id="e-cpt-ctr" style="width:100%">${PLAN.map(p=>`<option value="${p}" ${p===e.contrepartie?'selected':''}>${p}</option>`).join('')}</select></div>
+      <div class="fg full"><label>LibellÃ©</label><input id="e-lib" value="${esc(e.libelle||'')}" placeholder="Description de l'opÃ©ration"></div>
+      <div class="fg"><label>DÃ©bit (â‚¬)</label><input id="e-deb" type="number" value="${e.debit||0}" min="0" step="0.01"></div>
+      <div class="fg"><label>CrÃ©dit (â‚¬)</label><input id="e-cre" type="number" value="${e.credit||0}" min="0" step="0.01"></div>
+    </div>
+    <div style="background:var(--bg2);border-radius:var(--r);padding:10px;margin-top:12px;font-size:12px;color:var(--txt2)">Si vous ne renseignez qu'un dÃ©bit ou qu'un crÃ©dit, la ligne de contrepartie sera crÃ©Ã©e automatiquement pour garder le journal Ã©quilibrÃ©.</div>
+    <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="saveEcr()">Enregistrer</button></div>
+    </div>`;
+
+  }else if(UI.modal==='equilibre_help'){
+    const issues=pieceBalanceDiagnostics(jnlExo());
+    const totalEcart=issues.reduce((sum,issue)=>sum+Math.abs(issue.ecart),0);
+    html=`<div class="modal" style="max-width:860px"><h2>ðŸ§­ Assistant dÃ©sÃ©quilibres</h2>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="card" style="padding:14px">
+        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">
+          <div>
+            <strong style="font-weight:600">${D.currentExo?.libelle||'Exercice actif'}</strong>
+            <div style="font-size:12px;color:var(--txt2);margin-top:4px">RepÃ©rez les piÃ¨ces dÃ©sÃ©quilibrÃ©es, corrigez-les une par une ou lancez une rÃ©gularisation globale sur le compte 471.</div>
+          </div>
+          <span class="badge ${issues.length?'bno':'bok'}">${issues.length?`${issues.length} piÃ¨ce(s) Ã  traiter`:'Journal Ã©quilibrÃ©'}</span>
+        </div>
+        <div class="g3" style="margin-top:12px">
+          <div class="sc"><div class="v ${issues.length?'vr':'vg'}">${issues.length}</div><div class="l">PiÃ¨ces dÃ©sÃ©quilibrÃ©es</div></div>
+          <div class="sc"><div class="v vr">${totalEcart.toFixed(2)} â‚¬</div><div class="l">Ã‰cart cumulÃ© absolu</div></div>
+          <div class="sc"><div class="v vg">${jnlExo().length}</div><div class="l">Lignes du journal</div></div>
+        </div>
+        ${issues.length?`<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+          ${hasPerm('perm_comptabilite','write')?`<button class="btn gold" onclick="regulariserEquilibreExo()">RÃ©gulariser tout sur 471</button>`:''}
+          <button class="btn" onclick="closeModal()">Fermer</button>
+        </div>`:`<div><div class="imp-ok" style="margin-top:12px">Aucune anomalie dÃ©tectÃ©e sur l'exercice actif.</div><div style="margin-top:12px"><button class="btn" onclick="closeModal()">Fermer</button></div></div>`}
+      </div>
+      ${issues.map(issue=>{const analysis=buildEquilibreSuggestions(issue);return `<div class="card" style="padding:14px">
+        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">
+          <div>
+            <strong style="font-weight:600">${esc(issue.piece)}</strong>
+            <div style="font-size:12px;color:var(--txt2);margin-top:4px">${fd(issue.firstDate)} Â· ${issue.rows.length} ligne(s) Â· DÃ©bit ${issue.debit.toFixed(2)} â‚¬ Â· CrÃ©dit ${issue.credit.toFixed(2)} â‚¬</div>
+          </div>
+          <span class="badge ${issue.ecart===0?'bok':'bno'}">Ã‰cart ${issue.ecart>0?'+':''}${issue.ecart.toFixed(2)} â‚¬</span>
+        </div>
+        <div style="margin-top:10px;padding:10px 12px;background:var(--bg2);border-radius:14px;font-size:12px;color:var(--txt2)">
+          <strong style="display:block;color:var(--txt);font-weight:600;margin-bottom:4px">Analyse</strong>
+          Type probable : ${analysis.pieceType==='achat'?'achat':analysis.pieceType==='vente'?'vente':analysis.pieceType==='adhesion'?'adhÃ©sion / encaissement':'Ã©criture gÃ©nÃ©rale'} Â·
+          il manque ${analysis.needSide==='credit'?'un crÃ©dit':'un dÃ©bit'} de <strong style="color:var(--txt)">${analysis.amount.toFixed(2)} â‚¬</strong>.
+          ${analysis.exactAccounts.length?`Comptes dÃ©jÃ  prÃ©sents : ${analysis.exactAccounts.map(esc).join(', ')}.`:'Aucun compte exploitable dÃ©tectÃ© dans la piÃ¨ce.'}
+        </div>
+        <div style="margin-top:10px;font-size:12px;color:var(--txt2)">
+          ${issue.rows.slice(0,4).map(row=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:4px 0;border-bottom:.5px solid var(--brd)">
+            <span style="min-width:0;flex:1"><strong style="font-weight:500;color:var(--txt)">${esc(row.compte||'')}</strong> Â· ${esc(row.libelle||'')}</span>
+            <span style="white-space:nowrap">${(+row.debit||0).toFixed(2)} / ${(+row.credit||0).toFixed(2)} â‚¬</span>
+          </div>`).join('')}
+          ${issue.rows.length>4?`<div style="margin-top:6px">â€¦ ${issue.rows.length-4} autre(s) ligne(s)</div>`:''}
+        </div>
+        <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
+          ${analysis.suggestions.map((s,idx)=>`<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--brd);border-radius:14px;background:rgba(255,255,255,.62)">
+            <div style="min-width:240px;flex:1">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <strong style="font-weight:600">${esc(s.compte)}</strong>
+                <span class="badge ${idx===0?'bok':'bgray'}">${idx===0?'Suggestion prioritaire':`Score ${s.score}`}</span>
+              </div>
+              <div style="font-size:12px;color:var(--txt2);margin-top:4px">${esc(s.reason)}</div>
+            </div>
+            ${hasPerm('perm_comptabilite','write')?`<button class="btn ${idx===0?'primary':''}" onclick='regulariserPieceEquilibreAvecCompte(${JSON.stringify(issue.key)}, ${JSON.stringify(s.compte)}, ${JSON.stringify('RÃ©gularisation suggÃ©rÃ©e')})'>Utiliser</button>`:''}
+          </div>`).join('')}
+        </div>
+        ${hasPerm('perm_comptabilite','write')?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+          <button class="btn" onclick='regulariserPieceEquilibre(${JSON.stringify(issue.key)})'>Forcer sur 471</button>
+        </div>`:''}
+      </div>`;}).join('')}
+    </div>
+    </div>`;
+
+  }else if(UI.modal==='achat'){
+    const a=UI.editObj||{date_op:td(),fournisseur:'',designation:'',categorie:'Ã‰quipement',montant:0,mode_paiement:'Virement',reference_paiement:'',statut:'nouveau',piece:'',notes:'',pdf_public_url:'',pdf_nom_fichier:''};
+    html=`<div class="modal" style="max-width:580px"><h2>ðŸ›’ ${UI.editObj?'Modifier':'Nouvel'} achat</h2>
+    <div class="g2">
+      <div class="fg"><label>Date</label><input id="a-dat" type="date" value="${a.date_op}"></div>
+      <div class="fg"><label>Fournisseur</label><input id="a-fou" value="${a.fournisseur}"></div>
+      <div class="fg full"><label>DÃ©signation</label><input id="a-des" value="${a.designation||''}"></div>
+      <div class="fg"><label>CatÃ©gorie</label><select id="a-cat">${['Ã‰quipement','Location','Textile','Fournitures','Transport','Formation','Autre'].map(c=>`<option ${a.categorie===c?'selected':''}>${c}</option>`).join('')}</select></div>
+      <div class="fg"><label>Montant TTC (â‚¬)</label><input id="a-mnt" type="number" value="${a.montant}" min="0" step="0.01"></div>
+      <div class="fg"><label>Mode de paiement</label><select id="a-mod">${MODES_PAIE.map(p=>`<option ${a.mode_paiement===p?'selected':''}>${p}</option>`).join('')}</select></div>
+      <div class="fg"><label>RÃ©fÃ©rence paiement</label><input id="a-ref" value="${a.reference_paiement||''}" placeholder="NÂ° chÃ¨que, rÃ©f. virement..."></div>
+      <div class="fg"><label>NÂ° piÃ¨ce justificative</label><input id="a-pie" value="${a.piece||''}" placeholder="FA-001"></div>
+      <div class="fg"><label>Statut</label><select id="a-sta">${[['nouveau','Nouveau'],['valide','ValidÃ©'],['paye','PayÃ©'],['refuse','RefusÃ©']].map(([v,l])=>`<option value="${v}" ${a.statut===v?'selected':''}>${l}</option>`).join('')}</select></div>
+      <div class="fg full" style="background:var(--bg2);padding:10px;border-radius:var(--r)">
+        <p style="font-size:12px;font-weight:500;margin-bottom:8px">Facture PDF</p>
+        ${a.id?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="btn sm" onclick="trigPDF('achats','${a.id}')">${a.pdf_public_url?'Remplacer le PDF':'TÃ©lÃ©verser le PDF'}</button>
+          ${a.pdf_public_url?`<a class="btn sm" href="${a.pdf_public_url}" target="_blank">Ouvrir</a><span style="font-size:12px;color:var(--txt2)">${a.pdf_nom_fichier||'facture.pdf'}</span>`:`<span style="font-size:12px;color:var(--txt2)">Aucun fichier stockÃ©</span>`}
+        </div>`:`<p style="font-size:12px;color:var(--txt2)">Enregistrez d'abord l'achat, puis ajoutez sa facture PDF.</p>`}
+      </div>
+      <div class="fg full"><label>Notes</label><textarea id="a-not" rows="2" style="resize:vertical">${a.notes||''}</textarea></div>
+    </div>
+    <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="saveAchat('${a.id||''}')">Enregistrer</button></div>
+    </div>`;
+
+  }else if(UI.modal==='user'){
+    const u=UI.editObj||{prenom:'',nom:'',email:'',mot_de_passe:'',role:'membre',actif:true};
+    html=`<div class="modal" style="max-width:440px"><h2>âš™ï¸ ${UI.editObj?'Modifier':'Nouvel'} utilisateur</h2>
+    <div class="g2">
+      <div class="fg"><label>PrÃ©nom</label><input id="u-pre" value="${u.prenom}"></div>
+      <div class="fg"><label>Nom</label><input id="u-nom" value="${u.nom}"></div>
+      <div class="fg full"><label>Email (identifiant de connexion)</label><input id="u-eml" type="email" value="${u.email||''}"></div>
+      <div class="fg full"><label>Mot de passe${UI.editObj?' (vide = inchangÃ©)':''}</label><input id="u-pwd" type="password" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"></div>
+      <div class="fg"><label>RÃ´le</label><select id="u-rol">${Object.entries(ROLES).map(([k,v])=>`<option value="${k}" ${u.role===k?'selected':''}>${v}</option>`).join('')}</select></div>
+      <div class="fg"><label>Statut</label><select id="u-act"><option value="1" ${u.actif?'selected':''}>Actif</option><option value="0" ${!u.actif?'selected':''}>Inactif</option></select></div>
+    </div>
+    <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="saveUser('${u.id||''}')">Enregistrer</button></div>
+    </div>`;
+
+  }else if(UI.modal==='pwd'){
+    html=`<div class="modal" style="max-width:440px"><h2>ðŸ” Modifier mon mot de passe</h2>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="fg"><label>Mot de passe actuel</label><input id="pwd-cur" type="password" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"></div>
+      <div class="fg"><label>Nouveau mot de passe</label><input id="pwd-new" type="password" placeholder="Au moins 6 caractÃ¨res"></div>
+      <div class="fg"><label>Confirmation</label><input id="pwd-cfm" type="password" placeholder="RÃ©pÃ©tez le nouveau mot de passe"></div>
+    </div>
+    <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="saveOwnPassword()">Enregistrer</button></div>
+    </div>`;
+
+  }else if(UI.modal==='exo'){
+    const yr=new Date().getFullYear();
+    html=`<div class="modal" style="max-width:440px"><h2>ðŸ“… Nouvel exercice</h2>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="fg"><label>LibellÃ©</label><input id="exo-lib" value="Exercice ${yr}-${yr+1}"></div>
+      <div class="fg"><label>Date de dÃ©but</label><input id="exo-deb" type="date" value="${yr}-09-01"></div>
+      <div class="fg"><label>Date de fin</label><input id="exo-fin" type="date" value="${yr+1}-08-31"></div>
+    </div>
+    <div style="background:var(--gold-l);border-radius:var(--r);padding:10px;margin-top:12px;font-size:12px;color:var(--gold-d)">âš  Pensez Ã  archiver l'exercice courant avant d'en crÃ©er un nouveau.</div>
+    <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="saveExo()">CrÃ©er</button></div>
+    </div>`;
+  }else if(UI.modal==='exo_close'){
+    const exo=UI.editObj||D.currentExo;
+    const diag=exerciceDiagnostics(exo?.id);
+    const next=nextExerciceDefaults(exo);
+    html=`<div class="modal" style="max-width:720px"><h2>ðŸ§¾ Assistant de clÃ´ture</h2>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="card" style="padding:14px">
+        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <div><strong style="font-weight:600">${exo?.libelle||'Exercice'}</strong><div style="font-size:12px;color:var(--txt2);margin-top:4px">${fd(exo?.date_debut)} â†’ ${fd(exo?.date_fin)}</div></div>
+          <span class="badge ${diag.ecartJournal===0?'bok':'bno'}">${diag.ecartJournal===0?'Ã‰quilibrÃ©':'DÃ©sÃ©quilibrÃ©'}</span>
+        </div>
+        <div class="g4" style="margin-top:12px">
+          <div class="sc"><div class="v vr">${diag.totalDebit.toFixed(2)} â‚¬</div><div class="l">DÃ©bits</div></div>
+          <div class="sc"><div class="v vg">${diag.totalCredit.toFixed(2)} â‚¬</div><div class="l">CrÃ©dits</div></div>
+          <div class="sc"><div class="v ${diag.resultat>=0?'vg':'vr'}">${diag.resultat>=0?'+':''}${diag.resultat.toFixed(2)} â‚¬</div><div class="l">RÃ©sultat</div></div>
+          <div class="sc"><div class="v ${diag.ecartJournal===0?'vg':'vr'}">${diag.ecartJournal.toFixed(2)} â‚¬</div><div class="l">Ã‰cart</div></div>
+        </div>
+        ${diag.issues.length?`<div class="imp-err" style="margin-top:12px">Des piÃ¨ces sont dÃ©sÃ©quilibrÃ©es. Corrigez-les avant la clÃ´ture ou utilisez la rÃ©gularisation automatique.<div style="margin-top:6px;font-size:11px">${diag.issues.slice(0,4).map(i=>`${i.piece} : ${i.ecart.toFixed(2)} â‚¬`).join('<br>')}</div></div>`:`<div class="imp-ok" style="margin-top:12px">Le journal de l'exercice est prÃªt pour la clÃ´ture.</div>`}
+      </div>
+      <div class="card" style="padding:14px">
+        <p style="font-weight:600;margin-bottom:10px">Ã‰tapes de clÃ´ture</p>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:10px;cursor:pointer"><input id="exo-close-report" type="checkbox" checked style="width:auto;accent-color:var(--red)"> Reporter automatiquement le rÃ©sultat sur le compte 1060 - RÃ©serves</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px;cursor:pointer"><input id="exo-close-next" type="checkbox" checked style="width:auto;accent-color:var(--red)" onchange="document.getElementById('exo-next-fields').style.display=this.checked?'grid':'none'"> CrÃ©er automatiquement le nouvel exercice actif</label>
+        <div id="exo-next-fields" class="g3" style="display:grid">
+          <div class="fg full"><label>LibellÃ© du nouvel exercice</label><input id="exo-next-lib" value="${next.libelle}"></div>
+          <div class="fg"><label>Date de dÃ©but</label><input id="exo-next-deb" type="date" value="${next.date_debut}"></div>
+          <div class="fg"><label>Date de fin</label><input id="exo-next-fin" type="date" value="${next.date_fin}"></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-act">
+      ${diag.issues.length?`<button class="btn gold" onclick="regulariserEquilibreExo()">RÃ©gulariser d'abord</button>`:''}
+      <button class="btn" onclick="closeModal()">Annuler</button>
+      <button class="btn primary" onclick="finalizeExoClose('${exo?.id||''}')" ${diag.ecartJournal!==0?'disabled':''}>ClÃ´turer l'exercice</button>
+    </div>
+    </div>`;
+  }
+
+  if(!html) return;
+  const div=document.createElement('div');
+  div.className='modal-bg';div.innerHTML=html;
+  div.addEventListener('click',e=>{if(e.target===div)closeModal()});
+  document.getElementById('app').appendChild(div);
+}
+
+function openModal(t,id){
+  const permMap={adh:'perm_adherents',compte:'perm_banque',ecr:'perm_comptabilite',achat:'perm_achats',user:'perm_administration',exo:'perm_comptabilite',exo_close:'perm_comptabilite'};
+  if(permMap[t] && !requireWritePerm(permMap[t])) return;
+  UI.modal=t;UI.editObj=null;
+  if(id){
+    if(t==='adh')   UI.editObj=D.adherents.find(a=>a.id===id);
+    if(t==='achat') UI.editObj=D.achats.find(a=>a.id===id);
+    if(t==='facture') UI.editObj=D.factures.find(f=>f.id===id);
+    if(t==='user')  UI.editObj=D.users.find(u=>u.id===id);
+    if(t==='exo_close') UI.editObj=D.exercices.find(e=>e.id===id);
+  }
+  renderModal();
+}
+function openPasswordModal(){
+  if(!UI.currentUser?.id) return;
+  UI.modal='pwd';
+  UI.editObj=null;
+  renderModal();
+}
+function forcePasswordRotation(){
+  openPasswordModal();
+  alert('Votre mot de passe doit Ãªtre renouvelÃ© avant de continuer.');
+}
+function closeModal(){UI.modal=null;UI.editObj=null;renderModal()}
+
+function achatCompteAuto(categorie){
+  const map={
+    'Ã‰quipement':'6051 - Achats de matÃ©riels et Ã©quipements sportifs',
+    'Location':'6132 - Locations immobiliÃ¨res',
+    'Textile':'6052 - Achats de textile et tenues',
+    'Fournitures':'6061 - Fournitures non stockÃ©es',
+    'Transport':'6241 - Transports sur achats',
+    'Formation':'6226 - Honoraires',
+    'Autre':'6580 - Charges diverses de gestion courante',
+  };
+  return map[categorie]||'6580 - Charges diverses de gestion courante';
+}
+
+function venteCompteAuto(f){
+  const txt=`${f.objet||''} ${(f.lignes||[]).map(l=>l.desc||'').join(' ')}`.toLowerCase();
+  if(txt.includes('manifestation')||txt.includes('buvette')||txt.includes('sponsor')) return '7080 - Produits des activitÃ©s annexes';
+  if(txt.includes('cotisation')) return '7561 - Cotisations membres actifs';
+  if(txt.includes('stage')||txt.includes('cours')) return '7061 - Cours et stages';
+  return '7060 - Prestations de services';
+}
+
+function paiementCompteAuto(mode){
+  if(mode==='Gratuit') return '471 - Comptes d attente';
+  return mode==='EspÃ¨ces' ? '5300 - Caisse' : '512 - Banque';
+}
+
+function autoPiece(type,id){
+  return `${type==='achat'?'ACH':'VTE'}-${String(id).slice(0,8)}`;
+}
+
+function autoPiecePrefix(type,id){
+  return `${type}-${String(id).slice(0,8)}`;
+}
+
+function totalVente(f){
+  return (f.lignes||[]).reduce((s,l)=>s+(+l.qte||0)*(+l.pu||0),0);
+}
+
+function libelleAchatAuto(a){
+  return `Achat - ${a.fournisseur}${a.designation?` - ${a.designation}`:''}${a.piece?` - PiÃ¨ce ${a.piece}`:''}`;
+}
+
+function libelleVenteAuto(f){
+  return `Vente - ${f.destinataire||'Client'}${f.objet?` - ${f.objet}`:''}${f.numero?` - ${f.numero}`:''}`;
+}
+
+async function upsertJournalAuto(entry){
+  const existing=D.journal.find(j=>j.piece===entry.piece);
+  if(existing){
+    const {error}=await SB.from('journal_comptable').update(entry).eq('id',existing.id);
+    if(error) throw error;
+    Object.assign(existing,entry);
+  }else{
+    const {data,error}=await SB.from('journal_comptable').insert(entry).select().single();
+    if(error) throw error;
+    D.journal.push(data);
+  }
+  D.journal.sort((a,b)=>(a.date_op||'').localeCompare(b.date_op||''));
+}
+
+async function deleteJournalAuto(piece){
+  const rows=D.journal.filter(j=>j.piece===piece||(j.piece||'').startsWith(`${piece}-`));
+  if(rows.length===0) return;
+  const ids=rows.map(r=>r.id);
+  const {error}=await SB.from('journal_comptable').delete().in('id',ids);
+  if(error) throw error;
+  D.journal=D.journal.filter(j=>!ids.includes(j.id));
+}
+
+async function deleteJournalAutoPrefix(prefix){
+  const rows=D.journal.filter(j=>(j.piece||'').startsWith(prefix));
+  if(rows.length===0) return;
+  const ids=rows.map(r=>r.id);
+  const {error}=await SB.from('journal_comptable').delete().in('id',ids);
+  if(error) throw error;
+  D.journal=D.journal.filter(j=>!ids.includes(j.id));
+}
+
+async function insertJournalRows(rows){
+  if(!rows.length) return;
+  const {data,error}=await SB.from('journal_comptable').insert(rows).select();
+  if(error) throw error;
+  D.journal.push(...(data||[]));
+  D.journal.sort((a,b)=>(a.date_op||'').localeCompare(b.date_op||''));
+}
+
+async function syncAchatJournal(achat){
+  const piece=autoPiece('achat',achat.id);
+  await deleteJournalAuto(piece);
+  if(achat.statut==='refuse'||achat.statut==='nouveau'||!(+achat.montant>0)){
+    return;
+  }
+  const montant=parseFloat(achat.montant)||0;
+  const dateOp=achat.date_op||td();
+  const compteContrepartie=achat.statut==='paye' ? paiementCompteAuto(achat.mode_paiement) : '401 - Fournisseurs';
+  await insertJournalRows([
+    {
+      date_op:dateOp,
+      piece:`${piece}-CHG`,
+      compte:achatCompteAuto(achat.categorie),
+      libelle:libelleAchatAuto(achat),
+      debit:montant,
+      credit:0,
+      exercice_id:achat.exercice_id||D.currentExo?.id||null
+    },
+    {
+      date_op:dateOp,
+      piece:`${piece}-CTR`,
+      compte:compteContrepartie,
+      libelle:libelleAchatAuto(achat),
+      debit:0,
+      credit:montant,
+      exercice_id:achat.exercice_id||D.currentExo?.id||null
+    }
+  ]);
+}
+
+async function syncVenteJournal(facture){
+  const piece=autoPiece('vente',facture.id);
+  const total=totalVente(facture);
+  await deleteJournalAuto(piece);
+  if(!(total>0)){
+    return;
+  }
+  const dateOp=facture.date_op||facture.date||td();
+  const libelle=libelleVenteAuto(facture);
+  await insertJournalRows([
+    {
+      date_op:dateOp,
+      piece:`${piece}-CLI`,
+      compte:'411 - AdhÃ©rents et clients',
+      libelle,
+      debit:total,
+      credit:0,
+      exercice_id:facture.exercice_id||D.currentExo?.id||null
+    },
+    {
+      date_op:dateOp,
+      piece:`${piece}-PRO`,
+      compte:venteCompteAuto(facture),
+      libelle,
+      debit:0,
+      credit:total,
+      exercice_id:facture.exercice_id||D.currentExo?.id||null
+    }
+  ]);
+}
+
+async function syncAdherentJournal(adherent){
+  const prefix=autoPiecePrefix('ADH',adherent.id);
+  await deleteJournalAutoPrefix(prefix);
+
+  const cotisation=adherent.paiement==='Gratuit' ? 0 : (parseFloat(adherent.cotisation)||0);
+  const passRegion=adherent.pass_region ? (parseFloat(adherent.montant_pass_region)||0) : 0;
+  const total=cotisation+passRegion;
+  if(total<=0) return;
+
+  const dateOp=adherent.date_inscription||td();
+  const base={
+    date_op:dateOp,
+    exercice_id:adherent.exercice_id||D.currentExo?.id||null
+  };
+  const nom=`${adherent.nom||''} ${adherent.prenom||''}`.trim();
+  const comptePaiement=paiementCompteAuto(adherent.paiement);
+  const rows=[
+    {
+      ...base,
+      piece:`${prefix}-ENC`,
+      compte:comptePaiement,
+      libelle:`Encaissement adhÃ©sion - ${nom}`,
+      debit:total,
+      credit:0
+    }
+  ];
+  if(cotisation>0){
+    rows.push({
+      ...base,
+      piece:`${prefix}-COT`,
+      compte:'7561 - Cotisations membres actifs',
+      libelle:`Cotisation adhÃ©rent - ${nom}`,
+      debit:0,
+      credit:cotisation
+    });
+  }
+  if(passRegion>0){
+    rows.push({
+      ...base,
+      piece:`${prefix}-PAS`,
+      compte:'7088 - Participations et produits accessoires Pass RÃ©gion',
+      libelle:`Pass RÃ©gion - ${nom}`,
+      debit:0,
+      credit:passRegion
+    });
+  }
+  await insertJournalRows(rows);
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// SAVE
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+async function saveAdh(id){
+  if(!requireExerciceActif()) return;
+  const g=n=>document.getElementById(n);
+  const inscription=g('f-di2').value||td();
+  const finAdhesion=g('f-fin').value||defaultAdhesionEnd(inscription);
+  const discipline=g('f-dis').value;
+  const d=normalizeAdherentFinance({nom:g('f-nom').value.trim(),prenom:g('f-prn').value.trim(),naissance:g('f-nai').value||null,couleur_ceinture:g('f-cei').value.trim(),numero_licence:g('f-lic').value.trim(),discipline,email:g('f-eml').value.trim().toLowerCase(),telephone:g('f-tel').value.trim(),adresse:g('f-adr').value.trim(),code_postal:g('f-cp').value.trim(),ville:g('f-vil').value.trim(),droit_image:g('f-di').checked,certificat:g('f-ce').checked,pass_region:g('f-pr').checked,montant_pass_region:parseFloat(g('f-mpr-val')?.value)||0,reglement:g('f-ri').checked,cotisation:parseFloat(g('f-cot').value)||0,paiement:g('f-pay').value,statut:g('f-sta').value,date_inscription:inscription,date_fin_adhesion:finAdhesion,urgence_nom:g('f-urn').value.trim(),urgence_telephone:g('f-urt').value.trim(),urgence_lien:g('f-url').value.trim(),notes:g('f-not').value,exercice_id:D.currentExo?.id||null,updated_at:new Date().toISOString()});
+  if(!d.nom||!d.prenom)return alert('Nom et prÃ©nom obligatoires');
+  if(id){
+    const {error}=await SB.from('adherents').update(d).eq('id',id);
+    if(error)return alert('Erreur : '+error.message);
+    const idx=D.adherents.findIndex(a=>a.id===id);
+    if(idx>=0)D.adherents[idx]={...D.adherents[idx],...d};
+    try{
+      await syncAdherentJournal(idx>=0?{...D.adherents[idx],id}:{...d,id});
+    }catch(e){
+      return alert('AdhÃ©rent enregistrÃ©, mais Ã©critures comptables non synchronisÃ©es : '+e.message);
+    }
+  }else{
+    const {data,error}=await SB.from('adherents').insert(d).select().single();
+    if(error)return alert('Erreur : '+error.message);
+    D.adherents.push(data);
+    D.adherents=sortAdherentsList(D.adherents);
+    try{
+      await syncAdherentJournal(data);
+    }catch(e){
+      return alert('AdhÃ©rent crÃ©Ã©, mais Ã©critures comptables non crÃ©Ã©es : '+e.message);
+    }
+  }
+  closeModal();render();
+}
+
+async function saveCpt(){
+  const nom=document.getElementById('c-nom').value.trim();if(!nom)return;
+  const d={nom,numero:document.getElementById('c-num').value.trim(),solde_initial:parseFloat(document.getElementById('c-sol').value)||0};
+  const {data,error}=await SB.from('comptes_bancaires').insert(d).select().single();
+  if(error)return alert('Erreur : '+error.message);
+  D.comptes.push({...data,transactions:[]});
+  closeModal();render();
+}
+
+async function saveEcr(){
+  if(!requireExerciceActif()) return;
+  const lib=document.getElementById('e-lib').value.trim();if(!lib)return alert('LibellÃ© obligatoire');
+  const dateOp=document.getElementById('e-dat').value;
+  const piece=document.getElementById('e-pie').value.trim()||`MAN-${Date.now()}`;
+  const compte=document.getElementById('e-cpt').value;
+  const contrepartie=document.getElementById('e-cpt-ctr').value;
+  const debit=parseFloat(document.getElementById('e-deb').value)||0;
+  const credit=parseFloat(document.getElementById('e-cre').value)||0;
+  if(debit<=0&&credit<=0)return alert('Saisissez un dÃ©bit ou un crÃ©dit.');
+  if(debit>0&&credit>0)return alert('Saisissez un seul montant par ligne. La contrepartie sera crÃ©Ã©e automatiquement.');
+  const rows=[
+    {date_op:dateOp,piece:`${piece}-L1`,compte,libelle:lib,debit,credit,exercice_id:D.currentExo?.id||null},
+    {date_op:dateOp,piece:`${piece}-L2`,compte:contrepartie,libelle:`Contrepartie - ${lib}`,debit:credit>0?credit:0,credit:debit>0?debit:0,exercice_id:D.currentExo?.id||null}
+  ];
+  try{
+    await insertJournalRows(rows);
+  }catch(error){
+    return alert('Erreur : '+error.message);
+  }
+  closeModal();render();
+}
+
+async function saveAchat(id){
+  if(!requireExerciceActif()) return;
+  const g=n=>document.getElementById(n);
+  const d={date_op:g('a-dat').value,fournisseur:g('a-fou').value.trim(),designation:g('a-des').value.trim(),categorie:g('a-cat').value,montant:parseFloat(g('a-mnt').value)||0,mode_paiement:g('a-mod').value,reference_paiement:g('a-ref').value.trim(),statut:g('a-sta').value,piece:g('a-pie').value.trim(),notes:g('a-not').value,exercice_id:D.currentExo?.id||null,updated_at:new Date().toISOString()};
+  if(!d.fournisseur)return alert('Fournisseur obligatoire');
+  if(id){
+    const {error}=await SB.from('achats').update(d).eq('id',id);
+    if(error)return alert('Erreur : '+error.message);
+    const idx=D.achats.findIndex(a=>a.id===id);
+    if(idx>=0)D.achats[idx]={...D.achats[idx],...d};
+    try{
+      await syncAchatJournal(idx>=0?{...D.achats[idx],id}:{...d,id});
+    }catch(e){
+      return alert('Achat enregistrÃ©, mais Ã©criture comptable non synchronisÃ©e : '+e.message);
+    }
+  }else{
+    const {data,error}=await SB.from('achats').insert(d).select().single();
+    if(error)return alert('Erreur : '+error.message);
+    D.achats.unshift(data);
+    try{
+      await syncAchatJournal(data);
+    }catch(e){
+      return alert('Achat enregistrÃ©, mais Ã©criture comptable non crÃ©Ã©e : '+e.message);
+    }
+  }
+  closeModal();render();
+}
+async function delAchat(id){
+  if(!confirm('Supprimer ?'))return;
+  await SB.from('achats').delete().eq('id',id);
+  try{await deleteJournalAuto(autoPiece('achat',id));}catch(e){return alert('Achat supprimÃ©, mais Ã©criture comptable non supprimÃ©e : '+e.message);}
+  D.achats=D.achats.filter(a=>a.id!==id);render()
+}
+async function validerAchat(id){
+  await SB.from('achats').update({statut:'valide'}).eq('id',id);
+  const achat=D.achats.find(a=>a.id===id);
+  if(achat){
+    achat.statut='valide';
+    try{await syncAchatJournal(achat);}catch(e){return alert('Achat validÃ©, mais Ã©criture comptable non synchronisÃ©e : '+e.message);}
+  }
+  render()
+}
+
+async function saveUser(id){
+  const g=n=>document.getElementById(n);
+  const pwd=g('u-pwd').value;
+  const d={prenom:g('u-pre').value.trim(),nom:g('u-nom').value.trim(),email:g('u-eml').value.trim().toLowerCase(),role:g('u-rol').value,actif:g('u-act').value==='1'};
+  // CompatibilitÃ© avec les anciennes bases oÃ¹ les permissions utilisateur
+  // sont stockÃ©es dans des colonnes boolÃ©ennes NOT NULL.
+  // La granularitÃ© read/write reste pilotÃ©e par D.rolePerms via club_info.
+  const rolePerms=cloneRolePerms(D.rolePerms)[d.role]||DEFAULT_ROLE_PERMS[d.role]||{};
+  PERM_META.forEach(([perm])=>{ d[perm]=(rolePerms[perm]||'none')!=='none'; });
+  if(pwd) d.mot_de_passe=pwd;
+  const safeLocal={...d};
+  delete safeLocal.mot_de_passe;
+  if(!d.prenom||!d.nom||!d.email)return alert('PrÃ©nom, nom et email obligatoires');
+  if(id){
+    const {error}=await SB.from('utilisateurs').update(d).eq('id',id);
+    if(error)return alert('Erreur : '+error.message);
+    const idx=D.users.findIndex(u=>u.id===id);if(idx>=0)D.users[idx]={...D.users[idx],...safeLocal,must_change_password:pwd?true:D.users[idx].must_change_password};
+  }else{
+    if(!pwd)return alert('Mot de passe obligatoire');
+    const {data,error}=await SB.from('utilisateurs').insert(d).select().single();
+    if(error)return alert('Erreur : '+error.message);
+    D.users.push(normalizeUserRow(data));
+  }
+  closeModal();render();
+}
+
+async function saveOwnPassword(){
+  if(!UI.currentUser?.id) return;
+  const current=document.getElementById('pwd-cur').value;
+  const next=document.getElementById('pwd-new').value;
+  const confirmPwd=document.getElementById('pwd-cfm').value;
+  if(!next || next.length<8) return alert('Le nouveau mot de passe doit contenir au moins 8 caractÃ¨res.');
+  if(next!==confirmPwd) return alert('La confirmation du mot de passe ne correspond pas.');
+  const {error}=await apiRequest('/auth/password',{
+    method:'POST',
+    body:JSON.stringify({currentPassword:current,newPassword:next})
+  });
+  if(error) return alert('Erreur : '+error.message);
+  UI.currentUser={...UI.currentUser,must_change_password:false};
+  const idx=D.users.findIndex(u=>u.id===UI.currentUser.id);
+  if(idx>=0) D.users[idx]={...D.users[idx],must_change_password:false};
+  closeModal();
+  notify('success','Mot de passe mis Ã  jour.');
+}
+
+async function saveExo(){
+  const lib=document.getElementById('exo-lib').value.trim();
+  const deb=document.getElementById('exo-deb').value;
+  const fin=document.getElementById('exo-fin').value;
+  if(!lib||!deb||!fin)return alert('Tous les champs sont obligatoires');
+  return createExo({libelle:lib,date_debut:deb,date_fin:fin},true);
+}
+
+async function createExo(payload,archiveActive){
+  const lib=payload.libelle?.trim();
+  const deb=payload.date_debut;
+  const fin=payload.date_fin;
+  if(!lib||!deb||!fin)return alert('Tous les champs sont obligatoires');
+  if(archiveActive){
+    const actifs=D.exercices.filter(e=>e.statut==='actif');
+    if(actifs.length){
+      const ids=actifs.map(e=>e.id);
+      const {error:archiveError}=await SB.from('exercices').update({statut:'archive'}).in('id',ids);
+      if(archiveError)return alert('Erreur : '+archiveError.message);
+      D.exercices=D.exercices.map(e=>ids.includes(e.id)?{...e,statut:'archive'}:e);
+    }
+  }
+  const {data,error}=await SB.from('exercices').insert({libelle:lib,date_debut:deb,date_fin:fin,statut:'actif'}).select().single();
+  if(error)return alert('Erreur : '+error.message);
+  D.exercices.unshift(data);
+  refreshCurrentExo();
+  closeModal();render();
+  return data;
+}
+
+async function finalizeExoClose(id){
+  const exo=D.exercices.find(e=>e.id===id);
+  if(!exo) return;
+  const diag=exerciceDiagnostics(exo.id);
+  if(diag.ecartJournal!==0) return alert('Lâ€™exercice nâ€™est pas Ã©quilibrÃ©. RÃ©gularisez-le avant de le clÃ´turer.');
+  const doReport=document.getElementById('exo-close-report')?.checked;
+  const doNext=document.getElementById('exo-close-next')?.checked;
+  if(doReport&&Math.abs(diag.resultat)>=0.01){
+    const prefix=`CLO-${String(exo.id).slice(0,8)}`;
+    try{
+      await deleteJournalPiecePrefix(prefix);
+      await insertJournalRows([
+        {date_op:exo.date_fin||td(),piece:`${prefix}-RES1`,compte:diag.resultat>=0?'1200 - RÃ©sultat de l exercice excÃ©dent':'1290 - RÃ©sultat de l exercice dÃ©ficit',libelle:`ClÃ´ture rÃ©sultat - ${exo.libelle}`,debit:diag.resultat>=0?Math.abs(diag.resultat):0,credit:diag.resultat<0?Math.abs(diag.resultat):0,exercice_id:exo.id},
+        {date_op:exo.date_fin||td(),piece:`${prefix}-RES2`,compte:'1060 - RÃ©serves',libelle:`Affectation rÃ©sultat - ${exo.libelle}`,debit:diag.resultat<0?Math.abs(diag.resultat):0,credit:diag.resultat>=0?Math.abs(diag.resultat):0,exercice_id:exo.id}
+      ]);
+    }catch(error){
+      return alert('Erreur lors du report du rÃ©sultat : '+error.message);
+    }
+  }
+  const payload={statut:'cloture',date_cloture:new Date().toISOString()};
+  const {error}=await SB.from('exercices').update(payload).eq('id',id);
+  if(error) return alert('Erreur : '+error.message);
+  D.exercices=D.exercices.map(e=>e.id===id?{...e,...payload}:e);
+  if(doNext){
+    const nextPayload={libelle:document.getElementById('exo-next-lib').value.trim(),date_debut:document.getElementById('exo-next-deb').value,date_fin:document.getElementById('exo-next-fin').value};
+    const created=await createExo(nextPayload,false);
+    if(!created) return;
+  }else{
+    refreshCurrentExo();
+    closeModal();
+    render();
+  }
+}
+
+async function saveClub(){
+  if(!requireWritePerm('perm_administration')) return;
+  const g=n=>document.getElementById(n)?.value||'';
+  const ups=[{cle:'nom',valeur:g('ci-nom')},{cle:'adresse',valeur:g('ci-adr')},{cle:'telephone',valeur:g('ci-tel')},{cle:'email',valeur:g('ci-email')},{cle:'siret',valeur:g('ci-siret')},{cle:'ape',valeur:g('ci-ape')}];
+  await SB.from('club_info').upsert(ups,{onConflict:'cle'});
+  ups.forEach(u=>D.clubInfo[u.cle]=u.valeur);
+  document.getElementById('hdr-nom').textContent=D.clubInfo.nom;
+  alert('Infos club sauvegardÃ©es !');
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// BANQUE
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+async function importBankCSV(e){
+  const file=e.target.files[0];if(!file)return;
+  const cid=document.getElementById('cible-cpt')?.value;
+  const c=D.comptes.find(x=>x.id===cid);if(!c)return;
+  const r=new FileReader();
+  r.onload=async ev=>{
+    const lines=ev.target.result.split(/\r?\n/).filter(l=>l.trim());
+    const existing=new Set((c.transactions||[]).map(transactionFingerprint));
+    const rows=[];
+    lines.slice(1).forEach(line=>{
+      const cols=line.split(';').map(x=>x.trim().replace(/"/g,''));
+      if(cols.length<4)return;
+      const row={compte_id:cid,date_op:cols[0],libelle:cols[1],debit:parseFloat((cols[2]||'0').replace(',','.').replace('-','0'))||0,credit:parseFloat((cols[3]||'0').replace(',','.').replace('-','0'))||0,rapproche:false,source_document:'credit_mutuel_csv',source_format:'csv'};
+      const fp=transactionFingerprint(row);
+      if(existing.has(fp)) return;
+      existing.add(fp);
+      rows.push(row);
+    });
+    if(!rows.length)return alert('Aucune ligne valide ou toutes les opÃ©rations existent dÃ©jÃ .');
+    const {data,error}=await SB.from('transactions').insert(rows).select();
+    if(error)return alert('Erreur : '+error.message);
+    c.transactions=[...(c.transactions||[]),...(data||[])];
+    alert(`${(data||[]).length} transaction(s) importÃ©e(s) !`);render();
+  };
+  r.readAsText(file,'ISO-8859-1');
+  e.target.value='';
+}
+
+async function readPdfPages(file){
+  if(typeof pdfjsLib==='undefined') throw new Error('La bibliothÃ¨que PDF.js n est pas chargÃ©e.');
+  const bytes=await file.arrayBuffer();
+  const pdf=await pdfjsLib.getDocument({data:bytes}).promise;
+  const pages=[];
+  for(let i=1;i<=pdf.numPages;i++){
+    const page=await pdf.getPage(i);
+    const content=await page.getTextContent();
+    const lines=new Map();
+    content.items.forEach(it=>{
+      const x=it.transform?.[4]||0;
+      const y=Math.round((it.transform?.[5]||0)*2)/2;
+      if(!lines.has(y)) lines.set(y,[]);
+      lines.get(y).push({x,str:it.str||'',width:it.width||0});
+    });
+    const ordered=[...lines.entries()].sort((a,b)=>b[0]-a[0]);
+    const pageLines=ordered.map(([y,items])=>{
+      items.sort((a,b)=>a.x-b.x);
+      let line='';
+      let prevX=0;
+      items.forEach((it,idx)=>{
+        const gap=idx===0?0:Math.max(1,Math.round((it.x-prevX)/6));
+        line += (idx===0?'':' '.repeat(Math.min(gap,20))) + it.str;
+        prevX=it.x + (it.str||'').length*3.2;
+      });
+      return {y,text:line.replace(/\s+$/,''),items};
+    });
+    pages.push({pageNumber:i,lines:pageLines});
+  }
+  return pages;
+}
+
+function pagesToText(pages){
+  return pages.map(p=>p.lines.map(l=>l.text).join('\n')).join('\n');
+}
+
+function numFr(v){
+  if(!v) return 0;
+  const s=(v+'').replace(/\s+/g,'').replace(/\./g,'').replace(',', '.');
+  const n=parseFloat(s);
+  return Number.isFinite(n)?n:0;
+}
+
+function normalizeLine(s){
+  return s.replace(/\s+/g,' ').trim();
+}
+
+function parseCreditMutuelPdfText(text){
+  const lines=text.split(/\r?\n/).map(normalizeLine).filter(Boolean);
+  const rows=[];
+  let lastRow=null;
+  const stopMeta=/^HT\.|^QXBAN|^IBAN|^Vous disposez|^Alerte|^Attention|^Information sur la protection|^Sous rÃ©serve|^CAISSE DE CREDIT MUTUEL|^TVA intracommunautaire|^MÃ©diateur du CrÃ©dit Mutuel|^Pour toute demande/i;
+
+  function inferBankSide(libelle){
+    const t=(libelle||'').toUpperCase();
+    if(/VIR EPARGNE|PASSEPORT SPOR|FULL FIGHTING|VIR ACHAT|ACHAT | ACHAT|PRLV|FACT|CARTE|CB |COTIS\.|VIR SEPA|CHEQUE|CHQ|FRAIS|TEL(E|Ã‰)COM|BOUYGUES|ORANGE|SFR/.test(t)) return 'debit';
+    if(/VIR DE|VIR INST|VERSEMENT|REMISE|SOUTIEN|SUBVENTION|HELLOASSO|COTISATION|PASSAGE CEINTURE/.test(t)) return 'credit';
+    return 'credit';
+  }
+
+  function extractAmounts(str){
+    const out=[];
+    const re=/(?:^|[^\d])(-?\d{1,3}(?:[ .]\d{3})*,\d{2}|-?\d+,\d{2})(?!\d)/g;
+    let m;
+    while((m=re.exec(str))!==null) out.push(m[1]);
+    return out;
+  }
+
+  for(let i=0;i<lines.length;i++){
+    const line=lines[i];
+    if(/solde crediteur|solde dÃ©biteur|releve et informations bancaires|iban|page \d+/i.test(line) || stopMeta.test(line)){
+      if(stopMeta.test(line)) lastRow=null;
+      continue;
+    }
+    if(lastRow && !/^\d{2}\/\d{2}\/\d{4}\b/.test(line) && !/solde crediteur|total des mouvements|iban|qxban|information sur la protection/i.test(line) && !stopMeta.test(line)){
+      if(!/^\d[\d.\s]*,\d{2}$/.test(line)) lastRow.libelle += ` ${line}`;
+      continue;
+    }
+    const m=line.match(/^(\d{2}\/\d{2}\/\d{4})\s+(\d{2}\/\d{2}\/\d{4})\s+(.+?)$/);
+    if(!m) continue;
+    const dateOp=m[1];
+    const dateValeur=m[2];
+    let rest=m[3].trim();
+    let debit=0,credit=0;
+
+    const trailingAmounts=extractAmounts(rest);
+    if(trailingAmounts.length>=2){
+      const a=trailingAmounts.slice(-2).map(numFr);
+      debit=a[0]||0;
+      credit=a[1]||0;
+      rest=rest.replace(/\s*(?:-?\d{1,3}(?:[ .]\d{3})*,\d{2}|-?\d+,\d{2})\s*(?:-?\d{1,3}(?:[ .]\d{3})*,\d{2}|-?\d+,\d{2})\s*$/,'').trim();
+    }else if(trailingAmounts.length===1){
+      const amount=numFr(trailingAmounts[0]);
+      rest=rest.replace(/\s*(?:-?\d{1,3}(?:[ .]\d{3})*,\d{2}|-?\d+,\d{2})\s*$/,'').trim();
+      if(inferBankSide(rest)==='debit') debit=amount; else credit=amount;
+    }else{
+      let amount=0;
+      for(let j=i+1;j<Math.min(lines.length,i+6);j++){
+        const next=lines[j]||'';
+        if(/^R[Ã©e]f\s*:|^Ref\s*:/i.test(next)){
+          rest+=` ${next}`;
+          i=j;
+          continue;
+        }
+        if(stopMeta.test(next)) break;
+        if(/^-?\d[\d.\s]*,\d{2}$/.test(next)){
+          amount=numFr(next);
+          i=j;
+          break;
+        }
+        if(/^\d{2}\/\d{2}\/\d{4}\b/.test(next) || /solde crediteur|solde dÃ©biteur|total des mouvements/i.test(next)) break;
+        if(next && !/qxban|iban|information sur la protection/i.test(next)) rest+=` ${next}`;
+      }
+      if(!amount) continue;
+      if(inferBankSide(rest)==='debit') debit=amount; else credit=amount;
+    }
+    lastRow={
+      date_op:dateOp,
+      date_valeur:frDateToISO(dateValeur),
+      libelle:rest || 'OpÃ©ration importÃ©e depuis PDF CrÃ©dit Mutuel',
+      debit,
+      credit,
+      rapproche:false,
+      source_document:'credit_mutuel_pdf',
+      source_format:'pdf'
+    };
+    rows.push(lastRow);
+  }
+  return rows;
+}
+
+function parseCreditMutuelPdfPages(pages){
+  const rows=[];
+  const stopMeta=/^HT\.|^QXBAN|^IBAN|^Vous disposez|^Alerte|^Attention|^Information sur la protection|^Sous rÃ©serve|^CAISSE DE CREDIT MUTUEL|^TVA intracommunautaire|^MÃ©diateur du CrÃ©dit Mutuel|^Pour toute demande/i;
+  let debitX=null,creditX=null;
+
+  function findAmountItems(items){
+    return items
+      .filter(it=>/^-?\d{1,3}(?:[ .]\d{3})*,\d{2}$|^-?\d+,\d{2}$/.test(normalizeLine(it.str)))
+      .map(it=>({value:numFr(it.str),x:(it.x||0)+((it.width||0)/2),raw:it.str}));
+  }
+
+  for(const page of pages){
+    for(const line of page.lines){
+      const txt=normalizeLine(line.text);
+      if(!txt) continue;
+      if(txt.includes('DÃ©bit EUROS')){
+        const debitItem=line.items.find(it=>/DÃ©bit/i.test(it.str));
+        if(debitItem) debitX=(debitItem.x||0)+((debitItem.width||0)/2);
+      }
+      if(txt.includes('CrÃ©dit EUROS')){
+        const creditItem=line.items.find(it=>/CrÃ©dit|Credit/i.test(it.str));
+        if(creditItem) creditX=(creditItem.x||0)+((creditItem.width||0)/2);
+      }
+    }
+  }
+
+  for(const page of pages){
+    let current=null;
+    for(const line of page.lines){
+      const txt=normalizeLine(line.text);
+      if(!txt) continue;
+      if(/solde crediteur|solde dÃ©biteur|releve et informations bancaires|iban|page \d+|total des mouvements/i.test(txt) || stopMeta.test(txt)){
+        if(stopMeta.test(txt)) current=null;
+        continue;
+      }
+      const m=txt.match(/^(\d{2}\/\d{2}\/\d{4})\s+(\d{2}\/\d{2}\/\d{4})\s+(.+?)$/);
+      if(m){
+        const amountItems=findAmountItems(line.items);
+        let rest=m[3].trim();
+        let debit=0,credit=0;
+        if(amountItems.length>=2){
+          const sorted=amountItems.sort((a,b)=>a.x-b.x);
+          debit=sorted[0].value||0;
+          credit=sorted[1].value||0;
+          rest=rest.replace(/\s*(?:-?\d{1,3}(?:[ .]\d{3})*,\d{2}|-?\d+,\d{2})\s*(?:-?\d{1,3}(?:[ .]\d{3})*,\d{2}|-?\d+,\d{2})\s*$/,'').trim();
+        }else if(amountItems.length===1){
+          const amount=amountItems[0].value||0;
+          rest=rest.replace(/\s*(?:-?\d{1,3}(?:[ .]\d{3})*,\d{2}|-?\d+,\d{2})\s*$/,'').trim();
+          if(debitX!=null && creditX!=null){
+            const dx=Math.abs(amountItems[0].x-debitX);
+            const cx=Math.abs(amountItems[0].x-creditX);
+            if(dx<=cx) debit=amount; else credit=amount;
+          }else{
+            const fallback=parseCreditMutuelPdfText(`${txt}\n`);
+            debit=fallback[0]?.debit||0;
+            credit=fallback[0]?.credit||0;
+          }
+        }else{
+          continue;
+        }
+        current={date_op:m[1],date_valeur:frDateToISO(m[2]),libelle:rest||'OpÃ©ration importÃ©e depuis PDF CrÃ©dit Mutuel',debit,credit,rapproche:false,source_document:'credit_mutuel_pdf',source_format:'pdf'};
+        rows.push(current);
+        continue;
+      }
+      if(current && !stopMeta.test(txt) && !/solde crediteur|total des mouvements|iban|qxban|information sur la protection/i.test(txt)){
+        if(!/^-?\d[\d.\s]*,\d{2}$/.test(txt)) current.libelle += ` ${txt}`;
+      }
+    }
+  }
+  return rows;
+}
+
+async function importBankPDF(e){
+  const file=e.target.files[0];
+  if(!file) return;
+  const cid=document.getElementById('cible-cpt')?.value;
+  const c=D.comptes.find(x=>x.id===cid);
+  e.target.value='';
+  if(!c) return alert('Compte cible obligatoire.');
+  try{
+    const pages=await readPdfPages(file);
+    const text=pagesToText(pages);
+    const parsedRows=parseCreditMutuelPdfPages(pages);
+    const existing=new Set((c.transactions||[]).map(transactionFingerprint));
+    const parsed=(parsedRows.length?parsedRows:parseCreditMutuelPdfText(text))
+      .map(r=>({...r,compte_id:cid}))
+      .filter(r=>{
+        const fp=transactionFingerprint(r);
+        if(existing.has(fp)) return false;
+        existing.add(fp);
+        return true;
+      });
+    if(!parsed.length) return alert('Aucune opÃ©ration exploitable dÃ©tectÃ©e dans ce PDF, ou toutes les opÃ©rations sont dÃ©jÃ  importÃ©es.');
+    const {data,error}=await SB.from('transactions').insert(parsed).select();
+    if(error) return alert('Erreur : '+error.message);
+    c.transactions=[...(c.transactions||[]),...(data||[])];
+    render();
+    alert(`${(data||[]).length} transaction(s) importÃ©e(s) depuis le PDF.`);
+  }catch(err){
+    alert('Import PDF impossible : '+err.message);
+  }
+}
+
+async function rapprocher(id,i){
+  const ecr=document.getElementById(`ecr-${i}`);
+  await SB.from('transactions').update({rapproche:true,ecriture_piece:ecr?ecr.value:''}).eq('id',id);
+  const t=D.comptes.flatMap(c=>c.transactions||[]).find(x=>x.id===id);
+  if(t){t.rapproche=true;t.ecriture_piece=ecr?.value||'';}render();
+}
+function suggestRapprochementPiece(transaction){
+  const amount=Math.max(+transaction.credit||0,+transaction.debit||0);
+  const txDate=frDateToISO(transaction.date_op)||transaction.date_op||'';
+  const candidate=D.journal.find(entry=>{
+    const entryAmount=Math.max(+entry.credit||0,+entry.debit||0);
+    const sameAmount=Math.abs(entryAmount-amount)<0.01;
+    const delta=Math.abs(new Date(entry.date_op||txDate)-new Date(txDate))/(1000*60*60*24);
+    return sameAmount && delta<=7;
+  });
+  return candidate?.piece||'';
+}
+function preselectRapprochements(){
+  D.comptes.flatMap(c=>c.transactions||[]).forEach((transaction,index)=>{
+    if(transaction.rapproche) return;
+    const select=document.getElementById(`ecr-${index}`);
+    const suggestion=suggestRapprochementPiece(transaction);
+    if(select && suggestion) select.value=suggestion;
+  });
+}
+async function toutRappr(){
+  const ids=D.comptes.flatMap(c=>(c.transactions||[]).filter(t=>!t.rapproche).map(t=>t.id));
+  if(!ids.length)return;
+  await SB.from('transactions').update({rapproche:true}).in('id',ids);
+  D.comptes.forEach(c=>(c.transactions||[]).forEach(t=>{t.rapproche=true}));render();
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// LOGO
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+function importLogo(e){
+  const file=e.target.files[0];if(!file)return;
+  const r=new FileReader();
+  r.onload=()=>{D.logoUrl=clubLogoUrl();render();alert("L'import direct n'est pas disponible ici. Utilisez l'URL du logo publiÃ©e.");};
+  r.readAsDataURL(file);
+}
+function loadLogoUrl(){
+  D.logoUrl=clubLogoUrl();updLogo();alert('Le logo configurÃ© a Ã©tÃ© appliquÃ©.');
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// IMPORT CSV ADHÃ‰RENTS
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+function parseCSV(txt,sep){
+  const lines=txt.split(/\r?\n/).filter(l=>l.trim());
+  if(!lines.length)return{headers:[],rows:[]};
+  const headers=lines[0].split(sep).map(h=>h.trim().replace(/^["']|["']$/g,''));
+  const rows=lines.slice(1).map(line=>{
+    const vals=csvSplit(line,sep);
+    const obj={};
+    headers.forEach((h,i)=>obj[h]=(vals[i]||'').trim().replace(/^["']|["']$/g,''));
+    return obj;
+  }).filter(r=>Object.values(r).some(v=>v.trim()));
+  return{headers,rows};
+}
+function csvSplit(line,sep){
+  const res=[];let cur='';let inQ=false;
+  for(let i=0;i<line.length;i++){
+    const c=line[i];
+    if(c==='"'&&!inQ){inQ=true;continue;}
+    if(c==='"'&&inQ){inQ=false;continue;}
+    if(c===sep&&!inQ){res.push(cur);cur='';continue;}
+    cur+=c;
+  }
+  res.push(cur);return res;
+}
+function autoMap(headers,fields){
+  const m={};
+  fields.forEach(f=>{
+    const hLow=headers.map(h=>h.toLowerCase().trim());
+    for(const alias of f.aliases){
+      const idx=hLow.findIndex(h=>h===alias||h.includes(alias));
+      if(idx>=0){m[f.key]=headers[idx];break;}
+    }
+  });
+  return m;
+}
+
+function onImpAdhFile(e){
+  const file=e.target.files[0];if(!file)return;
+  const r=new FileReader();
+  r.onload=ev=>{IMP.adh.raw=ev.target.result.replace(/^\uFEFF/,'');parseImpAdh(IMP.adh.raw);};
+  r.readAsText(file,'UTF-8');
+  e.target.value='';
+}
+function parseImpAdh(txt){
+  const {headers,rows}=parseCSV(txt,IMP.adh.sep);
+  IMP.adh.headers=headers;IMP.adh.rows=rows;
+  IMP.adh.mapping=autoMap(headers,ADH_FIELDS);
+  showST('admin','imp_adh');
+}
+
+async function doImportAdh(){
+  if(!requireExerciceActif()) return;
+  const m=IMP.adh.mapping;
+  if(!m.nom||!m.prenom){
+    document.getElementById('adh-imp-res').innerHTML=`<div class="imp-err">âœ— Les colonnes Nom et PrÃ©nom sont obligatoires</div>`;return;
+  }
+  IMP.adh.importing=true;render();
+  const dateISO=v=>{if(!v)return null;v=v.trim();const x=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);if(x)return`${x[3].length===2?'20'+x[3]:x[3]}-${x[2].padStart(2,'0')}-${x[1].padStart(2,'0')}`;if(/^\d{4}-\d{2}-\d{2}$/.test(v))return v;return null;};
+  const bool=v=>{if(!v)return false;const s=v.toLowerCase().trim();return['oui','yes','true','1','x'].includes(s);};
+  const num=v=>parseFloat((v||'').replace(',','.'))||0;
+  const rows=IMP.adh.rows.map(r=>normalizeAdherentFinance({nom:(r[m.nom]||'').trim().toUpperCase(),prenom:(r[m.prenom]||'').trim(),naissance:dateISO(r[m.naissance]),couleur_ceinture:(r[m.couleur_ceinture]||'').trim(),numero_licence:(r[m.numero_licence]||'').trim(),email:(r[m.email]||'').trim().toLowerCase(),telephone:(r[m.telephone]||'').trim(),adresse:(r[m.adresse]||'').trim(),code_postal:(r[m.code_postal]||'').trim(),ville:(r[m.ville]||'').trim(),discipline:r[m.discipline]||'Club',cotisation:num(r[m.cotisation]),paiement:r[m.paiement]||'ChÃ¨que',date_inscription:dateISO(r[m.date_inscription])||td(),date_fin_adhesion:dateISO(r[m.date_fin_adhesion]),statut:r[m.statut]||'Actif',certificat:bool(r[m.certificat]),droit_image:bool(r[m.droit_image]),reglement:bool(r[m.reglement]),pass_region:bool(r[m.pass_region]),montant_pass_region:num(r[m.montant_pass_region]),urgence_nom:(r[m.urgence_nom]||'').trim(),urgence_telephone:(r[m.urgence_telephone]||'').trim(),notes:(r[m.notes]||'').trim(),exercice_id:D.currentExo?.id||null})).filter(r=>r.nom&&r.prenom);
+  let ok=0,err=0;
+  for(let i=0;i<rows.length;i+=50){
+    const {data,error}=await SB.from('adherents').insert(rows.slice(i,i+50)).select();
+    if(error)err+=50;else{
+      ok+=(data||[]).length;
+      D.adherents.push(...(data||[]));
+      for(const adh of (data||[])){
+        try{await syncAdherentJournal(adh);}catch(e){}
+      }
+    }
+  }
+  D.adherents=sortAdherentsList(D.adherents);
+  IMP.adh.importing=false;
+  const res=document.getElementById('adh-imp-res');
+  if(res)res.innerHTML=`<div class="${err===0?'imp-ok':'imp-warn'}">${err===0?'âœ“':'âš '} Import terminÃ© : <strong>${ok} adhÃ©rent(s)</strong> importÃ©(s)${err>0?` â€” ${err} erreur(s)`:''}.
+    <a href="#" onclick="showTab('adherents');return false" style="margin-left:8px;color:inherit;font-weight:500">Voir la liste â†’</a></div>`;
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// IMPORT CSV Ã‰CRITURES
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+function onImpEcrFile(e){
+  const file=e.target.files[0];if(!file)return;
+  const r=new FileReader();
+  r.onload=ev=>{IMP.ecr.raw=ev.target.result.replace(/^\uFEFF/,'');parseImpEcr(IMP.ecr.raw);};
+  r.readAsText(file,'UTF-8');
+  e.target.value='';
+}
+function parseImpEcr(txt){
+  const {headers,rows}=parseCSV(txt,IMP.ecr.sep);
+  IMP.ecr.headers=headers;IMP.ecr.rows=rows;
+  IMP.ecr.mapping=autoMap(headers,ECR_FIELDS);
+  showST('admin','imp_ecr');
+}
+
+async function doImportEcr(){
+  if(!requireExerciceActif()) return;
+  const m=IMP.ecr.mapping;
+  if(!m.date_op||!m.libelle||(!m.debit&&!m.credit)){
+    document.getElementById('ecr-imp-res').innerHTML=`<div class="imp-err">âœ— Date, LibellÃ© et DÃ©bit/CrÃ©dit sont obligatoires</div>`;return;
+  }
+  IMP.ecr.importing=true;render();
+  const dateISO=v=>{if(!v)return td();v=v.trim();const x=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);if(x)return`${x[3].length===2?'20'+x[3]:x[3]}-${x[2].padStart(2,'0')}-${x[1].padStart(2,'0')}`;if(/^\d{4}-\d{2}-\d{2}$/.test(v))return v;return td();};
+  const num=v=>parseFloat((v||'').toString().replace(',','.').replace(' ',''))||0;
+  let rows=[];
+  try{
+    rows=IMP.ecr.rows.map((r,idx)=>{
+      let deb=num(r[m.debit]),cred=num(r[m.credit]);
+      if(m.debit&&!m.credit&&deb<0){cred=Math.abs(deb);deb=0;}
+      if(deb>0&&cred>0) throw new Error(`Ligne ${idx+2} invalide : renseignez soit le dÃ©bit, soit le crÃ©dit.`);
+      if(deb<=0&&cred<=0) return null;
+      let compte=(r[m.compte]||'').trim();
+      if(compte&&!compte.includes(' - ')){const match=PLAN.find(p=>p.startsWith(compte));if(match)compte=match;}
+      if(!compte)compte='7580 - Autres produits de gestion courante';
+      return{date_op:dateISO(r[m.date_op]),piece:(r[m.piece]||'').trim()||null,compte,libelle:(r[m.libelle]||'').trim(),debit:deb,credit:cred,exercice_id:D.currentExo?.id||null};
+    }).filter(r=>r&&r.libelle);
+  }catch(error){
+    IMP.ecr.importing=false;
+    render();
+    document.getElementById('ecr-imp-res').innerHTML=`<div class="imp-err">âœ• ${error.message}</div>`;
+    return;
+  }
+  const issues=pieceBalanceDiagnostics(rows);
+  if(issues.length){
+    IMP.ecr.importing=false;
+    render();
+    document.getElementById('ecr-imp-res').innerHTML=`<div class="imp-err">âœ• Import refusÃ© : le fichier comptable n'est pas Ã©quilibrÃ©. ${issues.length} piÃ¨ce(s) prÃ©sentent un Ã©cart. PremiÃ¨re piÃ¨ce : <strong>${issues[0].piece}</strong> (${issues[0].ecart.toFixed(2)} â‚¬).</div>`;
+    return;
+  }
+  let ok=0,err=0;
+  for(let i=0;i<rows.length;i+=100){
+    const {data,error}=await SB.from('journal_comptable').insert(rows.slice(i,i+100)).select();
+    if(error)err+=100;else{ok+=(data||[]).length;D.journal.push(...(data||[]));}
+  }
+  D.journal.sort((a,b)=>a.date_op<b.date_op?-1:1);
+  IMP.ecr.importing=false;
+  const res=document.getElementById('ecr-imp-res');
+  if(res)res.innerHTML=`<div class="${err===0?'imp-ok':'imp-warn'}">${err===0?'âœ“':'âš '} Import terminÃ© : <strong>${ok} Ã©criture(s)</strong> importÃ©e(s)${err>0?` â€” ${err} erreur(s)`:''}.
+    <a href="#" onclick="showTab('comptabilite');return false" style="margin-left:8px;color:inherit;font-weight:500">Voir le journal â†’</a></div>`;
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// EXPORTS
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+function dl(c,n,m){const b=new Blob([c],{type:m});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=n;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)}
+function exportCSV(){
+  const rows=[['Nom','PrÃ©nom','Couleur ceinture','NÂ° licence','Type adhÃ©sion','Certif.','Droit image','Pass RÃ©gion','Montant Pass','RÃ¨glement','Cotisation','Paiement','Statut','Saison','Fin adhÃ©sion','Adresse','CP','Ville','Urgence nom','Urgence tÃ©l']];
+  D.adherents.forEach(a=>rows.push([a.nom,a.prenom,a.couleur_ceinture||'',a.numero_licence||'',a.discipline||'Club',a.certificat?'Oui':'Non',a.droit_image?'Oui':'Non',a.pass_region?'Oui':'Non',(+a.montant_pass_region||0).toFixed(2),a.reglement?'Oui':'Non',(+a.cotisation).toFixed(2),a.paiement,a.statut,seasonFromDate(a.date_fin_adhesion||a.date_inscription)||'',a.date_fin_adhesion||'',a.adresse||'',a.code_postal||'',a.ville||'',a.urgence_nom||'',a.urgence_telephone||'']));
+  dl('\uFEFF'+rows.map(r=>r.join(';')).join('\n'),`adherents_${td()}.csv`,'text/csv;charset=utf-8');
+}
+function exportAchatsCSV(){
+  const rows=[['Date','Fournisseur','DÃ©signation','CatÃ©gorie','Montant','Mode paiement','RÃ©fÃ©rence','Statut','PiÃ¨ce']];
+  D.achats.forEach(a=>rows.push([a.date_op,a.fournisseur,a.designation,a.categorie,(+a.montant).toFixed(2),a.mode_paiement||'',a.reference_paiement||'',a.statut,a.piece||'']));
+  dl('\uFEFF'+rows.map(r=>r.join(';')).join('\n'),`achats_${td()}.csv`,'text/csv;charset=utf-8');
+}
+function exportJournalCSV(){
+  const rows=[['Date','PiÃ¨ce','Compte','LibellÃ©','DÃ©bit','CrÃ©dit']];
+  D.journal.forEach(j=>rows.push([j.date_op,j.piece||'',j.compte,j.libelle,(+j.debit).toFixed(2),(+j.credit).toFixed(2)]));
+  dl('\uFEFF'+rows.map(r=>r.join(';')).join('\n'),`journal_${td()}.csv`,'text/csv;charset=utf-8');
+}
+function backupJSON(){
+  dl(JSON.stringify({version:'5.2',date:new Date().toISOString(),adherents:D.adherents,comptes:D.comptes,journal:D.journal,achats:D.achats,factures:D.factures,users:D.users,clubInfo:D.clubInfo,exercices:D.exercices},null,2),`affbc_backup_${td()}.json`,'application/json');
+}
+
+function triggerBackupImport(){
+  document.getElementById('backup-json-input')?.click();
+}
+
+function onBackupJSONFile(e){
+  const file=e.target.files?.[0];
+  if(!file) return;
+  const reader=new FileReader();
+  reader.onload=async ev=>{
+    try{
+      const payload=JSON.parse(ev.target.result);
+      await restoreBackupJSON(payload);
+      IMP.backup.lastMessage='Import JSON terminÃ© avec succÃ¨s.';
+    }catch(err){
+      IMP.backup.lastMessage=`Erreur import JSON : ${err.message||err}`;
+    }
+    IMP.backup.restoring=false;
+    render();
+  };
+  IMP.backup.restoring=true;
+  IMP.backup.lastMessage='';
+  render();
+  reader.readAsText(file,'UTF-8');
+  e.target.value='';
+}
+
+async function restoreBackupJSON(payload){
+  if(!payload||typeof payload!=='object') throw new Error('Fichier JSON invalide.');
+  if(!confirm('Cette restauration va remplacer les donnÃ©es actuelles. Voulez-vous continuer ?')) throw new Error('Import annulÃ©.');
+  const confirmText=window.prompt(`OpÃ©ration critique. Saisissez ${DANGEROUS_RESTORE_PHRASE} pour confirmer la restauration complÃ¨te.`);
+  if(String(confirmText||'').trim().toUpperCase()!==DANGEROUS_RESTORE_PHRASE) throw new Error('Confirmation invalide.');
+  const {error}=await apiRequest('/admin/restore',{
+    method:'POST',
+    body:JSON.stringify({...payload,confirmText:DANGEROUS_RESTORE_PHRASE})
+  });
+  if(error) throw new Error(error.message||'Restauration refusÃ©e.');
+  notify('success','Restauration terminÃ©e. Les donnÃ©es ont Ã©tÃ© rechargÃ©es.');
+  await loadAll();
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// UTILS
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+function bdg(v){return v?`<span class="badge bok">âœ“</span>`:`<span class="badge bno">âœ—</span>`}
+function fd(d){if(!d)return'';if(typeof d==='string'&&d.includes('/'))return d;const s=(d+'').split('T')[0];const p=s.split('-');return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:d}
+function td(){return new Date().toISOString().split('T')[0]}
+function showEl(id,msg){const el=document.getElementById(id);if(el){el.textContent=msg;el.style.display='block';}}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// DÃ‰MARRAGE
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+window.addEventListener('load', async ()=>{
+  const ok=await initBackend();
+  if(!ok){
+    document.body.innerHTML=`<div style="position:fixed;inset:0;background:#1a0a05;display:flex;align-items:center;justify-content:center;font-family:sans-serif">
+      <div style="background:#fff;border-radius:16px;padding:32px;max-width:520px;text-align:center">
+        <div style="font-size:40px;margin-bottom:14px">âš ï¸</div>
+        <h2 style="font-size:18px;margin-bottom:10px">Backend indisponible</h2>
+        <p style="font-size:13px;color:#666;line-height:1.7;margin-bottom:18px">Le backend Cloudflare n'est pas accessible.</p>
+        <button onclick="location.reload()" style="background:#C0392B;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:14px;cursor:pointer">Recharger la page</button>
+      </div>
+    </div>`;
+    return;
+  }
+
+  try{
+    const {data}=await apiRequest('/auth/session');
+    if(data){
+      UI.currentUser=normalizeUserRow(data);
+      document.getElementById('cu-name').textContent=data.prenom||data.nom;
+      document.getElementById('cu-role').textContent=ROLES[data.role]||data.role;
+      document.getElementById('login-screen').style.display='none';
+      document.getElementById('app').style.display='block';
+      resetLoadedData();
+      await loadCoreData(true);
+      await loadTabData(UI.tab,true);
+      if(UI.currentUser?.must_change_password) setTimeout(forcePasswordRotation,120);
+      renderTabs();render();
+      return;
+    }
+  }catch(e){}
+  await preloadClubBranding();
+  showLoginScreen();
+});
