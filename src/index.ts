@@ -12,3 +12,7 @@ export default {
 		});
 	},
 } satisfies ExportedHandler<Env>;
+
+"r2_buckets": [
+  { "binding": "STORAGE", "bucket_name": "storage" }
+]
