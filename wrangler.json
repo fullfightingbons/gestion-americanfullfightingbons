@@ -4,21 +4,35 @@
   "name": "gestion-americanfullfightingbons",
   "upload_source_maps": true,
   "assets": {
-    "directory": "./public"
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": [
+      "/api/*"
+    ]
   },
+  "routes": [
+    {
+      "pattern": "gestion.americanfullfightingbons.fr",
+      "custom_domain": true
+    }
+  ],
   "d1_databases": [
     {
       "binding": "DB",
-      "database_id": "b1a25d5f-481c-447e-aa0c-9c6f2da1eb28",
-      "database_name": "gestion-americanfullfightingbonsdb"
+      "database_id": "678b90d9-5d87-4011-b077-af5a4d0358ee",
+      "database_name": "affbc-production"
     }
   ],
-  "r2_buckets": [
-    {
-      "binding": "STORAGE",
-      "bucket_name": "storage"
-    }
-  ],
+ "r2_buckets": [
+  {
+    "binding": "R2_STORAGE",
+    "bucket_name": "storage"
+  },
+  {
+    "binding": "R2_PDF",
+    "bucket_name": "fullfighting-pdf"
+  }
+],
   "observability": {
     "enabled": true
   }
