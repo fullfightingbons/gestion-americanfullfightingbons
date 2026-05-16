@@ -754,7 +754,7 @@ async function apiRequest(path, options={}){
         notify('warn','Votre session a expiré. Reconnectez-vous pour continuer.','Session expirée');
       }
     }
-    return {data:null,error:{message:payload?.error||`HTTP ${res.status}`,status:res.status}};
+    return {data:null,error:{message:payload?.error?.message||payload?.error||`HTTP ${res.status}`,status:res.status}};
   }
   if(payload && typeof payload==='object' && 'data' in payload){
     return {...payload,error:null};
