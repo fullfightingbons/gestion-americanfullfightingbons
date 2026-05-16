@@ -19,5 +19,12 @@
 		"typescript": "5.9.3",
 		"wrangler": "4.92.0"
 	},
-	"private": true,
+	"scripts": {
+		"cf-typegen": "wrangler types",
+		"check": "tsc && wrangler deploy --dry-run",
+		"deploy": "wrangler deploy",
+		"dev": "wrangler dev",
+		"seedLocalD1": "wrangler d1 migrations apply DB --local"
+	},
+	"private": true
 }
