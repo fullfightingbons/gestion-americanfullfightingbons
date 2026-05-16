@@ -1,16 +1,23 @@
 {
-	"compatibility_date": "2025-10-08",
-	"main": "src/index.ts",
-	"name": "gestion-americanfullfightingbons",
-	"upload_source_maps": true,
-	"d1_databases": [
-		{
-			"binding": "DB",
-			"database_id": "b1a25d5f-481c-447e-aa0c-9c6f2da1eb28",
-			"database_name": "gestion-americanfullfightingbonsdb"
-		}
-	],
-	"observability": {
-		"enabled": true
-	}
+  "compatibility_date": "2025-10-08",
+  "main": "src/index.ts",
+  "name": "gestion-americanfullfightingbons",
+  "upload_source_maps": true,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_id": "b1a25d5f-481c-447e-aa0c-9c6f2da1eb28",
+      "database_name": "gestion-americanfullfightingbonsdb"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "STORAGE",
+      "bucket_name": "storage"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
 }
+
