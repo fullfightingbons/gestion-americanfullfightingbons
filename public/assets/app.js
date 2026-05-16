@@ -2,7 +2,7 @@
 // CONSTANTES
 // ═══════════════════════════════════════════════════
 const CLOUDFLARE_API_BASE = '/api';
-const FORCED_LOGO_URL = '';
+const FORCED_LOGO_URL = '/assets/logo-club.png';
 const DIPLOME_BUCKET = 'storage';
 const DIPLOME_IMAGE_RE = /\.(png|jpe?g|webp)$/i;
 const DIPLOME_LAYOUTS_KEY = 'diplome_layouts';
