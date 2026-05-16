@@ -2,6 +2,7 @@
   "compatibility_date": "2025-10-08",
   "main": "src/index.ts",
   "name": "gestion-americanfullfightingbons",
+  "migrations_dir": "migrations",
   "upload_source_maps": true,
   "assets": {
     "directory": "./public",
@@ -28,7 +29,6 @@
       "binding": "DB",
       "database_id": "678b90d9-5d87-4011-b077-af5a4d0358ee",
       "database_name": "affbc-production",
-      "migrations_dir": "migrations"
     }
   ],
   "r2_buckets": [
