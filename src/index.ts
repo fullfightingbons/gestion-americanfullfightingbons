@@ -1,4 +1,4 @@
-// ─────────────────────────────────────────────────────────────
+// // ─────────────────────────────────────────────────────────────
 // Worker principal — AFFBC Gestion du club
 // ─────────────────────────────────────────────────────────────
 
@@ -110,7 +110,7 @@ function quoteIdentifier(value: string): string {
 }
 
 function getBucket(env: Env, bucketName: string): R2Bucket | null {
-  if (bucketName === "storage") return (env as any).R2_STORAGE ?? (env as any).STORAGE ?? null;
+  if (bucketName === "storage") return (env as any).R2_STORAGE ?? null;
   if (bucketName === "fullfighting-pdf") return (env as any).R2_PDF ?? null;
   return null;
 }
@@ -387,7 +387,7 @@ function hasStoragePermission(
     return hasPermission(user, "perm_administration", mode);
   }
   if (bucketName === "storage") {
-    if (normalized.startsWith("Diplôme/") || normalized === "Diplôme")
+    if (normalized.startsWith("diplome/") || normalized === "diplome")
       return hasPermission(user, "perm_adherents", mode);
     if (normalized.startsWith("branding/") || normalized === "branding")
       return hasPermission(user, "perm_administration", mode);
@@ -551,6 +551,21 @@ async function handleDbApi(request: Request, env: Env, table: string): Promise<R
   } catch {
     return badRequest("Invalid JSON body");
   }
+
+  // Traduire le format frontend (op/payload) vers le format interne (action/values)
+  if (body.op && !body.action) {
+    const opMap: Record<string, string> = {
+      select: "query",
+      insert: "insert",
+      update: "update",
+      delete: "delete",
+      upsert: "upsert",
+    };
+    body.action = opMap[body.op] || body.op;
+    if (body.payload !== undefined && body.values === undefined) {
+      body.values = body.payload;
+    }
+  }
   const permission = TABLE_PERMISSIONS[table];
   const mode = body.action === "query" ? "read" : "write";
   if (mode === "write") {
@@ -599,7 +614,7 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
   }
   const email = String(payload.email || "").trim().toLowerCase();
   if (!email) return badRequest("Email requis");
-  const passwordPlain = String(payload.passwordPlain || "");
+  const passwordPlain = String(payload.passwordPlain || payload.password || "");
   const passwordHash = String(payload.passwordHash || "").trim().toLowerCase();
   if (!passwordPlain && !passwordHash) return badRequest("Mot de passe requis");
   const user = (await (env as any).DB.prepare(
@@ -698,7 +713,7 @@ async function handleStorageList(
   if (!bucket) return badRequest("Unknown bucket", 404);
   const url = new URL(request.url);
   let prefix = url.searchParams.get("prefix") || "";
-  if (bucketName === "storage" && !prefix) prefix = "Diplôme/";
+  if (bucketName === "storage" && !prefix) prefix = "diplome/";
   if (!hasStoragePermission(user, bucketName, prefix, "read"))
     return badRequest("Forbidden", 403);
   const result = await bucket.list({ prefix });
@@ -766,8 +781,34 @@ export default {
     const method = request.method.toUpperCase();
 
     if (path === "/api/health") {
-      return withSecurityHeaders(json({ data: { ok: true }, error: null }));
+      return withSecurityHeaders(json({ ok: true, bindings: { hasDb: !!(env as any).DB } }));
     }
+
+    if (path === "/api/bootstrap" && (method === "GET" || method === "HEAD")) {
+      const user = await getCurrentUser(request, env);
+      const db = (env as any).DB as D1Database;
+
+      const clubInfoRows = await db.prepare(`SELECT * FROM club_info`).all();
+      const clubInfo: Record<string, unknown> = {};
+      for (const row of clubInfoRows.results || []) {
+        const r = row as Record<string, unknown>;
+        clubInfo[String(r.cle)] = r.valeur;
+      }
+
+      const exercices = user
+      ? (await db.prepare(`SELECT * FROM exercices ORDER BY date_debut DESC`).all()).results
+      : [];
+
+      return withSecurityHeaders(json({
+        data: {
+          clubInfo,
+          exercices,
+          currentUser: user ? sanitizeRow("utilisateurs", user) : null,
+        },
+        error: null,
+      }));
+    }
+
     if (path === "/api/auth/login" && method === "POST") {
       return withSecurityHeaders(await handleLogin(request, env));
     }
@@ -777,7 +818,7 @@ export default {
     if (path === "/api/auth/logout" && method === "POST") {
       return withSecurityHeaders(await handleLogout(request, env));
     }
-    if (path === "/api/auth/change-password" && method === "POST") {
+    if ((path === "/api/auth/change-password" || path === "/api/auth/password") && method === "POST") {
       return withSecurityHeaders(await handleChangePassword(request, env));
     }
 
@@ -790,32 +831,23 @@ export default {
 
     const storageListMatch = path.match(/^\/api\/storage\/([A-Za-z0-9_-]+)\/list$/);
     if (storageListMatch && (method === "GET" || method === "HEAD")) {
-      return withSecurityHeaders(
-        await handleStorageList(request, env, storageListMatch[1])
-      );
+      return withSecurityHeaders(await handleStorageList(request, env, storageListMatch[1]));
     }
 
     const storageUploadMatch = path.match(/^\/api\/storage\/([A-Za-z0-9_-]+)\/upload$/);
     if (storageUploadMatch && method === "POST") {
-      return withSecurityHeaders(
-        await handleStorageUpload(request, env, storageUploadMatch[1])
-      );
+      return withSecurityHeaders(await handleStorageUpload(request, env, storageUploadMatch[1]));
     }
 
     const storageGetMatch = path.match(/^\/api\/storage\/([A-Za-z0-9_-]+)\/(.+)$/);
     if (storageGetMatch && (method === "GET" || method === "HEAD")) {
       return withSecurityHeaders(
-        await handleStorageGet(
-          request,
-          env,
-          storageGetMatch[1],
-          decodeURIComponent(storageGetMatch[2])
-        )
+        await handleStorageGet(request, env, storageGetMatch[1], decodeURIComponent(storageGetMatch[2]))
       );
     }
 
     if ((env as any).ASSETS) {
-      return withSecurityHeaders(await (env as any).ASSETS.fetch(request));
+      return await (env as any).ASSETS.fetch(request);
     }
 
     return withSecurityHeaders(new Response("Not Found", { status: 404 }));
