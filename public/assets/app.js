@@ -4820,7 +4820,7 @@ async function saveOwnPassword(){
   if(next!==confirmPwd) return alert('La confirmation du mot de passe ne correspond pas.');
   const {error}=await apiRequest('/auth/password',{
     method:'POST',
-    body:JSON.stringify({currentPassword:current,newPassword:next})
+    body:JSON.stringify({currentPassword:current,nextPassword:next})
   });
   if(error) return alert('Erreur : '+error.message);
   UI.currentUser={...UI.currentUser,must_change_password:false};
