@@ -1,6 +1,6 @@
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 // CONSTANTES
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 const CLOUDFLARE_API_BASE = '/api';
 const FORCED_LOGO_URL = '';
 const DIPLOME_BUCKET = 'storage';
@@ -10,9 +10,9 @@ const DIPLOME_SIGNATURE_KEY = 'diplome_signature_url';
 const DIPLOME_PAGE = {pdfWidthPt:842,pdfHeightPt:595,canvasWidth:1684,canvasHeight:1190};
 const DIPLOME_FIELD_META = [
   {key:'nomComplet',label:'Nom complet',type:'text'},
-  {key:'prenom',label:'PrÃ©nom',type:'text'},
+  {key:'prenom',label:'Prénom',type:'text'},
   {key:'nom',label:'Nom',type:'text'},
-  {key:'licence',label:'NÂ° licence',type:'text'},
+  {key:'licence',label:'N° licence',type:'text'},
   {key:'date',label:'Date',type:'text'},
   {key:'logo',label:'Logo du club',type:'image'},
   {key:'signature',label:'Signature',type:'image'},
@@ -42,35 +42,35 @@ const DEFAULT_SIRET = '92470461200010';
 const DANGEROUS_RESTORE_PHRASE = 'RESTAURER';
 const NOTICE_LIFETIME = 5200;
 
-const ROLES = {admin:'Administrateur',tresorier:'TrÃ©sorier',secretaire:'SecrÃ©taire',entraineur:'EntraÃ®neur',membre:'Membre'};
+const ROLES = {admin:'Administrateur',tresorier:'Trésorier',secretaire:'Secrétaire',entraineur:'Entraîneur',membre:'Membre'};
 const AVC   = ['#C0392B','#D4AC0D','#1D9E75','#378ADD','#8e44ad','#e67e22'];
-const MODES_PAIE = ['Virement','ChÃ¨que','EspÃ¨ces','CB','PrÃ©lÃ¨vement','HelloAsso','Gratuit'];
-const ADH_TYPES = ['Club','CSE ThalÃ¨s','Membre du Bureau'];
-const ADH_STATUTS = ['Actif','Renouvellement','Inactif','AdhÃ©sion annulÃ©e'];
+const MODES_PAIE = ['Virement','Chèque','Espèces','CB','Prélèvement','HelloAsso','Gratuit'];
+const ADH_TYPES = ['Club','CSE Thalès','Membre du Bureau'];
+const ADH_STATUTS = ['Actif','Renouvellement','Inactif','Adhésion annulée'];
 const CEINTURE_COLORS = ['Blanche','Jaune','Orange','Verte','Bleue','Marron','Noire'];
 
 const ALL_TABS = [
-  {id:'dashboard',    icon:'ðŸ',label:'Pilotage'},
-  {id:'adherents',    icon:'ðŸ‘¥',label:'AdhÃ©rents',    perm:'perm_adherents'},
-  {id:'diplomes',     icon:'ðŸŽ“',label:'DiplÃ´mes',     perm:'perm_adherents'},
-  {id:'banque',       icon:'ðŸ¦',label:'Banque',        perm:'perm_banque'},
-  {id:'comptabilite', icon:'ðŸ“Š',label:'ComptabilitÃ©',  perm:'perm_comptabilite'},
-  {id:'achat',        icon:'ðŸ›’',label:'Achats',         perm:'perm_achats'},
-  {id:'facture',      icon:'ðŸ’¸',label:'Ventes',        perm:'perm_facturation'},
-  {id:'administration',icon:'âš™ï¸',label:'Administration',perm:'perm_administration'},
+  {id:'dashboard',    icon:'🏁',label:'Pilotage'},
+  {id:'adherents',    icon:'👥',label:'Adhérents',    perm:'perm_adherents'},
+  {id:'diplomes',     icon:'🎓',label:'Diplômes',     perm:'perm_adherents'},
+  {id:'banque',       icon:'🏦',label:'Banque',        perm:'perm_banque'},
+  {id:'comptabilite', icon:'📊',label:'Comptabilité',  perm:'perm_comptabilite'},
+  {id:'achat',        icon:'🛒',label:'Achats',         perm:'perm_achats'},
+  {id:'facture',      icon:'💸',label:'Ventes',        perm:'perm_facturation'},
+  {id:'administration',icon:'⚙️',label:'Administration',perm:'perm_administration'},
 ];
 const PERM_META = [
-  ['perm_adherents','ðŸ‘¥ AdhÃ©rents'],
-  ['perm_banque','ðŸ¦ Banque'],
-  ['perm_comptabilite','ðŸ“Š ComptabilitÃ©'],
-  ['perm_achats','ðŸ›’ Achats'],
-  ['perm_facturation','ðŸ’¸ Ventes'],
-  ['perm_administration','âš™ï¸ Administration'],
+  ['perm_adherents','👥 Adhérents'],
+  ['perm_banque','🏦 Banque'],
+  ['perm_comptabilite','📊 Comptabilité'],
+  ['perm_achats','🛒 Achats'],
+  ['perm_facturation','💸 Ventes'],
+  ['perm_administration','⚙️ Administration'],
 ];
 const PERM_LEVELS = {
-  none:{label:'Aucun accÃ¨s',rank:0},
+  none:{label:'Aucun accès',rank:0},
   read:{label:'Lecture',rank:1},
-  write:{label:'Lecture / Ã©criture',rank:2},
+  write:{label:'Lecture / écriture',rank:2},
 };
 const DEFAULT_ROLE_PERMS = {
   admin:{perm_adherents:'write',perm_banque:'write',perm_comptabilite:'write',perm_achats:'write',perm_facturation:'write',perm_administration:'write'},
@@ -82,51 +82,51 @@ const DEFAULT_ROLE_PERMS = {
 
 const PLAN = [
   '1010 - Fonds associatif sans droit de reprise',
-  '1060 - RÃ©serves',
-  '1200 - RÃ©sultat de l exercice excÃ©dent',
-  '1290 - RÃ©sultat de l exercice dÃ©ficit',
-  '1640 - Emprunts auprÃ¨s des Ã©tablissements de crÃ©dit',
+  '1060 - Réserves',
+  '1200 - Résultat de l exercice excédent',
+  '1290 - Résultat de l exercice déficit',
+  '1640 - Emprunts auprès des établissements de crédit',
   '401 - Fournisseurs',
-  '411 - AdhÃ©rents et clients',
+  '411 - Adhérents et clients',
   '471 - Comptes d attente',
-  '4870 - Produits constatÃ©s d avance',
+  '4870 - Produits constatés d avance',
   '512 - Banque',
-  '518 - IntÃ©rÃªts courus Ã  payer et Ã  recevoir',
+  '518 - Intérêts courus à payer et à recevoir',
   '5300 - Caisse',
-  '6051 - Achats de matÃ©riels et Ã©quipements sportifs',
+  '6051 - Achats de matériels et équipements sportifs',
   '6052 - Achats de textile et tenues',
-  '606 - Achats non stockÃ©s fournitures',
-  '6061 - Fournitures non stockÃ©es',
-  '6063 - Petit Ã©quipement',
-  '6132 - Locations immobiliÃ¨res',
+  '606 - Achats non stockés fournitures',
+  '6061 - Fournitures non stockées',
+  '6063 - Petit équipement',
+  '6132 - Locations immobilières',
   '616 - Primes assurances',
   '6226 - Honoraires',
-  '623 - PublicitÃ© publications',
+  '623 - Publicité publications',
   '6230 - Achats de produits publicitaires',
   '6241 - Transports sur achats',
-  '625 - DÃ©placements missions rÃ©ceptions',
-  '6251 - Voyages et dÃ©placements',
-  '6257 - RÃ©ceptions repas',
-  '626 - Frais postaux tÃ©lÃ©coms',
-  '6260 - TÃ©lÃ©phone et communications',
+  '625 - Déplacements missions réceptions',
+  '6251 - Voyages et déplacements',
+  '6257 - Réceptions repas',
+  '626 - Frais postaux télécoms',
+  '6260 - Téléphone et communications',
   '627 - Services bancaires',
   '6270 - Frais bancaires',
-  '628 - Cotisations fÃ©dÃ©rales licences',
-  '6281 - Cotisations fÃ©dÃ©rales et licences',
+  '628 - Cotisations fédérales licences',
+  '6281 - Cotisations fédérales et licences',
   '6580 - Charges diverses de gestion courante',
   '651 - Redevances droits d auteur SACEM',
   '706 - Prestations de services',
   '7060 - Prestations de services',
   '7061 - Cours et stages',
-  '707 - Ventes vÃªtements et Ã©quipements',
-  '7080 - Produits des activitÃ©s annexes',
-  '7088 - Participations et produits accessoires Pass RÃ©gion',
+  '707 - Ventes vêtements et équipements',
+  '7080 - Produits des activités annexes',
+  '7088 - Participations et produits accessoires Pass Région',
   '741 - Subventions',
-  '7410 - Remboursements Pass RÃ©gion',
+  '7410 - Remboursements Pass Région',
   '754 - Dons manuels',
   '753 - Cotisations',
   '7561 - Cotisations membres actifs',
-  '7562 - Cotisations licences et adhÃ©sions annexes',
+  '7562 - Cotisations licences et adhésions annexes',
   '7580 - Autres produits de gestion courante',
 ];
 const PLAN_OPT = PLAN.map(p=>`<option value="${p}">${p}</option>`).join('');
@@ -134,42 +134,42 @@ const PLAN_OPT = PLAN.map(p=>`<option value="${p}">${p}</option>`).join('');
 // Champs mapping import
 const ADH_FIELDS = [
   {key:'nom',              label:'Nom',               aliases:['nom','lastname','name','nom de famille']},
-  {key:'prenom',           label:'PrÃ©nom',            aliases:['prenom','prÃ©nom','firstname','first name']},
+  {key:'prenom',           label:'Prénom',            aliases:['prenom','prénom','firstname','first name']},
   {key:'naissance',        label:'Date naissance',    aliases:['naissance','date naissance','dob','birthdate']},
   {key:'couleur_ceinture', label:'Couleur ceinture',  aliases:['couleur ceinture','ceinture','grade','belt','belt color']},
-  {key:'numero_licence',   label:'NÂ° licence',        aliases:['numero licence','numÃ©ro licence','nÂ° licence','licence','license','license number']},
+  {key:'numero_licence',   label:'N° licence',        aliases:['numero licence','numéro licence','n° licence','licence','license','license number']},
   {key:'email',            label:'Email',             aliases:['email','mail','courriel']},
-  {key:'telephone',        label:'TÃ©lÃ©phone',         aliases:['telephone','tÃ©lÃ©phone','tel','phone','mobile','portable']},
+  {key:'telephone',        label:'Téléphone',         aliases:['telephone','téléphone','tel','phone','mobile','portable']},
   {key:'adresse',          label:'Adresse',           aliases:['adresse','address','rue','street']},
   {key:'code_postal',      label:'Code postal',       aliases:['code postal','cp','zip','postal','code_postal']},
   {key:'ville',            label:'Ville',             aliases:['ville','city','commune']},
-  {key:'discipline',       label:'Type adhÃ©sion',     aliases:['discipline','sport','section','activite','activitÃ©','type adhÃ©sion','type adhesion','club','cse','thalÃ¨s','thales']},
-  {key:'cotisation',       label:'Cotisation (â‚¬)',     aliases:['cotisation','montant','tarif','fee','amount']},
+  {key:'discipline',       label:'Type adhésion',     aliases:['discipline','sport','section','activite','activité','type adhésion','type adhesion','club','cse','thalès','thales']},
+  {key:'cotisation',       label:'Cotisation (€)',     aliases:['cotisation','montant','tarif','fee','amount']},
   {key:'paiement',         label:'Mode paiement',     aliases:['paiement','mode paiement','payment','mode de paiement']},
-  {key:'date_inscription', label:'Date inscription',  aliases:['inscription','date inscription','adhesion','adhÃ©sion']},
-  {key:'date_fin_adhesion',label:'Fin adhÃ©sion',      aliases:['fin adhesion','fin adhÃ©sion','expiration','date fin','validite']},
-  {key:'statut',           label:'Statut',            aliases:['statut','status','etat','Ã©tat']},
-  {key:'certificat',       label:'Certificat mÃ©dical',aliases:['certificat','certif','medical']},
-  {key:'droit_image',      label:'Droit Ã  l\'image',  aliases:['droit image','image']},
-  {key:'reglement',        label:'RÃ¨glement intÃ©rieur',aliases:['reglement','rÃ¨glement']},
-  {key:'pass_region',      label:'Pass RÃ©gion',        aliases:['pass region','pass_rÃ©gion','pass rÃ©gion','pass']},
-  {key:'montant_pass_region',label:'Montant Pass RÃ©gion',aliases:['montant pass region','montant pass rÃ©gion','aide rÃ©gion','montant aide rÃ©gion']},
-  {key:'urgence_nom',      label:'Urgence â€” Nom',     aliases:['urgence nom','contact urgence','emergency']},
-  {key:'urgence_telephone',label:'Urgence â€” TÃ©l',     aliases:['urgence tel','urgence telephone','emergency phone']},
+  {key:'date_inscription', label:'Date inscription',  aliases:['inscription','date inscription','adhesion','adhésion']},
+  {key:'date_fin_adhesion',label:'Fin adhésion',      aliases:['fin adhesion','fin adhésion','expiration','date fin','validite']},
+  {key:'statut',           label:'Statut',            aliases:['statut','status','etat','état']},
+  {key:'certificat',       label:'Certificat médical',aliases:['certificat','certif','medical']},
+  {key:'droit_image',      label:'Droit à l\'image',  aliases:['droit image','image']},
+  {key:'reglement',        label:'Règlement intérieur',aliases:['reglement','règlement']},
+  {key:'pass_region',      label:'Pass Région',        aliases:['pass region','pass_région','pass région','pass']},
+  {key:'montant_pass_region',label:'Montant Pass Région',aliases:['montant pass region','montant pass région','aide région','montant aide région']},
+  {key:'urgence_nom',      label:'Urgence — Nom',     aliases:['urgence nom','contact urgence','emergency']},
+  {key:'urgence_telephone',label:'Urgence — Tél',     aliases:['urgence tel','urgence telephone','emergency phone']},
   {key:'notes',            label:'Notes',             aliases:['notes','remarque','commentaire','observation']},
 ];
 const ECR_FIELDS = [
-  {key:'date_op', label:'Date',           aliases:['date','date op','date_op','date opÃ©ration','date ecriture','date comptable']},
-  {key:'piece',   label:'NÂ° piÃ¨ce',      aliases:['piece','piÃ¨ce','numero','ref','facture','nÂ°','num piece','numÃ©ro piÃ¨ce']},
-  {key:'compte',  label:'Compte',        aliases:['compte','account','code compte','numÃ©ro compte','compte gÃ©nÃ©ral']},
-  {key:'libelle', label:'LibellÃ©',       aliases:['libelle','libellÃ©','description','label','intitule','designation','libellÃ© Ã©criture']},
-  {key:'debit',   label:'DÃ©bit (â‚¬)',     aliases:['debit','dÃ©bit','montant debit','charge','sortie','dÃ©bit eur']},
-  {key:'credit',  label:'CrÃ©dit (â‚¬)',    aliases:['credit','crÃ©dit','montant credit','produit','entree','entrÃ©e','crÃ©dit eur']},
+  {key:'date_op', label:'Date',           aliases:['date','date op','date_op','date opération','date ecriture','date comptable']},
+  {key:'piece',   label:'N° pièce',      aliases:['piece','pièce','numero','ref','facture','n°','num piece','numéro pièce']},
+  {key:'compte',  label:'Compte',        aliases:['compte','account','code compte','numéro compte','compte général']},
+  {key:'libelle', label:'Libellé',       aliases:['libelle','libellé','description','label','intitule','designation','libellé écriture']},
+  {key:'debit',   label:'Débit (€)',     aliases:['debit','débit','montant debit','charge','sortie','débit eur']},
+  {key:'credit',  label:'Crédit (€)',    aliases:['credit','crédit','montant credit','produit','entree','entrée','crédit eur']},
 ];
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 // STATE
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 let SB = null;
 const D = {
   adherents:[], comptes:[], journal:[], achats:[], factures:[],
@@ -195,7 +195,7 @@ const UI = {
   paging:{adherents:1,achats:1,factures:1,dons:1},
   bankAccountId:null,
   pdfTarget:null,
-  diplome:{adherentId:'',date:td(),templatePath:'',titre:'DiplÃ´me de ceinture',selectedField:'nomComplet'},
+  diplome:{adherentId:'',date:td(),templatePath:'',titre:'Diplôme de ceinture',selectedField:'nomComplet'},
   invState:{numero:'FAC-001',date:td(),destinataire:'',adresse:'',objet:'',lignes:[{desc:'',qte:1,pu:0}],notes:''},
   invKind:'facture',
 };
@@ -232,7 +232,7 @@ function notify(type,message,title){
     type:type||'info',
     title:title||(
       type==='error'?'Erreur':
-      type==='success'?'SuccÃ¨s':
+      type==='success'?'Succès':
       type==='warn'?'Attention':
       'Information'
     ),
@@ -255,7 +255,7 @@ function renderNotices(){
   host.innerHTML=UI.notices.map(n=>`<div class="notice ${n.type==='error'?'error':n.type==='success'?'success':n.type==='warn'?'warn':''}" role="${n.type==='error'?'alert':'status'}">
     <div class="notice-head">
       <div class="notice-title">${esc(n.title)}</div>
-      <button class="notice-close" type="button" aria-label="Fermer" onclick="dismissNotice('${n.id}')">Ã—</button>
+      <button class="notice-close" type="button" aria-label="Fermer" onclick="dismissNotice('${n.id}')">×</button>
     </div>
     <div class="notice-body">${esc(n.message).replace(/\n/g,'<br>')}</div>
   </div>`).join('');
@@ -269,7 +269,7 @@ window.addEventListener('error',function(event){
 });
 window.addEventListener('unhandledrejection',function(event){
   const reason=event?.reason?.message || event?.reason;
-  if(reason) notify('error',String(reason),'Erreur non gÃ©rÃ©e');
+  if(reason) notify('error',String(reason),'Erreur non gérée');
 });
 
 function esc(v){
@@ -298,7 +298,7 @@ function refreshCurrentExo(){
 
 function requireExerciceActif(){
   if(D.currentExo?.statut==='actif') return true;
-  alert('Aucun exercice comptable actif. CrÃ©ez ou sÃ©lectionnez un exercice actif avant de poursuivre.');
+  alert('Aucun exercice comptable actif. Créez ou sélectionnez un exercice actif avant de poursuivre.');
   UI.tab='comptabilite';
   UI.subTab.compta='exo';
   render();
@@ -405,14 +405,14 @@ async function loadTabData(tab, force=false){
     if(tab==='banque'){
       const [cpt,tr]=await Promise.all([
         SB.from('comptes_bancaires').select('*').order('created_at'),
-        SB.from('transactions').select('*').order('created_at'),
+        SB.from('transactions').select('*').order('date_op',{ascending:false}),
       ]);
       D.comptes=(cpt.data||[]).map(c=>({...c,transactions:(tr.data||[]).filter(t=>t.compte_id===c.id)}));
       markLoaded('banque');
       return;
     }
     if(tab==='comptabilite'){
-      const {data}=await SB.from('journal_comptable').select('*').order('date_op');
+      const {data}=await SB.from('journal_comptable').select('*').order('date_op',{ascending:false});
       D.journal=data||[];
       markLoaded('comptabilite');
       return;
@@ -455,7 +455,7 @@ async function loadTabData(tab, force=false){
 async function loadDiplomeTemplates(){
   if(!SB?.storage) return;
   try{
-    const files=await listDiplomeTemplateFiles();
+    const files=await listDiplomeTemplateFiles('diplome');
     D.diplomeTemplates=files.sort((a,b)=>compareAlpha(a.label,b.label));
     D.diplomeTemplatesError='';
     if(!UI.diplome.templatePath && D.diplomeTemplates.length){
@@ -463,7 +463,7 @@ async function loadDiplomeTemplates(){
     }
   }catch(e){
     D.diplomeTemplates=[];
-    D.diplomeTemplatesError=e?.message||'Impossible de lister les modÃ¨les.';
+    D.diplomeTemplatesError=e?.message||'Impossible de lister les modèles.';
   }
 }
 
@@ -537,7 +537,7 @@ function renderLogoNode(el,url,size,rounded){
   }
   const span=document.createElement('span');
   span.style.fontSize='28px';
-  span.textContent='ðŸ¥Š';
+  span.textContent='🥊';
   el.appendChild(span);
 }
 
@@ -660,9 +660,9 @@ async function saveDiplomeLayouts(){
   if(!requireWritePerm('perm_adherents')) return;
   const payload=JSON.stringify(D.diplomeLayouts);
   const {error}=await SB.from('club_info').upsert({cle:DIPLOME_LAYOUTS_KEY,valeur:payload},{onConflict:'cle'});
-  if(error) return alert('Erreur lors de la sauvegarde des rÃ©glages de diplÃ´me : '+error.message);
+  if(error) return alert('Erreur lors de la sauvegarde des réglages de diplôme : '+error.message);
   D.clubInfo[DIPLOME_LAYOUTS_KEY]=payload;
-  alert('RÃ©glages des diplÃ´mes sauvegardÃ©s.');
+  alert('Réglages des diplômes sauvegardés.');
 }
 
 function resetCurrentDiplomeLayout(){
@@ -672,9 +672,9 @@ function resetCurrentDiplomeLayout(){
   render();
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 // API
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 
 function apiUrl(path){
   return `${CLOUDFLARE_API_BASE}${path}`;
@@ -688,10 +688,7 @@ function clearSession(){
   }).catch(function(){});
 }
 
-function buildStorageObjectUrl(bucket,path){
-  const base=bucket==='fullfighting-pdf'
-    ? '/cloudflare/export/assets/fullfighting-pdf'
-    : '/cloudflare/export/assets/storage';
+function buildStorageObjectUrl(bucket,path){  const base=bucket==='fullfighting-pdf'    ? '/api/storage/fullfighting-pdf'    : '/api/storage/storage';
   return `${base}/${String(path||'').split('/').map(encodeURIComponent).join('/')}`;
 }
 
@@ -705,10 +702,10 @@ function getAdherentPublicRegistration(adherentId){
 function getRegistrationDocuments(registration){
   const docs=registration?.documents_json && typeof registration.documents_json==='object' ? registration.documents_json : {};
   const labels={
-    photoIdentity:"Photo d'identitÃ©",
-    medicalCertificate:"Certificat mÃ©dical",
-    passRegionDocument:"Justificatif Pass RÃ©gion",
-    proofDocument:"Justificatif tarif rÃ©duit",
+    photoIdentity:"Photo d'identité",
+    medicalCertificate:"Certificat médical",
+    passRegionDocument:"Justificatif Pass Région",
+    proofDocument:"Justificatif tarif réduit",
   };
   return Object.entries(docs).map(([key,doc])=>{
     if(!doc?.bucket || !doc?.key) return null;
@@ -754,7 +751,7 @@ async function apiRequest(path, options={}){
         UI.currentUser=null;
         document.getElementById('app').style.display='none';
         showLoginScreen();
-        notify('warn','Votre session a expirÃ©. Reconnectez-vous pour continuer.','Session expirÃ©e');
+        notify('warn','Votre session a expiré. Reconnectez-vous pour continuer.','Session expirée');
       }
     }
     return {data:null,error:{message:payload?.error||`HTTP ${res.status}`,status:res.status}};
@@ -824,13 +821,19 @@ function createCloudflareClient(){
       from(bucket){
         return {
           async upload(path,file,options={}){
-            return {data:null,error:{message:"Upload dÃ©sactivÃ© sur l'hÃ©bergement gratuit Cloudflare Pages sans R2.",status:501}};
+            const formData=new FormData();
+            formData.append("file",file);
+            const res=await fetch(apiUrl(`/storage/${bucket}/upload?path=${encodeURIComponent(path)}`),{method:"POST",body:formData,credentials:"same-origin"});
+            const payload=await res.json();
+            return res.ok?{data:payload?.data,error:null}:{data:null,error:payload?.error||{message:"Upload failed"}};
           },
           getPublicUrl(path){
             return {data:{publicUrl:buildStorageObjectUrl(bucket,path)}};
           },
           async list(prefix='',options={}){
-            return listStaticBucketFiles(bucket);
+            const res2=await fetch(apiUrl(`/storage/${bucket}/list?prefix=${encodeURIComponent(prefix)}`),{credentials:"same-origin"});
+            const payload2=await res2.json();
+            return res2.ok?{data:payload2?.data||[],error:null}:{data:[],error:payload2?.error};
           },
         };
       },
@@ -862,9 +865,9 @@ async function preloadClubBranding(){
   }catch(e){}
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 // AUTH
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 function showLoginScreen(){
   document.getElementById('login-screen').style.display='flex';
   D.logoUrl=clubLogoUrl();
@@ -891,7 +894,7 @@ async function doLogin(){
   const {data,error}=authRes;
   if(error||!data){
     if(error?.status===429){
-      setLoginError('Trop de tentatives. RÃ©essayez dans quelques minutes.');
+      setLoginError('Trop de tentatives. Réessayez dans quelques minutes.');
     }else{
       setLoginError('Email ou mot de passe incorrect');
     }
@@ -908,7 +911,7 @@ async function doLogin(){
   await loadTabData(UI.tab,true);
   if(UI.tab==='diplomes') await loadDiplomeTemplates();
   renderTabs();render();
-  notify('success',`Connexion rÃ©ussie pour ${data.prenom||data.nom}.`,'Connexion');
+  notify('success',`Connexion réussie pour ${data.prenom||data.nom}.`,'Connexion');
   if(UI.currentUser?.must_change_password) setTimeout(forcePasswordRotation,120);
 }
 
@@ -918,7 +921,7 @@ async function doLogout(){
   UI.currentUser=null;
   document.getElementById('app').style.display='none';
   showLoginScreen();
-  notify('success','Vous avez Ã©tÃ© dÃ©connectÃ©.','DÃ©connexion');
+  notify('success','Vous avez été déconnecté.','Déconnexion');
 }
 
 function cloneRolePerms(src){
@@ -988,13 +991,13 @@ function hasPerm(p,mode='read'){
 
 function requireWritePerm(p,msg){
   if(hasPerm(p,'write')) return true;
-  alert(msg||"Vous disposez d'un accÃ¨s en lecture seule sur cette rubrique.");
+  alert(msg||"Vous disposez d'un accès en lecture seule sur cette rubrique.");
   return false;
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 // CHARGEMENT
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 async function loadAll(){
   resetLoadedData();
   await loadCoreData(true);
@@ -1019,9 +1022,9 @@ async function loadAll(){
   renderTabs(); render();
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 // NAVIGATION
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 function renderTabs(){
   const vis=ALL_TABS.filter(t=>!t.perm || hasPerm(t.perm));
   document.getElementById('tabs-bar').innerHTML=vis.map(t=>`<button class="tab-btn ${UI.tab===t.id?'active':''}" onclick="showTab('${t.id}')">${t.icon} ${t.label}</button>`).join('');
@@ -1056,7 +1059,7 @@ function render(){
   if(!UI.currentUser) return;
   const c=document.getElementById('tab-content');
   if(needsLoadedTab(UI.tab) && !D.loaded[UI.tab==='diplomes'?'adherents':UI.tab] && D.loading[UI.tab==='diplomes'?'adherents':UI.tab]){
-    c.innerHTML=`<div class="empty">Chargement de la rubriqueâ€¦</div>`;
+    c.innerHTML=`<div class="empty">Chargement de la rubrique…</div>`;
     return;
   }
   const map={dashboard:vDashboard,adherents:vAdh,diplomes:vDiplomes,banque:vBanque,comptabilite:vCompta,achat:vAchat,facture:vFacture,administration:vAdmin};
@@ -1071,9 +1074,9 @@ function updLogo(){
   renderLogoNode(document.getElementById('global-logo'),D.logoUrl,'100%',false);
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// ADHÃ‰RENTS
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
+// ADHÉRENTS
+// ═══════════════════════════════════════════════════
 function adhStatus(a){
   if(!a.date_fin_adhesion) return 'unknown';
   const diff=(new Date(a.date_fin_adhesion)-new Date())/(1000*60*60*24);
@@ -1083,10 +1086,10 @@ function adhStatus(a){
 }
 function adhBadge(a){
   const s=adhStatus(a);
-  if(s==='valid')  return`<span class="badge bok">âœ“ Valide</span>`;
-  if(s==='soon')   return`<span class="badge bwarn">âš  BientÃ´t</span>`;
-  if(s==='expire') return`<span class="badge bno">âœ— ExpirÃ©e</span>`;
-  return`<span class="badge bgray">â€”</span>`;
+  if(s==='valid')  return`<span class="badge bok">✓ Valide</span>`;
+  if(s==='soon')   return`<span class="badge bwarn">⚠ Bientôt</span>`;
+  if(s==='expire') return`<span class="badge bno">✗ Expirée</span>`;
+  return`<span class="badge bgray">—</span>`;
 }
 
 function currentSeasonLabel(ref=new Date()){
@@ -1132,7 +1135,7 @@ function onAdhTypeChange(value){
 function adhStatutBadge(statut){
   if(statut==='Actif') return 'bok';
   if(statut==='Renouvellement') return 'bblue';
-  if(statut==='AdhÃ©sion annulÃ©e') return 'bno';
+  if(statut==='Adhésion annulée') return 'bno';
   return 'bgray';
 }
 
@@ -1161,7 +1164,7 @@ function transactionFingerprint(t){
 }
 
 function euro(value){
-  return (+value||0).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' â‚¬';
+  return (+value||0).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
 }
 
 function paginateList(list,pageKey,pageSize=15){
@@ -1178,7 +1181,7 @@ function paginateList(list,pageKey,pageSize=15){
 function renderPager(pageKey,totalPages){
   if(totalPages<=1) return '';
   return `<div style="display:flex;justify-content:flex-end;gap:8px;align-items:center;margin-top:12px">
-    <button class="btn sm" ${UI.paging[pageKey]<=1?'disabled':''} onclick="UI.paging.${pageKey}=Math.max(1,(UI.paging.${pageKey}||1)-1);render()">PrÃ©cÃ©dent</button>
+    <button class="btn sm" ${UI.paging[pageKey]<=1?'disabled':''} onclick="UI.paging.${pageKey}=Math.max(1,(UI.paging.${pageKey}||1)-1);render()">Précédent</button>
     <span style="font-size:12px;color:var(--txt2)">Page ${UI.paging[pageKey]} / ${totalPages}</span>
     <button class="btn sm" ${UI.paging[pageKey]>=totalPages?'disabled':''} onclick="UI.paging.${pageKey}=Math.min(${totalPages},(UI.paging.${pageKey}||1)+1);render()">Suivant</button>
   </div>`;
@@ -1186,31 +1189,31 @@ function renderPager(pageKey,totalPages){
 
 function normalizeFactureStatus(status,dateOp){
   const raw=(status||'').trim();
-  if(raw==='PayÃ©e' || raw==='AnnulÃ©e' || raw==='Brouillon' || raw==='Ã‰mise' || raw==='En retard') return raw;
-  if(raw==='Ã‰mise' || raw==='emise') return 'Ã‰mise';
-  if(raw==='Payee' || raw==='PayÃ©' || raw==='RÃ©glÃ©e' || raw==='Reglee') return 'PayÃ©e';
-  if(raw==='Annulee' || raw==='AnnulÃ©e') return 'AnnulÃ©e';
+  if(raw==='Payée' || raw==='Annulée' || raw==='Brouillon' || raw==='Émise' || raw==='En retard') return raw;
+  if(raw==='Émise' || raw==='emise') return 'Émise';
+  if(raw==='Payee' || raw==='Payé' || raw==='Réglée' || raw==='Reglee') return 'Payée';
+  if(raw==='Annulee' || raw==='Annulée') return 'Annulée';
   if(!dateOp) return raw||'Brouillon';
   const age=(Date.now()-new Date(dateOp).getTime())/(1000*60*60*24);
   if(age>30) return 'En retard';
-  return raw||'Ã‰mise';
+  return raw||'Émise';
 }
 
 function factureStatusBadge(status){
-  if(status==='PayÃ©e') return 'bok';
+  if(status==='Payée') return 'bok';
   if(status==='En retard') return 'bno';
-  if(status==='AnnulÃ©e') return 'bgray';
+  if(status==='Annulée') return 'bgray';
   if(status==='Brouillon') return 'bwarn';
   return 'bblue';
 }
 
 function roleFocusLabel(){
   const role=UI.currentUser?.role||'membre';
-  if(role==='admin') return 'Vue transverse du club, avec suivi des opÃ©rations, des dossiers et des accÃ¨s.';
+  if(role==='admin') return 'Vue transverse du club, avec suivi des opérations, des dossiers et des accès.';
   if(role==='tresorier') return 'Suivi prioritaire des flux financiers, des achats et de la facturation.';
-  if(role==='secretaire') return 'Vue orientÃ©e adhÃ©rents, renouvellements et dossiers administratifs.';
-  if(role==='entraineur') return 'Vue synthÃ©tique pour suivre les licenciÃ©s, les Ã©chÃ©ances et les ceintures.';
-  return 'Vue synthÃ©tique des informations accessibles pour votre profil.';
+  if(role==='secretaire') return 'Vue orientée adhérents, renouvellements et dossiers administratifs.';
+  if(role==='entraineur') return 'Vue synthétique pour suivre les licenciés, les échéances et les ceintures.';
+  return 'Vue synthétique des informations accessibles pour votre profil.';
 }
 
 function dashboardData(){
@@ -1223,8 +1226,8 @@ function dashboardData(){
   const prevMonthDate=new Date();
   prevMonthDate.setMonth(prevMonthDate.getMonth()-1);
   const prevMonthPrefix=prevMonthDate.toISOString().slice(0,7);
-  const paidInvoiceStatuses=new Set(['PayÃ©e','Payee','RÃ©glÃ©e','Reglee']);
-  const openInvoiceStatuses=new Set(['Ã‰mise','Emise','En retard','Brouillon']);
+  const paidInvoiceStatuses=new Set(['Payée','Payee','Réglée','Reglee']);
+  const openInvoiceStatuses=new Set(['Émise','Emise','En retard','Brouillon']);
   const pendingBuyStatuses=new Set(['nouveau','valide']);
   const paidBuyStatuses=new Set(['paye']);
   const adherentsSoon=adherents.filter(a=>adhStatus(a)==='soon');
@@ -1267,13 +1270,13 @@ function dashboardData(){
   const recentEntries=[...journal].sort((a,b)=>(b.date_op||'').localeCompare(a.date_op||'')).slice(0,4);
   const recentTransactions=[...bankTransactions].sort((a,b)=>(b.date_op||'').localeCompare(a.date_op||'')).slice(0,4);
   const alerts=[];
-  if(hasPerm('perm_adherents') && renewList.length) alerts.push({title:`${renewList.length} adhÃ©sion(s) Ã  renouveler`,detail:'Statut de renouvellement dÃ©tectÃ© dans la base adhÃ©rents.',tab:'adherents',badge:'bwarn'});
-  if(hasPerm('perm_adherents') && adherentsExpired.length) alerts.push({title:`${adherentsExpired.length} adhÃ©sion(s) expirÃ©e(s)`,detail:'Des adhÃ©rents ont dÃ©passÃ© leur date de fin dâ€™adhÃ©sion.',tab:'adherents',badge:'bno'});
-  if(hasPerm('perm_adherents') && incompleteList.length) alerts.push({title:`${incompleteList.length} dossier(s) incomplet(s)`,detail:'Certificat, droit Ã  lâ€™image ou rÃ¨glement intÃ©rieur manquants.',tab:'adherents',badge:'bwarn'});
-  if(hasPerm('perm_banque') && unreconciledTransactions.length) alerts.push({title:`${unreconciledTransactions.length} transaction(s) non rapprochÃ©e(s)`,detail:'Le rapprochement bancaire reste Ã  finaliser.',tab:'banque',badge:'bwarn'});
-  if(hasPerm('perm_comptabilite') && accountingGap!==0) alerts.push({title:`Journal dÃ©sÃ©quilibrÃ© de ${euro(accountingGap)}`,detail:'Le total dÃ©bit / crÃ©dit de lâ€™exercice actif nâ€™est pas Ã©quilibrÃ©.',tab:'comptabilite',badge:'bno'});
-  if(hasPerm('perm_achats') && purchasesPending.length) alerts.push({title:`${purchasesPending.length} achat(s) Ã  traiter`,detail:'Des dÃ©penses sont encore en attente de validation ou de paiement.',tab:'achat',badge:'bwarn'});
-  if(hasPerm('perm_facturation') && invoicesOpen.length) alerts.push({title:`${invoicesOpen.length} facture(s) ouvertes`,detail:'Des ventes restent Ã  encaisser ou Ã  clÃ´turer.',tab:'facture',badge:'bwarn'});
+  if(hasPerm('perm_adherents') && renewList.length) alerts.push({title:`${renewList.length} adhésion(s) à renouveler`,detail:'Statut de renouvellement détecté dans la base adhérents.',tab:'adherents',badge:'bwarn'});
+  if(hasPerm('perm_adherents') && adherentsExpired.length) alerts.push({title:`${adherentsExpired.length} adhésion(s) expirée(s)`,detail:'Des adhérents ont dépassé leur date de fin d’adhésion.',tab:'adherents',badge:'bno'});
+  if(hasPerm('perm_adherents') && incompleteList.length) alerts.push({title:`${incompleteList.length} dossier(s) incomplet(s)`,detail:'Certificat, droit à l’image ou règlement intérieur manquants.',tab:'adherents',badge:'bwarn'});
+  if(hasPerm('perm_banque') && unreconciledTransactions.length) alerts.push({title:`${unreconciledTransactions.length} transaction(s) non rapprochée(s)`,detail:'Le rapprochement bancaire reste à finaliser.',tab:'banque',badge:'bwarn'});
+  if(hasPerm('perm_comptabilite') && accountingGap!==0) alerts.push({title:`Journal déséquilibré de ${euro(accountingGap)}`,detail:'Le total débit / crédit de l’exercice actif n’est pas équilibré.',tab:'comptabilite',badge:'bno'});
+  if(hasPerm('perm_achats') && purchasesPending.length) alerts.push({title:`${purchasesPending.length} achat(s) à traiter`,detail:'Des dépenses sont encore en attente de validation ou de paiement.',tab:'achat',badge:'bwarn'});
+  if(hasPerm('perm_facturation') && invoicesOpen.length) alerts.push({title:`${invoicesOpen.length} facture(s) ouvertes`,detail:'Des ventes restent à encaisser ou à clôturer.',tab:'facture',badge:'bwarn'});
   alerts.sort((a,b)=>{
     const score=x=>x.badge==='bno'?2:x.badge==='bwarn'?1:0;
     return score(b)-score(a);
@@ -1295,7 +1298,7 @@ function dashboardDelta(current, previous, suffix=''){
   return {
     delta,
     cls,
-    label:`${sign}${suffix==='â‚¬'?euro(delta):`${delta}${suffix}`}` + ` vs mois prÃ©cÃ©dent`
+    label:`${sign}${suffix==='€'?euro(delta):`${delta}${suffix}`}` + ` vs mois précédent`
   };
 }
 
@@ -1345,7 +1348,7 @@ function achatMatchesFilter(achat, status){
 function factureMatchesFilter(facture, status){
   const current=normalizeFactureStatus(facture?.statut, facture?.date_op);
   if(!status) return true;
-  if(status==='open') return current==='Ã‰mise' || current==='Brouillon' || current==='En retard';
+  if(status==='open') return current==='Émise' || current==='Brouillon' || current==='En retard';
   return current===status;
 }
 
@@ -1456,48 +1459,48 @@ function buildDashboardAttentionItems(d){
   const items=[];
   if(hasPerm('perm_adherents') && d.renewList.length){
     items.push({
-      title:`${d.renewList.length} adhÃ©sion(s) Ã  renouveler`,
-      detail:'PrÃ©parer la nouvelle saison, confirmer le rÃ¨glement et mettre Ã  jour les piÃ¨ces si besoin.',
-      advice:'Traiter dâ€™abord les renouvellements avec cotisation encaissÃ©e pour fiabiliser les listes de cours et les reÃ§us.',
+      title:`${d.renewList.length} adhésion(s) à renouveler`,
+      detail:'Préparer la nouvelle saison, confirmer le règlement et mettre à jour les pièces si besoin.',
+      advice:'Traiter d’abord les renouvellements avec cotisation encaissée pour fiabiliser les listes de cours et les reçus.',
       badge:'bwarn',
       badgeText:'Renouvellement',
       actions:[
         {label:'Filtrer les renouvellements',onclick:"focusAdherentsIssue('renew')",primary:true},
-        {label:'Voir les adhÃ©rents',onclick:"showTab('adherents')"}
+        {label:'Voir les adhérents',onclick:"showTab('adherents')"}
       ]
     });
   }
   if(hasPerm('perm_adherents') && d.adherentsExpired.length){
     items.push({
-      title:`${d.adherentsExpired.length} adhÃ©sion(s) expirÃ©e(s)`,
-      detail:'Des fiches ont dÃ©passÃ© leur date de fin dâ€™adhÃ©sion et doivent Ãªtre rÃ©gularisÃ©es ou clÃ´turÃ©es.',
-      advice:'Archive ou renouvelle rapidement ces dossiers pour Ã©viter des relances inutiles et des listes sportives fausses.',
+      title:`${d.adherentsExpired.length} adhésion(s) expirée(s)`,
+      detail:'Des fiches ont dépassé leur date de fin d’adhésion et doivent être régularisées ou clôturées.',
+      advice:'Archive ou renouvelle rapidement ces dossiers pour éviter des relances inutiles et des listes sportives fausses.',
       badge:'bno',
       badgeText:'Bloquant',
       actions:[
-        {label:'Voir les expirÃ©s',onclick:"focusAdherentsIssue('expired')",primary:true},
-        {label:'Nouvel adhÃ©rent',onclick:"openModal('adh')",show:hasPerm('perm_adherents','write')}
+        {label:'Voir les expirés',onclick:"focusAdherentsIssue('expired')",primary:true},
+        {label:'Nouvel adhérent',onclick:"openModal('adh')",show:hasPerm('perm_adherents','write')}
       ]
     });
   }
   if(hasPerm('perm_adherents') && d.incompleteList.length){
     items.push({
       title:`${d.incompleteList.length} dossier(s) incomplet(s)`,
-      detail:'Certificat, droit Ã  lâ€™image ou rÃ¨glement intÃ©rieur manquants sur une partie des fiches.',
-      advice:'Commence par les dossiers actifs de la saison en cours puis demande les piÃ¨ces manquantes en lot, pas au cas par cas.',
+      detail:'Certificat, droit à l’image ou règlement intérieur manquants sur une partie des fiches.',
+      advice:'Commence par les dossiers actifs de la saison en cours puis demande les pièces manquantes en lot, pas au cas par cas.',
       badge:'bwarn',
       badgeText:'Documents',
       actions:[
         {label:'Filtrer les incomplets',onclick:"focusAdherentsIssue('incomplete')",primary:true},
-        {label:'Exporter les adhÃ©rents',onclick:"exportCSV()"}
+        {label:'Exporter les adhérents',onclick:"exportCSV()"}
       ]
     });
   }
   if(hasPerm('perm_banque') && d.unreconciledTransactions.length){
     items.push({
-      title:`${d.unreconciledTransactions.length} transaction(s) non rapprochÃ©e(s)`,
-      detail:'Le rapprochement bancaire nâ€™est pas terminÃ© sur les mouvements importÃ©s.',
-      advice:'Lance une prÃ©-sÃ©lection, contrÃ´le les montants proposÃ©s puis valide chaque ligne douteuse avant le tout-rapprocher.',
+      title:`${d.unreconciledTransactions.length} transaction(s) non rapprochée(s)`,
+      detail:'Le rapprochement bancaire n’est pas terminé sur les mouvements importés.',
+      advice:'Lance une pré-sélection, contrôle les montants proposés puis valide chaque ligne douteuse avant le tout-rapprocher.',
       badge:'bwarn',
       badgeText:'Banque',
       actions:[
@@ -1508,22 +1511,22 @@ function buildDashboardAttentionItems(d){
   }
   if(hasPerm('perm_comptabilite') && d.accountingGap!==0){
     items.push({
-      title:`Journal dÃ©sÃ©quilibrÃ© de ${euro(d.accountingGap)}`,
-      detail:'Le dÃ©bit et le crÃ©dit ne se compensent pas sur lâ€™exercice actif.',
-      advice:'Passe dâ€™abord par lâ€™assistant de dÃ©sÃ©quilibre, puis rÃ©gularise uniquement les piÃ¨ces justifiÃ©es pour Ã©viter un 471 inutile.',
+      title:`Journal déséquilibré de ${euro(d.accountingGap)}`,
+      detail:'Le débit et le crédit ne se compensent pas sur l’exercice actif.',
+      advice:'Passe d’abord par l’assistant de déséquilibre, puis régularise uniquement les pièces justifiées pour éviter un 471 inutile.',
       badge:'bno',
       badgeText:'Compta',
       actions:[
-        {label:'Ouvrir lâ€™assistant',onclick:"focusComptabiliteAssistant()",primary:true},
+        {label:'Ouvrir l’assistant',onclick:"focusComptabiliteAssistant()",primary:true},
         {label:'Voir le journal',onclick:"focusComptabiliteJournal()"}
       ]
     });
   }
   if(hasPerm('perm_achats') && d.purchasesPending.length){
     items.push({
-      title:`${d.purchasesPending.length} achat(s) Ã  traiter`,
-      detail:'Des dÃ©penses sont encore Ã  valider ou Ã  passer en payÃ© avec leur justificatif.',
-      advice:'Traite en prioritÃ© les achats avec montant Ã©levÃ© ou sans justificatif pour garder une vision de trÃ©sorerie exploitable.',
+      title:`${d.purchasesPending.length} achat(s) à traiter`,
+      detail:'Des dépenses sont encore à valider ou à passer en payé avec leur justificatif.',
+      advice:'Traite en priorité les achats avec montant élevé ou sans justificatif pour garder une vision de trésorerie exploitable.',
       badge:'bwarn',
       badgeText:'Achats',
       actions:[
@@ -1535,8 +1538,8 @@ function buildDashboardAttentionItems(d){
   if(hasPerm('perm_facturation') && d.invoicesOpen.length){
     items.push({
       title:`${d.invoicesOpen.length} facture(s) ouverte(s)`,
-      detail:'Des ventes sont encore Ã©mises ou en retard et doivent Ãªtre suivies jusquâ€™Ã  lâ€™encaissement.',
-      advice:'Passe en payÃ© les ventes rÃ©ellement encaissÃ©es et marque en retard celles Ã  relancer pour distinguer lâ€™encours du retard.',
+      detail:'Des ventes sont encore émises ou en retard et doivent être suivies jusqu’à l’encaissement.',
+      advice:'Passe en payé les ventes réellement encaissées et marque en retard celles à relancer pour distinguer l’encours du retard.',
       badge:'bwarn',
       badgeText:'Ventes',
       actions:[
@@ -1554,22 +1557,22 @@ function buildDashboardAttentionItems(d){
 function buildDashboardOptimizationTips(d){
   const tips=[];
   if(hasPerm('perm_banque') && d.unreconciledTransactions.length>5){
-    tips.push('Passe le rapprochement bancaire chaque semaine plutÃ´t quâ€™en fin de mois pour limiter les recherches de piÃ¨ces.');
+    tips.push('Passe le rapprochement bancaire chaque semaine plutôt qu’en fin de mois pour limiter les recherches de pièces.');
   }
   if(hasPerm('perm_facturation') && d.invoicesOpen.length){
-    tips.push('Utilise les statuts `PayÃ©e` et `En retard` dÃ¨s quâ€™une vente Ã©volue pour fiabiliser lâ€™encours Ã  encaisser.');
+    tips.push('Utilise les statuts `Payée` et `En retard` dès qu’une vente évolue pour fiabiliser l’encours à encaisser.');
   }
   if(hasPerm('perm_adherents') && d.incompleteList.length){
-    tips.push('PrÃ©vois une relance groupÃ©e des piÃ¨ces manquantes afin de rÃ©duire les dossiers incomplets en une seule campagne.');
+    tips.push('Prévois une relance groupée des pièces manquantes afin de réduire les dossiers incomplets en une seule campagne.');
   }
   if(hasPerm('perm_achats') && d.purchasesPending.length){
-    tips.push('Ajoute le justificatif PDF et la rÃ©fÃ©rence de paiement au moment du rÃ¨glement pour Ã©viter les reprises comptables plus tard.');
+    tips.push('Ajoute le justificatif PDF et la référence de paiement au moment du règlement pour éviter les reprises comptables plus tard.');
   }
   if(hasPerm('perm_comptabilite') && d.accountingGap!==0){
-    tips.push('Corrige les dÃ©sÃ©quilibres avant toute clÃ´ture dâ€™exercice, sinon le contrÃ´le de fin de pÃ©riode perd en valeur.');
+    tips.push('Corrige les déséquilibres avant toute clôture d’exercice, sinon le contrôle de fin de période perd en valeur.');
   }
   if(!tips.length){
-    tips.push('La situation est propre: conserve un rythme hebdomadaire de rapprochement, mensuel de compta et saisonnier sur les adhÃ©sions.');
+    tips.push('La situation est propre: conserve un rythme hebdomadaire de rapprochement, mensuel de compta et saisonnier sur les adhésions.');
   }
   return tips.slice(0,4);
 }
@@ -1579,7 +1582,7 @@ function vDashboard(){
   const attentionItems=buildDashboardAttentionItems(d);
   const optimizationTips=buildDashboardOptimizationTips(d);
   const activeAlerts=d.alerts.length;
-  const urgentLabel=activeAlerts?`${activeAlerts} point(s) Ã  traiter`:'Aucun blocage prioritaire dÃ©tectÃ©';
+  const urgentLabel=activeAlerts?`${activeAlerts} point(s) à traiter`:'Aucun blocage prioritaire détecté';
   const financeBalance=d.paidInvoiceAmount-d.paidBuyAmount;
   const topAlert=d.alerts[0]||null;
   const nextAction=topAlert
@@ -1591,50 +1594,50 @@ function vDashboard(){
       }
     : {
         title:'Aucune urgence bloquante',
-        detail:'Les donnÃ©es chargÃ©es ne montrent pas dâ€™anomalie prioritaire. Tu peux te concentrer sur le suivi courant.',
+        detail:'Les données chargées ne montrent pas d’anomalie prioritaire. Tu peux te concentrer sur le suivi courant.',
         tab:hasPerm('perm_adherents')?'adherents':hasPerm('perm_comptabilite')?'comptabilite':hasPerm('perm_banque')?'banque':'',
         critical:false
       };
   const entryDelta=dashboardDelta(d.monthEntriesList.length,d.prevMonthEntriesList.length);
-  const invoiceDelta=dashboardDelta(d.monthInvoiceAmount,d.prevMonthInvoiceAmount,'â‚¬');
-  const buyDelta=dashboardDelta(d.monthBuyAmount,d.prevMonthBuyAmount,'â‚¬');
+  const invoiceDelta=dashboardDelta(d.monthInvoiceAmount,d.prevMonthInvoiceAmount,'€');
+  const buyDelta=dashboardDelta(d.monthBuyAmount,d.prevMonthBuyAmount,'€');
   const invoiceSeries=buildMonthSeries(sumByMonth(d.factures,'date_op',f=>(f.lignes||[]).reduce((sum,l)=>sum+(+l.qte||0)*(+l.pu||0),0)));
   const buySeries=buildMonthSeries(sumByMonth(d.achats,'date_op',a=>+a.montant||0));
   const entrySeries=buildMonthSeries(countByMonth(d.journal,'date_op'));
   const docsComplete=d.adherents.length-d.incompleteList.length;
   const reconciled=d.bankTransactions.length-d.unreconciledTransactions.length;
   const recentFeed=[
-    ...(hasPerm('perm_facturation')?d.recentInvoices.map(f=>({title:`Vente ${f.numero||'sans numÃ©ro'}`,detail:`${fd(f.date_op)} Â· ${f.destinataire||'Destinataire non renseignÃ©'} Â· ${euro((f.lignes||[]).reduce((sum,l)=>sum+(+l.qte||0)*(+l.pu||0),0))}`,tab:'facture',badge:'bblue',badgeText:f.statut||'Vente'})):[]),
-    ...(hasPerm('perm_achats')?d.recentBuys.map(a=>({title:`Achat ${a.fournisseur||'sans fournisseur'}`,detail:`${fd(a.date_op)} Â· ${a.designation||a.categorie||'Sans dÃ©signation'} Â· ${euro(+a.montant||0)}`,tab:'achat',badge:'bgray',badgeText:a.statut||'Achat'})):[]),
-    ...(hasPerm('perm_banque')?d.recentTransactions.map(t=>({title:`Banque ${t.compte_nom||'Compte'}`,detail:`${fd(t.date_op)} Â· ${t.libelle||'OpÃ©ration'} Â· ${euro((+t.credit||0)-(+t.debit||0))}`,tab:'banque',badge:t.rapproche?'bok':'bwarn',badgeText:t.rapproche?'RapprochÃ©e':'Ã€ rapprocher'})):[]),
+    ...(hasPerm('perm_facturation')?d.recentInvoices.map(f=>({title:`Vente ${f.numero||'sans numéro'}`,detail:`${fd(f.date_op)} · ${f.destinataire||'Destinataire non renseigné'} · ${euro((f.lignes||[]).reduce((sum,l)=>sum+(+l.qte||0)*(+l.pu||0),0))}`,tab:'facture',badge:'bblue',badgeText:f.statut||'Vente'})):[]),
+    ...(hasPerm('perm_achats')?d.recentBuys.map(a=>({title:`Achat ${a.fournisseur||'sans fournisseur'}`,detail:`${fd(a.date_op)} · ${a.designation||a.categorie||'Sans désignation'} · ${euro(+a.montant||0)}`,tab:'achat',badge:'bgray',badgeText:a.statut||'Achat'})):[]),
+    ...(hasPerm('perm_banque')?d.recentTransactions.map(t=>({title:`Banque ${t.compte_nom||'Compte'}`,detail:`${fd(t.date_op)} · ${t.libelle||'Opération'} · ${euro((+t.credit||0)-(+t.debit||0))}`,tab:'banque',badge:t.rapproche?'bok':'bwarn',badgeText:t.rapproche?'Rapprochée':'À rapprocher'})):[]),
   ].sort((a,b)=>0).slice(0,8);
   const managementBlocks=[
     hasPerm('perm_adherents')?{
-      title:'AdhÃ©rents',
+      title:'Adhérents',
       lines:[
         `${d.adherents.length} fiche(s) suivie(s)`,
         `${d.currentSeasonAdherents.length} sur la saison ${d.currentSeason}`,
         `${d.incompleteList.length} dossier(s) incomplet(s)`,
       ],
-      cta:'Voir les adhÃ©rents',
+      cta:'Voir les adhérents',
       tab:'adherents'
     }:null,
     hasPerm('perm_banque')?{
       title:'Banque',
       lines:[
         `${d.comptes.length} compte(s) visibles`,
-        `${d.bankTransactions.length} transaction(s) importÃ©e(s)`,
-        `${d.unreconciledTransactions.length} non rapprochÃ©e(s)`,
+        `${d.bankTransactions.length} transaction(s) importée(s)`,
+        `${d.unreconciledTransactions.length} non rapprochée(s)`,
       ],
       cta:'Ouvrir la banque',
       tab:'banque'
     }:null,
     hasPerm('perm_comptabilite')?{
-      title:'ComptabilitÃ©',
+      title:'Comptabilité',
       lines:[
-        `${d.exoJournal.length} Ã©criture(s) sur lâ€™exercice actif`,
+        `${d.exoJournal.length} écriture(s) sur l’exercice actif`,
         `${d.monthEntriesList.length} mouvement(s) ce mois`,
-        `Ã‰cart exercice : ${euro(d.accountingGap)}`,
+        `Écart exercice : ${euro(d.accountingGap)}`,
       ],
       cta:'Ouvrir la compta',
       tab:'comptabilite'
@@ -1652,7 +1655,7 @@ function vDashboard(){
     hasPerm('perm_facturation')?{
       title:'Ventes',
       lines:[
-        `${d.factures.length} document(s) Ã©mis`,
+        `${d.factures.length} document(s) émis`,
         `${d.invoicesOpen.length} facture(s) ouverte(s)`,
         `Encours : ${euro(d.openInvoiceAmount)}`,
       ],
@@ -1664,7 +1667,7 @@ function vDashboard(){
     <div>
       <div class="eyebrow">Vue d'ensemble</div>
       <h2>Pilotage</h2>
-      <p>Tout le club, en un Ã©cran.</p>
+      <p>Tout le club, en un écran.</p>
     </div>
     <div class="exo-badge">Exercice actif : ${esc(D.currentExo?.libelle||'Aucun')}</div>
   </div>
@@ -1672,23 +1675,23 @@ function vDashboard(){
     <div class="dash-hero-main">
       <div class="dash-hero-kicker">Vision transversale</div>
       <div class="dash-hero-title">${esc(urgentLabel)}</div>
-      <div class="dash-hero-text">AdhÃ©rents, banque, compta, achats et ventes. PrioritÃ©s visibles immÃ©diatement.</div>
+      <div class="dash-hero-text">Adhérents, banque, compta, achats et ventes. Priorités visibles immédiatement.</div>
       <div class="dash-hero-meta">
         <span class="dash-hero-chip">Exercice : ${esc(D.currentExo?.libelle||'Aucun')}</span>
         <span class="dash-hero-chip">Profil : ${esc(ROLES[UI.currentUser?.role]||UI.currentUser?.role||'Utilisateur')}</span>
-        <span class="dash-hero-chip">Saison visible : ${esc(d.currentSeason||'â€”')}</span>
+        <span class="dash-hero-chip">Saison visible : ${esc(d.currentSeason||'—')}</span>
       </div>
     </div>
     <div class="dash-hero-side">
       <div class="dash-mini">
         <div class="dash-mini-label">Dossiers</div>
-        <div class="dash-mini-value">${hasPerm('perm_adherents')?d.incompleteList.length:'â€”'}</div>
-        <div class="dash-mini-text">${hasPerm('perm_adherents')?`${d.renewList.length} Ã  renouveler Â· ${d.adherentsExpired.length} expirÃ©s`:'Rubrique non accessible.'}</div>
+        <div class="dash-mini-value">${hasPerm('perm_adherents')?d.incompleteList.length:'—'}</div>
+        <div class="dash-mini-text">${hasPerm('perm_adherents')?`${d.renewList.length} à renouveler · ${d.adherentsExpired.length} expirés`:'Rubrique non accessible.'}</div>
       </div>
       <div class="dash-mini">
         <div class="dash-mini-label">Flux net</div>
-        <div class="dash-mini-value">${hasPerm('perm_facturation')||hasPerm('perm_achats')?euro(financeBalance):'â€”'}</div>
-        <div class="dash-mini-text">${hasPerm('perm_facturation')||hasPerm('perm_achats')?`${euro(d.paidInvoiceAmount)} encaissÃ©s Â· ${euro(d.paidBuyAmount)} dÃ©pensÃ©s`:'Rubrique non accessible.'}</div>
+        <div class="dash-mini-value">${hasPerm('perm_facturation')||hasPerm('perm_achats')?euro(financeBalance):'—'}</div>
+        <div class="dash-mini-text">${hasPerm('perm_facturation')||hasPerm('perm_achats')?`${euro(d.paidInvoiceAmount)} encaissés · ${euro(d.paidBuyAmount)} dépensés`:'Rubrique non accessible.'}</div>
       </div>
     </div>
   </div>
@@ -1696,41 +1699,41 @@ function vDashboard(){
     <div class="dash-priority-card ${nextAction.critical?'critical':''}">
       <div class="dash-priority-head">
         <div>
-          <div class="eyebrow" style="margin-bottom:8px">Ã€ faire maintenant</div>
+          <div class="eyebrow" style="margin-bottom:8px">À faire maintenant</div>
           <div class="dash-priority-title">${esc(nextAction.title)}</div>
         </div>
-        <span class="badge ${nextAction.critical?'bno':'bok'}">${nextAction.critical?'PrioritÃ© haute':'Situation stable'}</span>
+        <span class="badge ${nextAction.critical?'bno':'bok'}">${nextAction.critical?'Priorité haute':'Situation stable'}</span>
       </div>
       <div class="dash-priority-text">${esc(nextAction.detail)}</div>
       <div class="dash-priority-actions">
         ${nextAction.tab?`<button class="btn primary" onclick="showTab('${nextAction.tab}')">Traiter maintenant</button>`:''}
-        ${hasPerm('perm_comptabilite')?`<button class="btn" onclick="showTab('comptabilite')">VÃ©rifier la compta</button>`:''}
-        ${hasPerm('perm_banque')?`<button class="btn" onclick="showTab('banque')">ContrÃ´ler la banque</button>`:''}
+        ${hasPerm('perm_comptabilite')?`<button class="btn" onclick="showTab('comptabilite')">Vérifier la compta</button>`:''}
+        ${hasPerm('perm_banque')?`<button class="btn" onclick="showTab('banque')">Contrôler la banque</button>`:''}
       </div>
     </div>
   </div>
   <div class="dash-grid">
-    <div class="dash-card"><h3>AdhÃ©rents</h3><strong>${hasPerm('perm_adherents')?d.adherents.length:'â€”'}</strong><p>${hasPerm('perm_adherents')?`${d.adherentsSoon.length} Ã©chÃ©ances proches`:'Rubrique non accessible.'}</p></div>
-    <div class="dash-card"><h3>TrÃ©sorerie</h3><strong>${hasPerm('perm_banque')?euro(d.totalBank):'â€”'}</strong><p>${hasPerm('perm_banque')?`${d.unreconciledTransactions.length} non rapprochÃ©es`:'Rubrique non accessible.'}</p></div>
-    <div class="dash-card"><h3>Compta</h3><strong>${hasPerm('perm_comptabilite')?d.monthEntriesList.length:'â€”'}</strong><p>${hasPerm('perm_comptabilite')?`Ã‰cart ${euro(d.accountingGap)}`:'Rubrique non accessible.'}</p></div>
-    <div class="dash-card"><h3>Ventes</h3><strong>${hasPerm('perm_facturation')?d.invoicesOpen.length:'â€”'}</strong><p>${hasPerm('perm_facturation')?`${euro(d.openInvoiceAmount)} Ã  encaisser`:'Rubrique non accessible.'}</p></div>
+    <div class="dash-card"><h3>Adhérents</h3><strong>${hasPerm('perm_adherents')?d.adherents.length:'—'}</strong><p>${hasPerm('perm_adherents')?`${d.adherentsSoon.length} échéances proches`:'Rubrique non accessible.'}</p></div>
+    <div class="dash-card"><h3>Trésorerie</h3><strong>${hasPerm('perm_banque')?euro(d.totalBank):'—'}</strong><p>${hasPerm('perm_banque')?`${d.unreconciledTransactions.length} non rapprochées`:'Rubrique non accessible.'}</p></div>
+    <div class="dash-card"><h3>Compta</h3><strong>${hasPerm('perm_comptabilite')?d.monthEntriesList.length:'—'}</strong><p>${hasPerm('perm_comptabilite')?`Écart ${euro(d.accountingGap)}`:'Rubrique non accessible.'}</p></div>
+    <div class="dash-card"><h3>Ventes</h3><strong>${hasPerm('perm_facturation')?d.invoicesOpen.length:'—'}</strong><p>${hasPerm('perm_facturation')?`${euro(d.openInvoiceAmount)} à encaisser`:'Rubrique non accessible.'}</p></div>
   </div>
   <div class="dash-viz-grid">
     <div class="dash-viz-card">
       <div class="dash-viz-title">Ventes 6 mois</div>
-      <div class="dash-viz-value">${hasPerm('perm_facturation')?euro(d.monthInvoiceAmount):'â€”'}</div>
+      <div class="dash-viz-value">${hasPerm('perm_facturation')?euro(d.monthInvoiceAmount):'—'}</div>
       <div class="dash-viz-sub">${hasPerm('perm_facturation')?'Ce mois':'Rubrique non accessible.'}</div>
       ${hasPerm('perm_facturation')?`<div class="dash-chart">${renderBarChart(invoiceSeries,'#B33627')}<div class="dash-chart-legend"><span>${esc(invoiceSeries[0]?.label||'')}</span><span>${esc(invoiceSeries.at(-1)?.label||'')}</span></div></div>`:''}
     </div>
     <div class="dash-viz-card">
       <div class="dash-viz-title">Achats 6 mois</div>
-      <div class="dash-viz-value">${hasPerm('perm_achats')?euro(d.monthBuyAmount):'â€”'}</div>
+      <div class="dash-viz-value">${hasPerm('perm_achats')?euro(d.monthBuyAmount):'—'}</div>
       <div class="dash-viz-sub">${hasPerm('perm_achats')?'Ce mois':'Rubrique non accessible.'}</div>
       ${hasPerm('perm_achats')?`<div class="dash-chart">${renderLineChart(buySeries,'#8E6A0C')}<div class="dash-chart-legend"><span>${esc(buySeries[0]?.label||'')}</span><span>${esc(buySeries.at(-1)?.label||'')}</span></div></div>`:''}
     </div>
     <div class="dash-viz-card">
-      <div class="dash-viz-title">QualitÃ© des donnÃ©es</div>
-      <div class="dash-viz-value">${hasPerm('perm_adherents')?`${docsComplete}/${d.adherents.length||0}`:'â€”'}</div>
+      <div class="dash-viz-title">Qualité des données</div>
+      <div class="dash-viz-value">${hasPerm('perm_adherents')?`${docsComplete}/${d.adherents.length||0}`:'—'}</div>
       <div class="dash-viz-sub">${hasPerm('perm_adherents')?'Dossiers complets':'Rubrique non accessible.'}</div>
       ${hasPerm('perm_adherents')?`<div class="dash-chart">${renderGauge(docsComplete,d.adherents.length||1,'#1e7e34')}</div>`:''}
     </div>
@@ -1739,68 +1742,68 @@ function vDashboard(){
     <div class="stit" style="margin-top:0">Tendances mensuelles</div>
     <div class="dash-compare">
       <div class="dash-compare-card">
-        <div class="dash-compare-label">Ã‰critures comptables</div>
-        <div class="dash-compare-value">${hasPerm('perm_comptabilite')?d.monthEntriesList.length:'â€”'}</div>
+        <div class="dash-compare-label">Écritures comptables</div>
+        <div class="dash-compare-value">${hasPerm('perm_comptabilite')?d.monthEntriesList.length:'—'}</div>
         <div class="dash-compare-delta ${entryDelta.cls}">${hasPerm('perm_comptabilite')?entryDelta.label:'Rubrique non accessible.'}</div>
       </div>
       <div class="dash-compare-card">
         <div class="dash-compare-label">Ventes du mois</div>
-        <div class="dash-compare-value">${hasPerm('perm_facturation')?euro(d.monthInvoiceAmount):'â€”'}</div>
+        <div class="dash-compare-value">${hasPerm('perm_facturation')?euro(d.monthInvoiceAmount):'—'}</div>
         <div class="dash-compare-delta ${invoiceDelta.cls}">${hasPerm('perm_facturation')?invoiceDelta.label:'Rubrique non accessible.'}</div>
       </div>
       <div class="dash-compare-card">
         <div class="dash-compare-label">Achats du mois</div>
-        <div class="dash-compare-value">${hasPerm('perm_achats')?euro(d.monthBuyAmount):'â€”'}</div>
+        <div class="dash-compare-value">${hasPerm('perm_achats')?euro(d.monthBuyAmount):'—'}</div>
         <div class="dash-compare-delta ${buyDelta.cls}">${hasPerm('perm_achats')?buyDelta.label:'Rubrique non accessible.'}</div>
       </div>
     </div>
   </div>
   <div class="dash-section-grid">
     <div class="card">
-      <div class="stit" style="margin-top:0">RÃ©capitulatif club</div>
+      <div class="stit" style="margin-top:0">Récapitulatif club</div>
       <div class="dash-stat-grid">
         <div class="dash-stat">
-          <div class="dash-stat-label">AdhÃ©rents</div>
-          <div class="dash-stat-value">${hasPerm('perm_adherents')?d.adherents.length:'â€”'}</div>
-          <div class="dash-stat-sub">${hasPerm('perm_adherents')?`${d.renewList.length} Ã  renouveler Â· ${d.incompleteList.length} incomplets`:'Rubrique non accessible.'}</div>
+          <div class="dash-stat-label">Adhérents</div>
+          <div class="dash-stat-value">${hasPerm('perm_adherents')?d.adherents.length:'—'}</div>
+          <div class="dash-stat-sub">${hasPerm('perm_adherents')?`${d.renewList.length} à renouveler · ${d.incompleteList.length} incomplets`:'Rubrique non accessible.'}</div>
         </div>
         <div class="dash-stat">
           <div class="dash-stat-label">Banque</div>
-          <div class="dash-stat-value">${hasPerm('perm_banque')?euro(d.totalBank):'â€”'}</div>
-          <div class="dash-stat-sub">${hasPerm('perm_banque')?`${d.bankTransactions.length} mouvements Â· ${d.unreconciledTransactions.length} Ã  rapprocher`:'Rubrique non accessible.'}</div>
+          <div class="dash-stat-value">${hasPerm('perm_banque')?euro(d.totalBank):'—'}</div>
+          <div class="dash-stat-sub">${hasPerm('perm_banque')?`${d.bankTransactions.length} mouvements · ${d.unreconciledTransactions.length} à rapprocher`:'Rubrique non accessible.'}</div>
         </div>
         <div class="dash-stat">
           <div class="dash-stat-label">Achats</div>
-          <div class="dash-stat-value">${hasPerm('perm_achats')?euro(d.pendingBuyAmount):'â€”'}</div>
-          <div class="dash-stat-sub">${hasPerm('perm_achats')?`${d.purchasesPending.length} en attente Â· ${d.purchasesRefused.length} refusÃ©s`:'Rubrique non accessible.'}</div>
+          <div class="dash-stat-value">${hasPerm('perm_achats')?euro(d.pendingBuyAmount):'—'}</div>
+          <div class="dash-stat-sub">${hasPerm('perm_achats')?`${d.purchasesPending.length} en attente · ${d.purchasesRefused.length} refusés`:'Rubrique non accessible.'}</div>
         </div>
         <div class="dash-stat">
           <div class="dash-stat-label">Ventes</div>
-          <div class="dash-stat-value">${hasPerm('perm_facturation')?euro(d.openInvoiceAmount):'â€”'}</div>
-          <div class="dash-stat-sub">${hasPerm('perm_facturation')?`${d.invoicesOpen.length} ouvertes Â· ${d.invoicesPaid.length} rÃ©glÃ©es`:'Rubrique non accessible.'}</div>
+          <div class="dash-stat-value">${hasPerm('perm_facturation')?euro(d.openInvoiceAmount):'—'}</div>
+          <div class="dash-stat-sub">${hasPerm('perm_facturation')?`${d.invoicesOpen.length} ouvertes · ${d.invoicesPaid.length} réglées`:'Rubrique non accessible.'}</div>
         </div>
       </div>
     </div>
     <div class="card">
-      <div class="stit" style="margin-top:0">AccÃ¨s rapides</div>
+      <div class="stit" style="margin-top:0">Accès rapides</div>
       <div class="dash-quick">
-        ${hasPerm('perm_adherents','write')?`<button class="btn primary" onclick="openModal('adh')">+ Nouvel adhÃ©rent</button>`:''}
-        ${hasPerm('perm_adherents')?`<button class="btn" onclick="showTab('adherents')">Voir les adhÃ©rents</button>`:''}
+        ${hasPerm('perm_adherents','write')?`<button class="btn primary" onclick="openModal('adh')">+ Nouvel adhérent</button>`:''}
+        ${hasPerm('perm_adherents')?`<button class="btn" onclick="showTab('adherents')">Voir les adhérents</button>`:''}
         ${hasPerm('perm_comptabilite')?`<button class="btn" onclick="showTab('comptabilite')">Ouvrir la compta</button>`:''}
-        ${hasPerm('perm_facturation','write')?`<button class="btn gold" onclick="openNewFacture()">CrÃ©er une vente</button>`:''}
+        ${hasPerm('perm_facturation','write')?`<button class="btn gold" onclick="openNewFacture()">Créer une vente</button>`:''}
         ${hasPerm('perm_achats')?`<button class="btn" onclick="focusAchats('pending')">Suivre les achats</button>`:''}
       </div>
       <div style="margin-top:14px">
-        <span class="dash-pill ${hasPerm('perm_adherents')&&d.incompleteList.length?'alert':'ok'}">Documents incomplets : ${hasPerm('perm_adherents')?d.incompleteList.length:'â€”'}</span>
-        <span class="dash-pill ${hasPerm('perm_adherents')&&d.renewList.length?'alert':'ok'}">Renouvellements : ${hasPerm('perm_adherents')?d.renewList.length:'â€”'}</span>
-        <span class="dash-pill ${hasPerm('perm_achats')&&d.purchasesPending.length?'alert':'ok'}">Achats Ã  rÃ©gler : ${hasPerm('perm_achats')?d.purchasesPending.length:'â€”'}</span>
+        <span class="dash-pill ${hasPerm('perm_adherents')&&d.incompleteList.length?'alert':'ok'}">Documents incomplets : ${hasPerm('perm_adherents')?d.incompleteList.length:'—'}</span>
+        <span class="dash-pill ${hasPerm('perm_adherents')&&d.renewList.length?'alert':'ok'}">Renouvellements : ${hasPerm('perm_adherents')?d.renewList.length:'—'}</span>
+        <span class="dash-pill ${hasPerm('perm_achats')&&d.purchasesPending.length?'alert':'ok'}">Achats à régler : ${hasPerm('perm_achats')?d.purchasesPending.length:'—'}</span>
       </div>
     </div>
   </div>
   <div class="dash-list">
     <div class="card">
       <div class="stit" style="margin-top:0">Points d'attention</div>
-      ${renderDashboardFeed(attentionItems,'Aucune alerte bloquante dÃ©tectÃ©e sur les donnÃ©es chargÃ©es.')}
+      ${renderDashboardFeed(attentionItems,'Aucune alerte bloquante détectée sur les données chargées.')}
     </div>
     <div class="card">
       <div class="stit" style="margin-top:0">Conseils d'optimisation</div>
@@ -1811,8 +1814,8 @@ function vDashboard(){
   </div>
   <div class="dash-list">
     <div class="card">
-      <div class="stit" style="margin-top:0">ActivitÃ© rÃ©cente</div>
-      ${renderDashboardFeed(recentFeed,'Aucune activitÃ© rÃ©cente disponible sur les rubriques accessibles.','Suivi')}
+      <div class="stit" style="margin-top:0">Activité récente</div>
+      ${renderDashboardFeed(recentFeed,'Aucune activité récente disponible sur les rubriques accessibles.','Suivi')}
     </div>
     <div class="card">
       <div class="stit" style="margin-top:0">Lecture par onglet</div>
@@ -1866,20 +1869,20 @@ function vAdh(){
   return`<div class="view-head">
     <div>
       <div class="eyebrow">Suivi sportif et administratif</div>
-      <h2>AdhÃ©rents</h2>
-      <p>Pilotez les dossiers, les cotisations et les piÃ¨ces administratives depuis une vue unique, claire et rapide Ã  parcourir.</p>
+      <h2>Adhérents</h2>
+      <p>Pilotez les dossiers, les cotisations et les pièces administratives depuis une vue unique, claire et rapide à parcourir.</p>
     </div>
     <div class="exo-badge">Saison en cours : ${season}</div>
   </div>
   <div class="g4" style="margin-bottom:14px">
-    <div class="sc"><div class="v vr">${filtered.length}</div><div class="l">AdhÃ©rents</div></div>
-    <div class="sc"><div class="v vgo">${tot.toLocaleString('fr-FR',{minimumFractionDigits:2})} â‚¬</div><div class="l">Total cotisations</div></div>
+    <div class="sc"><div class="v vr">${filtered.length}</div><div class="l">Adhérents</div></div>
+    <div class="sc"><div class="v vgo">${tot.toLocaleString('fr-FR',{minimumFractionDigits:2})} €</div><div class="l">Total cotisations</div></div>
     <div class="sc"><div class="v vg">${ok}</div><div class="l">Dossiers complets</div></div>
-    <div class="sc"><div class="v ${ren>0?'vgo':''}">${ren}</div><div class="l">Ã€ renouveler</div></div>
+    <div class="sc"><div class="v ${ren>0?'vgo':''}">${ren}</div><div class="l">À renouveler</div></div>
   </div>
   <div class="g2" style="margin-bottom:14px">
-    <div class="card" style="padding:12px 16px"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:12px"><span>AnnulÃ©es : <strong>${filtered.filter(a=>a.statut==='AdhÃ©sion annulÃ©e').length}</strong></span><span>Inactives : <strong>${filtered.filter(a=>a.statut==='Inactif').length}</strong></span><span>ExpirÃ©es : <strong>${exp}</strong></span></div></div>
-    <div class="card" style="padding:12px 16px"><div style="font-size:12px;color:var(--txt2)">Tri courant</div><div style="margin-top:4px;font-weight:600">Classement alphabÃ©tique par nom puis prÃ©nom</div></div>
+    <div class="card" style="padding:12px 16px"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:12px"><span>Annulées : <strong>${filtered.filter(a=>a.statut==='Adhésion annulée').length}</strong></span><span>Inactives : <strong>${filtered.filter(a=>a.statut==='Inactif').length}</strong></span><span>Expirées : <strong>${exp}</strong></span></div></div>
+    <div class="card" style="padding:12px 16px"><div style="font-size:12px;color:var(--txt2)">Tri courant</div><div style="margin-top:4px;font-weight:600">Classement alphabétique par nom puis prénom</div></div>
   </div>
   <div class="toolbar">
     <input style="flex:1;min-width:160px" placeholder="Rechercher..." value="${UI.search.adherents||''}" oninput="UI.search.adherents=this.value;render()">
@@ -1898,30 +1901,30 @@ function vAdh(){
     <select style="width:auto;min-width:180px" onchange="UI.adhFilters.special=this.value;render()">
       <option value="" ${!UI.adhFilters.special?'selected':''}>Tous les dossiers</option>
       <option value="incomplete" ${UI.adhFilters.special==='incomplete'?'selected':''}>Dossiers incomplets</option>
-      <option value="renew" ${UI.adhFilters.special==='renew'?'selected':''}>Ã€ renouveler</option>
-      <option value="expired" ${UI.adhFilters.special==='expired'?'selected':''}>ExpirÃ©s</option>
-      <option value="soon" ${UI.adhFilters.special==='soon'?'selected':''}>Ã‰chÃ©ance proche</option>
+      <option value="renew" ${UI.adhFilters.special==='renew'?'selected':''}>À renouveler</option>
+      <option value="expired" ${UI.adhFilters.special==='expired'?'selected':''}>Expirés</option>
+      <option value="soon" ${UI.adhFilters.special==='soon'?'selected':''}>Échéance proche</option>
     </select>
-    ${canWrite?`<button class="btn primary" onclick="openModal('adh')">+ Nouvel adhÃ©rent</button>`:''}
-    ${canWrite?`<button class="btn gold" onclick="openDiplomeForAdherent()">ðŸŽ“ Nouveau diplÃ´me</button>`:''}
-    <button class="btn" onclick="exportCSV()">â¬‡ Export CSV</button>
+    ${canWrite?`<button class="btn primary" onclick="openModal('adh')">+ Nouvel adhérent</button>`:''}
+    ${canWrite?`<button class="btn gold" onclick="openDiplomeForAdherent()">🎓 Nouveau diplôme</button>`:''}
+    <button class="btn" onclick="exportCSV()">⬇ Export CSV</button>
     <button class="btn" onclick="showTab('administration');showST('admin','imp_adh')">Import DoliAsso</button>
-    <button class="btn" onclick="UI.search.adherents='';UI.adhFilters={statut:'',type:'',season:'current',special:''};render()">RÃ©initialiser</button>
+    <button class="btn" onclick="UI.search.adherents='';UI.adhFilters={statut:'',type:'',season:'current',special:''};render()">Réinitialiser</button>
   </div>
   <div class="wrap"><table>
-    <thead><tr><th>Nom / PrÃ©nom</th><th>Type</th><th>Certif.</th><th>Droit img</th><th>Pass RÃ©gion</th><th>RÃ¨glement</th><th>Cotisation</th><th>Paiement</th><th>Statut</th><th>Saison</th><th>AdhÃ©sion</th><th>PDF</th><th></th></tr></thead>
+    <thead><tr><th>Nom / Prénom</th><th>Type</th><th>Certif.</th><th>Droit img</th><th>Pass Région</th><th>Règlement</th><th>Cotisation</th><th>Paiement</th><th>Statut</th><th>Saison</th><th>Adhésion</th><th>PDF</th><th></th></tr></thead>
     <tbody>${f.map(a=>{
       const docs=getAdherentDocuments(a.id);
       return `<tr class="${adhStatus(a)==='expire'?'adh-expire':adhStatus(a)==='soon'?'adh-soon':'adh-valid'}">
       <td><strong style="font-weight:500">${a.nom} ${a.prenom}</strong>${a.ville?`<br><span style="font-size:10px;color:var(--txt2)">${a.ville}</span>`:''}</td>
       <td><span class="badge bgray">${a.discipline||'Club'}</span></td>
       <td>${bdg(a.certificat)}</td><td>${bdg(a.droit_image)}</td>
-      <td>${bdg(a.pass_region)}${+a.montant_pass_region>0?` <span style="font-size:11px;color:var(--gold-d)">+${(+a.montant_pass_region).toFixed(0)}â‚¬</span>`:''}</td>
+      <td>${bdg(a.pass_region)}${+a.montant_pass_region>0?` <span style="font-size:11px;color:var(--gold-d)">+${(+a.montant_pass_region).toFixed(0)}€</span>`:''}</td>
       <td>${bdg(a.reglement)}</td>
-      <td><strong style="font-weight:500">${(+a.cotisation).toFixed(2)} â‚¬</strong>${+a.montant_pass_region>0?`<br><span style="font-size:10px;color:var(--txt2)">Pass: ${(+a.montant_pass_region).toFixed(2)}â‚¬</span>`:''}</td>
+      <td><strong style="font-weight:500">${(+a.cotisation).toFixed(2)} €</strong>${+a.montant_pass_region>0?`<br><span style="font-size:10px;color:var(--txt2)">Pass: ${(+a.montant_pass_region).toFixed(2)}€</span>`:''}</td>
       <td style="font-size:11px">${a.paiement||''}</td>
-      <td><span class="badge ${adhStatutBadge(a.statut)}">${a.statut||'â€”'}</span></td>
-      <td>${seasonFromDate(a.date_fin_adhesion||a.date_inscription)||'â€”'}</td>
+      <td><span class="badge ${adhStatutBadge(a.statut)}">${a.statut||'—'}</span></td>
+      <td>${seasonFromDate(a.date_fin_adhesion||a.date_inscription)||'—'}</td>
       <td>${adhBadge(a)}</td>
       <td style="white-space:nowrap">
         ${canWrite?`<button class="btn sm" onclick="trigPDF('adherents','${a.id}')">${a.pdf_public_url?'Remplacer':'Ajouter'}</button>`:''}
@@ -1930,13 +1933,13 @@ function vAdh(){
       </td>
       <td style="white-space:nowrap">
         ${canWrite?`<button class="btn sm" onclick="openModal('adh','${a.id}')">Modifier</button>
-        <button class="btn sm danger" style="margin-left:4px" onclick="delAdh('${a.id}')">âœ•</button>
-        <button class="btn sm" style="margin-left:4px" onclick="openDiplomeForAdherent('${a.id}')">DiplÃ´me</button>
-        <button class="btn sm gold" style="margin-left:4px" onclick="genRecu('${a.id}')">ReÃ§u</button>`:''}
+        <button class="btn sm danger" style="margin-left:4px" onclick="delAdh('${a.id}')">✕</button>
+        <button class="btn sm" style="margin-left:4px" onclick="openDiplomeForAdherent('${a.id}')">Diplôme</button>
+        <button class="btn sm gold" style="margin-left:4px" onclick="genRecu('${a.id}')">Reçu</button>`:''}
       </td>
     </tr>`;
     }).join('')}
-    ${f.length===0?`<tr><td colspan="13" class="empty">Aucun adhÃ©rent</td></tr>`:''}
+    ${f.length===0?`<tr><td colspan="13" class="empty">Aucun adhérent</td></tr>`:''}
     </tbody>
   </table></div>
   ${renderPager('adherents',totalPages)}`;
@@ -1961,35 +1964,35 @@ async function attachPDF(e){
   const {data:pub}=SB.storage.from('fullfighting-pdf').getPublicUrl(path);
   const patch={pdf_storage_path:path,pdf_public_url:pub?.publicUrl||null,pdf_nom_fichier:file.name,pdf_uploaded_at:new Date().toISOString(),updated_at:new Date().toISOString()};
   const cfg=target.type==='adherents'
-    ? {table:'adherents',rows:D.adherents,label:'fiche adhÃ©rent'}
+    ? {table:'adherents',rows:D.adherents,label:'fiche adhérent'}
     : target.type==='achats'
       ? {table:'achats',rows:D.achats,label:'achat'}
       : null;
-  if(!cfg) return alert('Type de document non supportÃ©.');
+  if(!cfg) return alert('Type de document non supporté.');
   const row=cfg.rows.find(x=>x.id===target.id);
-  if(!row) return alert(cfg.label==='achat'?'Achat introuvable.':'AdhÃ©rent introuvable.');
+  if(!row) return alert(cfg.label==='achat'?'Achat introuvable.':'Adhérent introuvable.');
   const {error}=await SB.from(cfg.table).update(patch).eq('id',target.id);
-  if(error)return alert(`PDF tÃ©lÃ©versÃ©, mais ${cfg.label} non mise Ã  jour : `+error.message);
+  if(error)return alert(`PDF téléversé, mais ${cfg.label} non mise à jour : `+error.message);
   Object.assign(row,patch);
   render();
-  alert(`PDF ${cfg.label} enregistrÃ© dans ${storageProviderLabel()}.`);
+  alert(`PDF ${cfg.label} enregistré dans ${storageProviderLabel()}.`);
 }
 async function delAdh(id){
   if(!requireWritePerm('perm_adherents')) return;
-  if(!confirm('Supprimer cet adhÃ©rent ?'))return;
+  if(!confirm('Supprimer cet adhérent ?'))return;
   await SB.from('adherents').delete().eq('id',id);
-  try{await deleteJournalAutoPrefix(autoPiecePrefix('ADH',id));}catch(e){return alert('AdhÃ©rent supprimÃ©, mais Ã©critures comptables non supprimÃ©es : '+e.message);}
+  try{await deleteJournalAutoPrefix(autoPiecePrefix('ADH',id));}catch(e){return alert('Adhérent supprimé, mais écritures comptables non supprimées : '+e.message);}
   D.adherents=D.adherents.filter(a=>a.id!==id);render();
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// DIPLÃ”MES
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
+// DIPLÔMES
+// ═══════════════════════════════════════════════════
 function openDiplomeForAdherent(id){
   const list=sortAdherentsList([...D.adherents]);
   const adh=(id && D.adherents.find(a=>a.id===id)) || D.adherents.find(a=>a.id===UI.diplome.adherentId) || list[0] || null;
   if(!adh){
-    alert('Aucun adhÃ©rent disponible pour gÃ©nÃ©rer un diplÃ´me.');
+    alert('Aucun adhérent disponible pour générer un diplôme.');
     return;
   }
   UI.diplome.adherentId=adh.id;
@@ -2052,7 +2055,7 @@ function buildDiplomeFieldValues(data){
     nomComplet:data.nomComplet||`${nom} ${prenom}`.trim(),
     prenom,
     nom,
-    licence:data.licence||'Non renseignÃ©',
+    licence:data.licence||'Non renseigné',
     date:fd(data.date)
   };
 }
@@ -2084,7 +2087,7 @@ function buildDiplomeTextOverlay(data){
       const style=diplomeTextStyle(field,data.mode==='editor');
       const value=esc(textValues[key]||'');
       if(data.mode==='editor'){
-        return `<div class="dipl-field-box ${active?'active':''}" style="${style}" onmousedown="startDiplomeFieldDrag(event,'${key}')" onclick="selectDiplomeField('${key}')"><span class="dipl-field-tag">${esc(label)}</span><span class="dipl-field-proxy">${value||'â€”'}</span></div>`;
+        return `<div class="dipl-field-box ${active?'active':''}" style="${style}" onmousedown="startDiplomeFieldDrag(event,'${key}')" onclick="selectDiplomeField('${key}')"><span class="dipl-field-tag">${esc(label)}</span><span class="dipl-field-proxy">${value||'—'}</span></div>`;
       }
       return `<div style="${style}">${value}</div>`;
     }).join('');
@@ -2094,7 +2097,7 @@ function buildDiplomeHTML(data,mode){
   const overlay=buildDiplomeTextOverlay({...data,mode:mode==='preview'?'editor':mode});
   if(mode==='print'){
     const bgLayer=data.templateUrl
-      ? `<img src="${data.templateUrl}" alt="ModÃ¨le de diplÃ´me" crossorigin="anonymous" referrerpolicy="no-referrer">`
+      ? `<img src="${data.templateUrl}" alt="Modèle de diplôme" crossorigin="anonymous" referrerpolicy="no-referrer">`
       : `<div style="position:absolute;inset:0;background:linear-gradient(135deg,#fcf5e5,#f1e0b8)"></div>`;
     return `<div style="width:1123px;height:794px;position:relative;font-family:'Avenir Next','Segoe UI',sans-serif;color:#241009;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact">
       ${bgLayer}
@@ -2102,7 +2105,7 @@ function buildDiplomeHTML(data,mode){
     </div>`;
   }
   return `<div class="dipl-preview is-editor" id="diplome-preview-surface">
-    <img class="dipl-preview-canvas" id="diplome-preview-image" alt="AperÃ§u du diplÃ´me">
+    <img class="dipl-preview-canvas" id="diplome-preview-image" alt="Aperçu du diplôme">
     ${overlay}
   </div>`;
 }
@@ -2116,7 +2119,7 @@ function loadScriptSequential(urls,check){
     let idx=0;
     const tryNext=()=>{
       if(check()) return resolve(check());
-      if(idx>=urls.length) return reject(new Error('Impossible de charger la bibliothÃ¨que PDF.'));
+      if(idx>=urls.length) return reject(new Error('Impossible de charger la bibliothèque PDF.'));
       const script=document.createElement('script');
       script.src=urls[idx++];
       script.async=true;
@@ -2152,7 +2155,7 @@ async function fetchImageDataURL(url){
   if(!url) return null;
   if(diplomeImageDataUrlCache.has(url)) return diplomeImageDataUrlCache.get(url);
   const res=await fetch(url,{mode:'cors',cache:'no-store'});
-  if(!res.ok) throw new Error(`Image du diplÃ´me inaccessible (${res.status}).`);
+  if(!res.ok) throw new Error(`Image du diplôme inaccessible (${res.status}).`);
   const dataUrl=await blobToDataURL(await res.blob());
   diplomeImageDataUrlCache.set(url,dataUrl);
   return dataUrl;
@@ -2162,7 +2165,7 @@ function loadImageElement(src){
   return new Promise((resolve,reject)=>{
     const img=new Image();
     img.onload=()=>resolve(img);
-    img.onerror=()=>reject(new Error('Chargement du modÃ¨le de diplÃ´me impossible.'));
+    img.onerror=()=>reject(new Error('Chargement du modèle de diplôme impossible.'));
     img.src=src;
   });
 }
@@ -2310,14 +2313,14 @@ async function refreshDiplomePreviewCanvas(){
     return;
   }
   const token=++diplomePreviewToken;
-  preview.alt='AperÃ§u du diplÃ´me en cours de gÃ©nÃ©ration';
+  preview.alt='Aperçu du diplôme en cours de génération';
   try{
     const canvas=await buildDiplomeCanvas({
-      titre:UI.diplome.titre||'DiplÃ´me de ceinture',
+      titre:UI.diplome.titre||'Diplôme de ceinture',
       nomComplet:`${adh.nom||''} ${adh.prenom||''}`.trim(),
       nom:adh.nom||'',
       prenom:adh.prenom||'',
-      licence:adh.numero_licence||'Non renseignÃ©',
+      licence:adh.numero_licence||'Non renseigné',
       ceinture:adh.couleur_ceinture||'',
       date:UI.diplome.date||td(),
       templateUrl:tpl.url,
@@ -2327,28 +2330,28 @@ async function refreshDiplomePreviewCanvas(){
     });
     if(token!==diplomePreviewToken) return;
     preview.src=canvas.toDataURL('image/png');
-    preview.alt='AperÃ§u du diplÃ´me';
+    preview.alt='Aperçu du diplôme';
   }catch(error){
     if(token!==diplomePreviewToken) return;
     preview.removeAttribute('src');
-    preview.alt='AperÃ§u du diplÃ´me indisponible';
-    console.error('AperÃ§u diplÃ´me impossible',error);
+    preview.alt='Aperçu du diplôme indisponible';
+    console.error('Aperçu diplôme impossible',error);
   }
 }
 
 async function printDiplome(){
   const adh=selectedDiplomeAdherent();
   const tpl=selectedDiplomeTemplate();
-  if(!adh) return alert('SÃ©lectionnez un adhÃ©rent.');
-  if(!tpl) return alert(`Aucun modÃ¨le de diplÃ´me image trouvÃ© dans le bucket "${DIPLOME_BUCKET}".`);
+  if(!adh) return alert('Sélectionnez un adhérent.');
+  if(!tpl) return alert(`Aucun modèle de diplôme image trouvé dans le bucket "${DIPLOME_BUCKET}".`);
   try{
     const jsPDF=await ensureJsPDF();
     const diplomeData={
-      titre:UI.diplome.titre||'DiplÃ´me de ceinture',
+      titre:UI.diplome.titre||'Diplôme de ceinture',
       nomComplet:`${adh.nom||''} ${adh.prenom||''}`.trim(),
       nom:adh.nom||'',
       prenom:adh.prenom||'',
-      licence:adh.numero_licence||'Non renseignÃ©',
+      licence:adh.numero_licence||'Non renseigné',
       ceinture:adh.couleur_ceinture||'',
       date:UI.diplome.date||td(),
       templateUrl:tpl.url,
@@ -2390,7 +2393,7 @@ async function importDiplomeSignature(e){
   if(upErr) return alert('Upload de la signature impossible : '+upErr.message);
   const {data:pub}=SB.storage.from(DIPLOME_BUCKET).getPublicUrl(path);
   await saveDiplomeSignatureUrl(pub?.publicUrl||'');
-  alert('Signature importÃ©e.');
+  alert('Signature importée.');
 }
 
 function vDiplomes(){
@@ -2400,11 +2403,11 @@ function vDiplomes(){
   const tpl=selectedDiplomeTemplate();
   const layout=selectedDiplomeLayout();
   const html=adh?buildDiplomeHTML({
-    titre:UI.diplome.titre||'DiplÃ´me de ceinture',
+    titre:UI.diplome.titre||'Diplôme de ceinture',
     nomComplet:`${adh.nom||''} ${adh.prenom||''}`.trim(),
     nom:adh.nom||'',
     prenom:adh.prenom||'',
-    licence:adh.numero_licence||'Non renseignÃ©',
+    licence:adh.numero_licence||'Non renseigné',
     ceinture:adh.couleur_ceinture||'',
     date:UI.diplome.date||td(),
     templateUrl:tpl?.url||'',
@@ -2415,66 +2418,66 @@ function vDiplomes(){
   return `<div class="view-head">
     <div>
       <div class="eyebrow">Documents sportifs</div>
-      <h2>DiplÃ´mes</h2>
-      <p>Chaque modÃ¨le dispose maintenant de son propre rÃ©glage libre. Vous pouvez dÃ©placer les champs directement dans lâ€™aperÃ§u puis enregistrer la configuration dans Supabase.</p>
+      <h2>Diplômes</h2>
+      <p>Chaque modèle dispose maintenant de son propre réglage libre. Vous pouvez déplacer les champs directement dans l’aperçu puis enregistrer la configuration dans Supabase.</p>
     </div>
   </div>
   <div class="dipl-grid">
     <div style="display:flex;flex-direction:column;gap:14px">
       <div class="card">
         <div class="fg" style="margin-bottom:12px">
-          <label>AdhÃ©rent</label>
+          <label>Adhérent</label>
           <select onchange="UI.diplome.adherentId=this.value;render()">
-            ${adhList.map(a=>`<option value="${a.id}" ${UI.diplome.adherentId===a.id?'selected':''}>${a.nom} ${a.prenom}${a.couleur_ceinture?` â€” ${a.couleur_ceinture}`:''}</option>`).join('')}
+            ${adhList.map(a=>`<option value="${a.id}" ${UI.diplome.adherentId===a.id?'selected':''}>${a.nom} ${a.prenom}${a.couleur_ceinture?` — ${a.couleur_ceinture}`:''}</option>`).join('')}
           </select>
         </div>
         <div class="g2">
           <div class="fg">
-            <label>Date du diplÃ´me</label>
+            <label>Date du diplôme</label>
             <input type="date" value="${UI.diplome.date||td()}" onchange="UI.diplome.date=this.value;render()">
           </div>
           <div class="fg">
-            <label>ModÃ¨le sÃ©lectionnÃ©</label>
-            <input value="${tpl?.label||'Aucun modÃ¨le'}" disabled>
+            <label>Modèle sélectionné</label>
+            <input value="${tpl?.label||'Aucun modèle'}" disabled>
           </div>
         </div>
         ${adh?`<div class="card" style="margin-top:14px;padding:12px 14px;background:rgba(255,255,255,.58)">
-          <div style="font-size:11px;color:var(--txt2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">DonnÃ©es adhÃ©rent utilisÃ©es</div>
-          <div style="font-size:13px;line-height:1.8"><strong>${adh.nom} ${adh.prenom}</strong><br>Nom : ${adh.nom||'â€”'}<br>PrÃ©nom : ${adh.prenom||'â€”'}<br>Licence : ${adh.numero_licence||'Non renseignÃ©'}<br>Date imprimÃ©e : ${fd(UI.diplome.date||td())}</div>
-        </div>`:`<div class="empty">Aucun adhÃ©rent disponible.</div>`}
+          <div style="font-size:11px;color:var(--txt2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Données adhérent utilisées</div>
+          <div style="font-size:13px;line-height:1.8"><strong>${adh.nom} ${adh.prenom}</strong><br>Nom : ${adh.nom||'—'}<br>Prénom : ${adh.prenom||'—'}<br>Licence : ${adh.numero_licence||'Non renseigné'}<br>Date imprimée : ${fd(UI.diplome.date||td())}</div>
+        </div>`:`<div class="empty">Aucun adhérent disponible.</div>`}
         <div class="card" style="margin-top:14px;padding:12px 14px;background:rgba(255,255,255,.58)">
           <div style="font-size:11px;color:var(--txt2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Fichier de notation</div>
-          ${adh?`<div style="font-size:13px;line-height:1.8">${adh.pdf_public_url?`PDF liÃ© : <strong>${esc(adh.pdf_nom_fichier||'document.pdf')}</strong>`:'Aucun PDF de notation importÃ©.'}</div>
+          ${adh?`<div style="font-size:13px;line-height:1.8">${adh.pdf_public_url?`PDF lié : <strong>${esc(adh.pdf_nom_fichier||'document.pdf')}</strong>`:'Aucun PDF de notation importé.'}</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
             <button class="btn" onclick="trigPDF('adherents','${adh.id}')">${adh.pdf_public_url?'Remplacer le PDF':'Importer le PDF'}</button>
             ${adh.pdf_public_url?`<a class="btn" href="${adh.pdf_public_url}" target="_blank">Ouvrir le PDF</a>`:''}
-          </div>`:`<div class="empty" style="padding:18px 12px">SÃ©lectionnez un adhÃ©rent.</div>`}
+          </div>`:`<div class="empty" style="padding:18px 12px">Sélectionnez un adhérent.</div>`}
         </div>
         <div class="card" style="margin-top:14px;padding:12px 14px;background:rgba(255,255,255,.58)">
-          <div style="font-size:11px;color:var(--txt2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Visuels du diplÃ´me</div>
-          <div style="font-size:13px;line-height:1.8">Logo : ${D.logoUrl?'<strong>logo du club chargÃ©</strong>':'non disponible'}<br>Signature : ${D.clubInfo?.[DIPLOME_SIGNATURE_KEY]?'<strong>signature chargÃ©e</strong>':'non dÃ©finie'}</div>
+          <div style="font-size:11px;color:var(--txt2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Visuels du diplôme</div>
+          <div style="font-size:13px;line-height:1.8">Logo : ${D.logoUrl?'<strong>logo du club chargé</strong>':'non disponible'}<br>Signature : ${D.clubInfo?.[DIPLOME_SIGNATURE_KEY]?'<strong>signature chargée</strong>':'non définie'}</div>
           <div class="fg" style="margin-top:10px">
             <label>URL publique de la signature</label>
             <input id="diplome-signature-url" value="${esc(D.clubInfo?.[DIPLOME_SIGNATURE_KEY]||'')}" placeholder="https://.../signature.png">
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
             <button class="btn" onclick="document.getElementById('diplome-signature-input').click()">Importer la signature</button>
-            <button class="btn" onclick="saveDiplomeSignatureUrl(document.getElementById('diplome-signature-url').value)">Enregistrer lâ€™URL</button>
+            <button class="btn" onclick="saveDiplomeSignatureUrl(document.getElementById('diplome-signature-url').value)">Enregistrer l’URL</button>
           </div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
-          <button class="btn primary" onclick="printDiplome()" ${!adh||!tpl?'disabled':''}>â¬‡ TÃ©lÃ©charger le PDF</button>
-          <button class="btn gold" onclick="saveDiplomeLayouts()" ${!tpl?'disabled':''}>ðŸ’¾ Sauvegarder ce modÃ¨le</button>
-          <button class="btn" onclick="resetCurrentDiplomeLayout()" ${!tpl?'disabled':''}>â†º RÃ©initialiser le modÃ¨le</button>
-          <button class="btn" onclick="loadDiplomeTemplates().then(()=>render())">â†» Recharger les modÃ¨les</button>
+          <button class="btn primary" onclick="printDiplome()" ${!adh||!tpl?'disabled':''}>⬇ Télécharger le PDF</button>
+          <button class="btn gold" onclick="saveDiplomeLayouts()" ${!tpl?'disabled':''}>💾 Sauvegarder ce modèle</button>
+          <button class="btn" onclick="resetCurrentDiplomeLayout()" ${!tpl?'disabled':''}>↺ Réinitialiser le modèle</button>
+          <button class="btn" onclick="loadDiplomeTemplates().then(()=>render())">↻ Recharger les modèles</button>
         </div>
       </div>
       <div class="card dipl-editor-card">
-        <div style="font-size:11px;color:var(--txt2);text-transform:uppercase;letter-spacing:.08em">Ã‰dition libre</div>
+        <div style="font-size:11px;color:var(--txt2);text-transform:uppercase;letter-spacing:.08em">Édition libre</div>
         <div class="dipl-field-list">
           ${DIPLOME_FIELD_META.map(meta=>`<button class="dipl-field-chip ${UI.diplome.selectedField===meta.key?'active':''}" type="button" onclick="selectDiplomeField('${meta.key}')">${meta.label}</button>`).join('')}
         </div>
-        <div class="dipl-help">Cliquez sur un champ puis dÃ©placez-le dans lâ€™aperÃ§u. Les rÃ©glages sont mÃ©morisÃ©s par modÃ¨le dâ€™image.</div>
+        <div class="dipl-help">Cliquez sur un champ puis déplacez-le dans l’aperçu. Les réglages sont mémorisés par modèle d’image.</div>
         <div class="dipl-editor-grid">
           <div class="fg">
             <label>Champ actif</label>
@@ -2565,18 +2568,18 @@ function vDiplomes(){
         </div>
       </div>
       <div class="card">
-        <div style="font-size:11px;color:var(--txt2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">ModÃ¨les disponibles</div>
+        <div style="font-size:11px;color:var(--txt2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Modèles disponibles</div>
         ${D.diplomeTemplates.length
           ? `<div class="dipl-thumbs">${D.diplomeTemplates.map(t=>`<button class="dipl-thumb ${UI.diplome.templatePath===t.path?'active':''}" type="button" onclick="UI.diplome.templatePath='${t.path.replace(/'/g,"\\'")}';render()"><img src="${t.url}" alt="${t.label}"><span>${t.label}</span></button>`).join('')}</div>`
-          : `<div class="empty">${D.diplomeTemplatesError?`Impossible de lister le bucket <strong>${DIPLOME_BUCKET}</strong> : ${esc(D.diplomeTemplatesError)}.`:`Aucun modÃ¨le d'image PNG/JPG/WebP trouvÃ© dans le bucket <strong>${DIPLOME_BUCKET}</strong>.`}</div>`}
+          : `<div class="empty">${D.diplomeTemplatesError?`Impossible de lister le bucket <strong>${DIPLOME_BUCKET}</strong> : ${esc(D.diplomeTemplatesError)}.`:`Aucun modèle d'image PNG/JPG/WebP trouvé dans le bucket <strong>${DIPLOME_BUCKET}</strong>.`}</div>`}
       </div>
     </div>
     <div class="dipl-preview-wrap">
       <div class="dipl-preview-toolbar">
-        <div style="font-size:11px;color:var(--txt2);text-transform:uppercase;letter-spacing:.08em">AperÃ§u</div>
+        <div style="font-size:11px;color:var(--txt2);text-transform:uppercase;letter-spacing:.08em">Aperçu</div>
         <div class="dipl-preview-hint">Glissez un champ pour modifier son emplacement.</div>
       </div>
-      ${adh?`<div>${html}</div>`:`<div class="empty">SÃ©lectionnez un adhÃ©rent pour prÃ©visualiser le diplÃ´me.</div>`}
+      ${adh?`<div>${html}</div>`:`<div class="empty">Sélectionnez un adhérent pour prévisualiser le diplôme.</div>`}
     </div>
   </div>`;
 }
@@ -2617,9 +2620,9 @@ window.addEventListener('mouseup',()=>{
   diplomeDragState=null;
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 // BANQUE
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 function vBanque(){
   const canWrite=hasPerm('perm_banque','write');
   const sub=UI.subTab.banque;
@@ -2627,7 +2630,7 @@ function vBanque(){
     <button class="stab ${sub==='comptes'?'active':''}" onclick="showST('banque','comptes')">Comptes</button>
     <button class="stab ${sub==='import'?'active':''}" onclick="showST('banque','import')">Import CM</button>
     <button class="stab ${sub==='rappr'?'active':''}" onclick="showST('banque','rappr')">Rapprochement</button>
-    <button class="stab ${sub==='ecr512'?'active':''}" onclick="showST('banque','ecr512')">Ã‰critures 512</button>
+    <button class="stab ${sub==='ecr512'?'active':''}" onclick="showST('banque','ecr512')">Écritures 512</button>
   </div>
   ${sub==='comptes'?vComptes():sub==='import'?vBankImport():sub==='rappr'?vRappr():vEcr512()}`;
 }
@@ -2648,24 +2651,24 @@ function vComptes(){
     return`<div class="card" style="margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <div><div style="font-weight:500">${c.nom}</div><div style="font-size:11px;color:var(--txt2)">${c.numero||''}</div></div>
-        <div style="font-size:18px;font-weight:500;color:${sol>=0?'#1e7e34':'var(--red)'}">${sol.toLocaleString('fr-FR',{minimumFractionDigits:2})} â‚¬</div>
+        <div style="font-size:18px;font-weight:500;color:${sol>=0?'#1e7e34':'var(--red)'}">${sol.toLocaleString('fr-FR',{minimumFractionDigits:2})} €</div>
       </div>
       <div class="g3">
-        <div style="font-size:12px;color:var(--txt2)">Initial : <strong>${(+c.solde_initial).toFixed(2)} â‚¬</strong></div>
-        <div style="font-size:12px;color:#1e7e34">+ ${cr.toFixed(2)} â‚¬</div>
-        <div style="font-size:12px;color:var(--red)">- ${db.toFixed(2)} â‚¬</div>
+        <div style="font-size:12px;color:var(--txt2)">Initial : <strong>${(+c.solde_initial).toFixed(2)} €</strong></div>
+        <div style="font-size:12px;color:#1e7e34">+ ${cr.toFixed(2)} €</div>
+        <div style="font-size:12px;color:var(--red)">- ${db.toFixed(2)} €</div>
       </div>
       <div style="margin-top:10px;display:flex;justify-content:flex-end">
-        <button class="btn sm" onclick="openBankAccount('${c.id}')">Consulter les opÃ©rations</button>
+        <button class="btn sm" onclick="openBankAccount('${c.id}')">Consulter les opérations</button>
       </div>
       ${tr.length>0?`<div class="wrap" style="margin-top:8px"><table>
-        <thead><tr><th>Date</th><th>Valeur</th><th>LibellÃ©</th><th>DÃ©bit</th><th>CrÃ©dit</th><th>RapprochÃ©</th></tr></thead>
-        <tbody>${tr.slice(-5).map(t=>`<tr><td>${fd(frDateToISO(t.date_op)||t.date_op)||''}</td>
-          <td style="font-size:11px;color:var(--txt2)">${fd(t.date_valeur)||'â€”'}</td>
+        <thead><tr><th>Date</th><th>Valeur</th><th>Libellé</th><th>Débit</th><th>Crédit</th><th>Rapproché</th></tr></thead>
+        <tbody>${tr.slice(0,5).map(t=>`<tr><td>${fd(frDateToISO(t.date_op)||t.date_op)||''}</td>
+          <td style="font-size:11px;color:var(--txt2)">${fd(t.date_valeur)||'—'}</td>
           <td>${t.libelle}</td>
-          <td style="color:var(--red);text-align:right">${+t.debit>0?(+t.debit).toFixed(2)+' â‚¬':''}</td>
-          <td style="color:#1e7e34;text-align:right">${+t.credit>0?(+t.credit).toFixed(2)+' â‚¬':''}</td>
-          <td>${t.rapproche?`<span class="badge bok">âœ“</span>`:`<span class="badge bwarn">En attente</span>`}</td>
+          <td style="color:var(--red);text-align:right">${+t.debit>0?(+t.debit).toFixed(2)+' €':''}</td>
+          <td style="color:#1e7e34;text-align:right">${+t.credit>0?(+t.credit).toFixed(2)+' €':''}</td>
+          <td>${t.rapproche?`<span class="badge bok">✓</span>`:`<span class="badge bwarn">En attente</span>`}</td>
         </tr>`).join('')}</tbody>
       </table></div>`:''} 
     </div>`;
@@ -2694,34 +2697,34 @@ function vCompteDetail(c){
     <div>
       <div class="eyebrow">Consultation bancaire</div>
       <h2>${c.nom}</h2>
-      <p>Consultez l'ensemble des opÃ©rations importÃ©es pour ce compte, avec le statut de rapprochement et les montants dÃ©bit/crÃ©dit.</p>
+      <p>Consultez l'ensemble des opérations importées pour ce compte, avec le statut de rapprochement et les montants débit/crédit.</p>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn" onclick="closeBankAccount()">Retour aux comptes</button>
     </div>
   </div>
   <div class="g4" style="margin-bottom:14px">
-    <div class="sc"><div class="v">${tr.length}</div><div class="l">OpÃ©rations</div></div>
-    <div class="sc"><div class="v vg">${cr.toFixed(2)} â‚¬</div><div class="l">CrÃ©dits</div></div>
-    <div class="sc"><div class="v vr">${db.toFixed(2)} â‚¬</div><div class="l">DÃ©bits</div></div>
-    <div class="sc"><div class="v ${sol>=0?'vg':'vr'}">${sol.toFixed(2)} â‚¬</div><div class="l">Solde thÃ©orique</div></div>
+    <div class="sc"><div class="v">${tr.length}</div><div class="l">Opérations</div></div>
+    <div class="sc"><div class="v vg">${cr.toFixed(2)} €</div><div class="l">Crédits</div></div>
+    <div class="sc"><div class="v vr">${db.toFixed(2)} €</div><div class="l">Débits</div></div>
+    <div class="sc"><div class="v ${sol>=0?'vg':'vr'}">${sol.toFixed(2)} €</div><div class="l">Solde théorique</div></div>
   </div>
   <div class="card" style="margin-bottom:14px">
-    <div style="font-size:12px;color:var(--txt2)">NumÃ©ro de compte</div>
-    <div style="font-weight:600;margin-top:4px">${c.numero||'Non renseignÃ©'}</div>
+    <div style="font-size:12px;color:var(--txt2)">Numéro de compte</div>
+    <div style="font-weight:600;margin-top:4px">${c.numero||'Non renseigné'}</div>
   </div>
   <div class="wrap"><table>
-    <thead><tr><th>Date</th><th>Valeur</th><th>LibellÃ©</th><th>DÃ©bit</th><th>CrÃ©dit</th><th>RapprochÃ©</th><th>PiÃ¨ce</th></tr></thead>
+    <thead><tr><th>Date</th><th>Valeur</th><th>Libellé</th><th>Débit</th><th>Crédit</th><th>Rapproché</th><th>Pièce</th></tr></thead>
     <tbody>${tr.map(t=>`<tr>
       <td>${fd(frDateToISO(t.date_op)||t.date_op)||''}</td>
-      <td>${fd(t.date_valeur)||'â€”'}</td>
+      <td>${fd(t.date_valeur)||'—'}</td>
       <td>${t.libelle||''}</td>
-      <td style="color:var(--red);text-align:right">${+t.debit>0?(+t.debit).toFixed(2)+' â‚¬':'-'}</td>
-      <td style="color:#1e7e34;text-align:right">${+t.credit>0?(+t.credit).toFixed(2)+' â‚¬':'-'}</td>
-      <td>${t.rapproche?`<span class="badge bok">âœ“</span>`:`<span class="badge bwarn">En attente</span>`}</td>
-      <td style="font-size:11px;color:var(--txt2)">${t.ecriture_piece||'â€”'}</td>
+      <td style="color:var(--red);text-align:right">${+t.debit>0?(+t.debit).toFixed(2)+' €':'-'}</td>
+      <td style="color:#1e7e34;text-align:right">${+t.credit>0?(+t.credit).toFixed(2)+' €':'-'}</td>
+      <td>${t.rapproche?`<span class="badge bok">✓</span>`:`<span class="badge bwarn">En attente</span>`}</td>
+      <td style="font-size:11px;color:var(--txt2)">${t.ecriture_piece||'—'}</td>
     </tr>`).join('')}
-    ${tr.length===0?`<tr><td colspan="7" class="empty">Aucune opÃ©ration sur ce compte</td></tr>`:''}
+    ${tr.length===0?`<tr><td colspan="7" class="empty">Aucune opération sur ce compte</td></tr>`:''}
     </tbody>
   </table></div>`;
 }
@@ -2732,14 +2735,14 @@ function vBankImport(){
     <select id="cible-cpt" style="max-width:280px">${D.comptes.map(c=>`<option value="${c.id}">${c.nom}</option>`).join('')}</select>
   </div>
   <div class="card" style="margin-bottom:12px">
-    <p style="font-weight:600;margin-bottom:6px">PDF CrÃ©dit Mutuel</p>
-    <p style="font-size:12px;color:var(--txt2);margin-bottom:10px">Importe les lignes d'un extrait de compte PDF texte. Si le PDF est scannÃ© comme image, l'import ne pourra pas lire les opÃ©rations.</p>
-    ${canWrite?`<button class="btn primary" onclick="document.getElementById('bank-pdf-input').click()">ðŸ“„ Importer un PDF</button>`:''}
+    <p style="font-weight:600;margin-bottom:6px">PDF Crédit Mutuel</p>
+    <p style="font-size:12px;color:var(--txt2);margin-bottom:10px">Importe les lignes d'un extrait de compte PDF texte. Si le PDF est scanné comme image, l'import ne pourra pas lire les opérations.</p>
+    ${canWrite?`<button class="btn primary" onclick="document.getElementById('bank-pdf-input').click()">📄 Importer un PDF</button>`:''}
   </div>
   <div class="dz" onclick="document.getElementById('csv-bank').click()" style="margin-bottom:10px">
-    <div style="font-size:32px;margin-bottom:8px">ðŸ“„</div>
-    <p style="font-size:13px;font-weight:500">Importer un CSV CrÃ©dit Mutuel</p>
-    <p style="font-size:11px;color:var(--txt2);margin-top:4px">Format : Date;LibellÃ©;DÃ©bit;CrÃ©dit;Solde</p>
+    <div style="font-size:32px;margin-bottom:8px">📄</div>
+    <p style="font-size:13px;font-weight:500">Importer un CSV Crédit Mutuel</p>
+    <p style="font-size:11px;color:var(--txt2);margin-top:4px">Format : Date;Libellé;Débit;Crédit;Solde</p>
   </div>`;
 }
 
@@ -2749,20 +2752,20 @@ function vRappr(){
   return`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
     <strong>${nonR.length} transaction(s) en attente</strong>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn sm" onclick="preselectRapprochements()">PrÃ©-sÃ©lection auto</button>
+      <button class="btn sm" onclick="preselectRapprochements()">Pré-sélection auto</button>
       <button class="btn sm primary" onclick="toutRappr()">Tout rapprocher</button>
     </div>
   </div>
-  ${all.length===0?`<div class="empty">Importez d'abord un relevÃ© bancaire</div>`:`
+  ${all.length===0?`<div class="empty">Importez d'abord un relevé bancaire</div>`:`
   <div class="wrap"><table>
-    <thead><tr><th>Date</th><th>LibellÃ©</th><th>Compte</th><th>DÃ©bit</th><th>CrÃ©dit</th><th>Ã‰criture</th><th>Statut</th><th></th></tr></thead>
+    <thead><tr><th>Date</th><th>Libellé</th><th>Compte</th><th>Débit</th><th>Crédit</th><th>Écriture</th><th>Statut</th><th></th></tr></thead>
     <tbody>${all.map((t,i)=>`<tr>
       <td>${fd(frDateToISO(t.date_op)||t.date_op)||''}</td><td>${t.libelle}</td><td style="font-size:11px">${t.cname}</td>
-      <td style="color:var(--red);text-align:right">${+t.debit>0?(+t.debit).toFixed(2)+' â‚¬':'-'}</td>
-      <td style="color:#1e7e34;text-align:right">${+t.credit>0?(+t.credit).toFixed(2)+' â‚¬':'-'}</td>
-      <td>${t.rapproche?`<span class="badge bok">${t.ecriture_piece||'âœ“'}</span>`:`<select style="font-size:11px;padding:3px 6px;width:auto" id="ecr-${i}"><option value="">--</option>${D.journal.map(j=>`<option value="${j.piece||j.id.slice(0,8)}" ${suggestRapprochementPiece(t)===(j.piece||j.id.slice(0,8))?'selected':''}>${j.piece||''} ${(j.libelle||'').slice(0,20)}</option>`).join('')}</select>`}</td>
-      <td>${t.rapproche?`<span class="badge bok">âœ“</span>`:`<span class="badge bwarn">En attente</span>`}</td>
-      <td>${!t.rapproche?`<button class="btn sm" onclick="rapprocher('${t.id}',${i})">âœ“</button>`:''}</td>
+      <td style="color:var(--red);text-align:right">${+t.debit>0?(+t.debit).toFixed(2)+' €':'-'}</td>
+      <td style="color:#1e7e34;text-align:right">${+t.credit>0?(+t.credit).toFixed(2)+' €':'-'}</td>
+      <td>${t.rapproche?`<span class="badge bok">${t.ecriture_piece||'✓'}</span>`:`<select style="font-size:11px;padding:3px 6px;width:auto" id="ecr-${i}"><option value="">--</option>${D.journal.map(j=>`<option value="${j.piece||j.id.slice(0,8)}" ${suggestRapprochementPiece(t)===(j.piece||j.id.slice(0,8))?'selected':''}>${j.piece||''} ${(j.libelle||'').slice(0,20)}</option>`).join('')}</select>`}</td>
+      <td>${t.rapproche?`<span class="badge bok">✓</span>`:`<span class="badge bwarn">En attente</span>`}</td>
+      <td>${!t.rapproche?`<button class="btn sm" onclick="rapprocher('${t.id}',${i})">✓</button>`:''}</td>
     </tr>`).join('')}
     </tbody>
   </table></div>`}`;
@@ -2772,31 +2775,31 @@ function vEcr512(){
   const e=D.journal.filter(j=>j.compte&&j.compte.startsWith('512'));
   const sol=e.reduce((s,j)=>s+(+j.credit)-(+j.debit),0);
   return`<div style="margin-bottom:12px"><div class="sc" style="display:inline-block;min-width:200px">
-    <div class="v ${sol>=0?'vg':'vr'}">${sol.toFixed(2)} â‚¬</div><div class="l">Solde 512 â€” Banque</div>
+    <div class="v ${sol>=0?'vg':'vr'}">${sol.toFixed(2)} €</div><div class="l">Solde 512 — Banque</div>
   </div></div>
   <div class="gl-acc">
-    <div class="gl-hdr"><strong>512 â€” Banque</strong><span style="font-size:12px;color:var(--txt2)">${e.length} Ã©criture(s)</span></div>
-    <div class="gl-row gl-head"><span>Date</span><span>LibellÃ©</span><span style="text-align:right">DÃ©bit</span><span style="text-align:right">CrÃ©dit</span><span style="text-align:right">Solde</span></div>
+    <div class="gl-hdr"><strong>512 — Banque</strong><span style="font-size:12px;color:var(--txt2)">${e.length} écriture(s)</span></div>
+    <div class="gl-row gl-head"><span>Date</span><span>Libellé</span><span style="text-align:right">Débit</span><span style="text-align:right">Crédit</span><span style="text-align:right">Solde</span></div>
     ${(()=>{let s=0;return e.map(j=>{s+=(+j.credit)-(+j.debit);return`<div class="gl-row">
       <span>${fd(j.date_op)}</span><span>${j.libelle}<br><span style="font-size:10px;color:var(--txt2)">${j.piece||''}</span></span>
-      <span style="color:var(--red);text-align:right">${+j.debit>0?(+j.debit).toFixed(2)+' â‚¬':''}</span>
-      <span style="color:#1e7e34;text-align:right">${+j.credit>0?(+j.credit).toFixed(2)+' â‚¬':''}</span>
-      <span style="text-align:right;font-weight:500;color:${s>=0?'#1e7e34':'var(--red)'}">${s.toFixed(2)} â‚¬</span>
+      <span style="color:var(--red);text-align:right">${+j.debit>0?(+j.debit).toFixed(2)+' €':''}</span>
+      <span style="color:#1e7e34;text-align:right">${+j.credit>0?(+j.credit).toFixed(2)+' €':''}</span>
+      <span style="text-align:right;font-weight:500;color:${s>=0?'#1e7e34':'var(--red)'}">${s.toFixed(2)} €</span>
     </div>`;}).join('');})()}
-    ${e.length===0?`<div class="empty">Aucune Ã©criture 512</div>`:''}
+    ${e.length===0?`<div class="empty">Aucune écriture 512</div>`:''}
   </div>`;
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// COMPTABILITÃ‰
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
+// COMPTABILITÉ
+// ═══════════════════════════════════════════════════
 function vCompta(){
   const sub=UI.subTab.compta;
   return`<div class="stabs">
     <button class="stab ${sub==='journal'?'active':''}" onclick="showST('compta','journal')">Journal</button>
     <button class="stab ${sub==='gl'?'active':''}" onclick="showST('compta','gl')">Grand livre</button>
     <button class="stab ${sub==='bilan'?'active':''}" onclick="showST('compta','bilan')">Bilan</button>
-    <button class="stab ${sub==='res'?'active':''}" onclick="showST('compta','res')">RÃ©sultat</button>
+    <button class="stab ${sub==='res'?'active':''}" onclick="showST('compta','res')">Résultat</button>
     <button class="stab ${sub==='exo'?'active':''}" onclick="showST('compta','exo')">Exercices</button>
   </div>
   ${sub==='journal'?vJournal():sub==='gl'?vGL():sub==='bilan'?vBilan():sub==='res'?vResultat():vExercices()}`;
@@ -2839,7 +2842,7 @@ function pieceBalanceDiagnostics(rows){
   const groups={};
   (rows||[]).forEach((row,idx)=>{
     const key=normalizePieceGroupKey(row.piece);
-    if(!groups[key]) groups[key]={key,piece:key==='__SANS_PIECE__'?'Sans piÃ¨ce':key,rows:[],debit:0,credit:0,firstDate:row.date_op||td(),index:idx};
+    if(!groups[key]) groups[key]={key,piece:key==='__SANS_PIECE__'?'Sans pièce':key,rows:[],debit:0,credit:0,firstDate:row.date_op||td(),index:idx};
     groups[key].rows.push(row);
     groups[key].debit+=+row.debit||0;
     groups[key].credit+=+row.credit||0;
@@ -2862,15 +2865,15 @@ function findPlanCompte(codePrefix,fallback='471 - Comptes d attente'){
 function issueKeywords(issue){
   const text=[issue.piece,...issue.rows.map(r=>r.libelle||''),...issue.rows.map(r=>r.compte||'')].join(' ').toLowerCase();
   return{
-    adh:/adh|cotis|licenc|inscription|pass rÃ©gion|pass region/.test(text),
-    don:/don|mÃ©cÃ©nat|mecenat/.test(text),
+    adh:/adh|cotis|licenc|inscription|pass région|pass region/.test(text),
+    don:/don|mécénat|mecenat/.test(text),
     vente:/vente|client|facture|prest|stage|cours/.test(text),
-    achat:/achat|fourn|facture achat|note de frais|matÃ©riel|materiel/.test(text),
-    banque:/virement|cb|carte|banque|vir\b|helloasso|prÃ©lÃ¨vement|prelevement/.test(text),
-    caisse:/esp[eÃ¨]ces|caisse/.test(text),
-    subvention:/subvention|aide|pass rÃ©gion|pass region/.test(text),
+    achat:/achat|fourn|facture achat|note de frais|matériel|materiel/.test(text),
+    banque:/virement|cb|carte|banque|vir\b|helloasso|prélèvement|prelevement/.test(text),
+    caisse:/esp[eè]ces|caisse/.test(text),
+    subvention:/subvention|aide|pass région|pass region/.test(text),
     textile:/textile|tenue|t[- ]?shirt|sweat/.test(text),
-    equipement:/matÃ©riel|materiel|Ã©quipement|equipement/.test(text),
+    equipement:/matériel|materiel|équipement|equipement/.test(text),
   };
 }
 
@@ -2883,7 +2886,7 @@ function buildEquilibreSuggestions(issue){
   const codes=exactAccounts.map(compteCode).filter(Boolean);
   const codeSet=new Set(codes);
   const byPrefix=(prefix)=>codes.some(code=>code.startsWith(prefix));
-  const sideText=needSide==='credit'?'un crÃ©dit':'un dÃ©bit';
+  const sideText=needSide==='credit'?'un crédit':'un débit';
   const pieceType=(issue.piece||'').startsWith('ACH-')||keywords.achat?'achat'
     :(issue.piece||'').startsWith('VTE-')||keywords.vente?'vente'
     :(issue.piece||'').startsWith('ADH-')||keywords.adh?'adhesion'
@@ -2941,7 +2944,7 @@ function buildEquilibreSuggestions(issue){
   }
 
   if(needSide==='debit' && !codeSet.has('512') && !codeSet.has('5300')){
-    addSuggestion(keywords.caisse?findPlanCompte('5300'):findPlanCompte('512'),`Suggestion financiere de repli : la piece semble demander ${sideText} de ${amount.toFixed(2)} â‚¬.`,40);
+    addSuggestion(keywords.caisse?findPlanCompte('5300'):findPlanCompte('512'),`Suggestion financiere de repli : la piece semble demander ${sideText} de ${amount.toFixed(2)} €.`,40);
   }
   if(needSide==='credit' && !codeSet.has('401') && byPrefix('6')){
     addSuggestion(findPlanCompte('401'),`Suggestion de repli : une charge apparait sans contrepartie complete, il manque peut etre ${sideText}.`,38);
@@ -3001,15 +3004,15 @@ async function deleteJournalPiecePrefix(prefix){
 
 async function regulariserEquilibreExo(){
   if(!requireWritePerm('perm_comptabilite')) return;
-  if(!D.currentExo) return alert('Aucun exercice sÃ©lectionnÃ©.');
+  if(!D.currentExo) return alert('Aucun exercice sélectionné.');
   const issues=pieceBalanceDiagnostics(jnlExo());
-  if(!issues.length) return alert('Le journal de cet exercice est dÃ©jÃ  Ã©quilibrÃ©.');
-  if(!confirm(`CrÃ©er des Ã©critures de rÃ©gularisation sur le compte 471 pour ${issues.length} piÃ¨ce(s) dÃ©sÃ©quilibrÃ©e(s) ?`)) return;
+  if(!issues.length) return alert('Le journal de cet exercice est déjà équilibré.');
+  if(!confirm(`Créer des écritures de régularisation sur le compte 471 pour ${issues.length} pièce(s) déséquilibrée(s) ?`)) return;
   const rows=issues.map((issue,idx)=>({
     date_op:issue.firstDate||td(),
     piece:issue.key==='__SANS_PIECE__'?`REGUL-SANSPIECE-${idx+1}`:issue.key,
     compte:'471 - Comptes d attente',
-    libelle:`RÃ©gularisation Ã©quilibre - ${issue.piece}`,
+    libelle:`Régularisation équilibre - ${issue.piece}`,
     debit:issue.ecart<0?Math.abs(issue.ecart):0,
     credit:issue.ecart>0?issue.ecart:0,
     exercice_id:D.currentExo?.id||null
@@ -3020,7 +3023,7 @@ async function regulariserEquilibreExo(){
     return alert('Erreur : '+error.message);
   }
   render();
-  alert(`RÃ©gularisation terminÃ©e : ${rows.length} Ã©criture(s) ajoutÃ©e(s) au compte 471.`);
+  alert(`Régularisation terminée : ${rows.length} écriture(s) ajoutée(s) au compte 471.`);
 }
 
 function openEquilibreAssistant(){
@@ -3034,15 +3037,15 @@ function getEquilibreIssue(issueKey){
 }
 
 async function regulariserPieceEquilibre(issueKey){
-  return regulariserPieceEquilibreAvecCompte(issueKey,'471 - Comptes d attente','RÃ©gularisation Ã©quilibre');
+  return regulariserPieceEquilibreAvecCompte(issueKey,'471 - Comptes d attente','Régularisation équilibre');
 }
 
-async function regulariserPieceEquilibreAvecCompte(issueKey,compte,reason='RÃ©gularisation Ã©quilibre'){
+async function regulariserPieceEquilibreAvecCompte(issueKey,compte,reason='Régularisation équilibre'){
   if(!requireWritePerm('perm_comptabilite')) return;
-  if(!D.currentExo) return alert('Aucun exercice sÃ©lectionnÃ©.');
+  if(!D.currentExo) return alert('Aucun exercice sélectionné.');
   const issue=getEquilibreIssue(issueKey);
-  if(!issue) return alert('Cette piÃ¨ce semble dÃ©jÃ  Ã©quilibrÃ©e.');
-  if(!confirm(`CrÃ©er ${issue.ecart>0?'un crÃ©dit':'un dÃ©bit'} de ${Math.abs(issue.ecart).toFixed(2)} â‚¬ sur ${compte} pour la piÃ¨ce ${issue.piece} ?`)) return;
+  if(!issue) return alert('Cette pièce semble déjà équilibrée.');
+  if(!confirm(`Créer ${issue.ecart>0?'un crédit':'un débit'} de ${Math.abs(issue.ecart).toFixed(2)} € sur ${compte} pour la pièce ${issue.piece} ?`)) return;
   const row={
     date_op:issue.firstDate||td(),
     piece:issue.key==='__SANS_PIECE__'?`REGUL-SANSPIECE-${Date.now()}`:issue.key,
@@ -3071,33 +3074,33 @@ function vJournal(){
     <div>
       <div class="eyebrow">Pilotage financier</div>
       <h2>Journal comptable</h2>
-      <p>Consultez les Ã©critures de l'exercice actif, surveillez l'Ã©quilibre dÃ©bit/crÃ©dit et enregistrez rapidement de nouvelles opÃ©rations.</p>
+      <p>Consultez les écritures de l'exercice actif, surveillez l'équilibre débit/crédit et enregistrez rapidement de nouvelles opérations.</p>
     </div>
   </div>
   <div class="g3" style="margin-bottom:14px">
-    <div class="sc"><div class="v vr">${tD.toFixed(2)} â‚¬</div><div class="l">Total dÃ©bits</div></div>
-    <div class="sc"><div class="v vg">${tC.toFixed(2)} â‚¬</div><div class="l">Total crÃ©dits</div></div>
-    <div class="sc"><div class="v ${ecart===0?'vg':'vr'}">${ecart.toFixed(2)} â‚¬</div><div class="l">Ã‰cart dÃ©bit/crÃ©dit</div></div>
+    <div class="sc"><div class="v vr">${tD.toFixed(2)} €</div><div class="l">Total débits</div></div>
+    <div class="sc"><div class="v vg">${tC.toFixed(2)} €</div><div class="l">Total crédits</div></div>
+    <div class="sc"><div class="v ${ecart===0?'vg':'vr'}">${ecart.toFixed(2)} €</div><div class="l">Écart débit/crédit</div></div>
   </div>
-  ${orphanDiag.rows.length?`<div class="card" style="margin-bottom:12px;padding:12px 16px;font-size:12px;color:${orphanDiag.withinCurrent.length?'var(--red)':'var(--gold-d)'}">${orphanDiag.withinCurrent.length?`Ã‰critures sans exercice dÃ©tectÃ©es dans lâ€™exercice actif : <strong>${orphanDiag.withinCurrent.length}</strong>.`:`Ã‰critures non rattachÃ©es dÃ©tectÃ©es hors de la pÃ©riode de lâ€™exercice actif : <strong>${orphanDiag.rows.length}</strong>.`}<div style="margin-top:6px;color:var(--txt2)">DÃ©bit : ${orphanDiag.totalDebit.toFixed(2)} â‚¬ Â· CrÃ©dit : ${orphanDiag.totalCredit.toFixed(2)} â‚¬ Â· Ã‰cart : ${orphanDiag.ecart.toFixed(2)} â‚¬</div><div style="margin-top:6px;color:var(--txt2)">${D.currentExo?.date_debut&&D.currentExo?.date_fin?`Exercice actif : ${fd(D.currentExo.date_debut)} â†’ ${fd(D.currentExo.date_fin)}.`:''}${orphanDiag.beforeCurrent.length?` Avant pÃ©riode : ${orphanDiag.beforeCurrent.length}.`:''}${orphanDiag.afterCurrent.length?` AprÃ¨s pÃ©riode : ${orphanDiag.afterCurrent.length}.`:''}${orphanDiag.withinCurrent.length?` Ã€ corriger dans la pÃ©riode active : ${orphanDiag.withinCurrent.length}.`:' Aucune Ã©criture sans exercice dans la pÃ©riode active.'}</div></div>`:''}
-  <div class="card" style="margin-bottom:12px;padding:12px 16px;font-size:12px;color:${ecart===0?'#1e7e34':'var(--red)'}">${ecart===0?'Journal Ã©quilibrÃ© sur lâ€™exercice sÃ©lectionnÃ©.':'Le journal nâ€™est pas Ã©quilibrÃ©. VÃ©rifiez les anciennes Ã©critures manuelles ou importÃ©es.'}${issues.length?`<div style="margin-top:8px;color:var(--txt)">PiÃ¨ces dÃ©sÃ©quilibrÃ©es dÃ©tectÃ©es : <strong>${issues.length}</strong>${issues.slice(0,3).map(i=>`<div style="margin-top:4px;font-size:11px;color:var(--txt2)">${i.piece} : ${i.ecart.toFixed(2)} â‚¬</div>`).join('')}</div>`:''}</div>
+  ${orphanDiag.rows.length?`<div class="card" style="margin-bottom:12px;padding:12px 16px;font-size:12px;color:${orphanDiag.withinCurrent.length?'var(--red)':'var(--gold-d)'}">${orphanDiag.withinCurrent.length?`Écritures sans exercice détectées dans l’exercice actif : <strong>${orphanDiag.withinCurrent.length}</strong>.`:`Écritures non rattachées détectées hors de la période de l’exercice actif : <strong>${orphanDiag.rows.length}</strong>.`}<div style="margin-top:6px;color:var(--txt2)">Débit : ${orphanDiag.totalDebit.toFixed(2)} € · Crédit : ${orphanDiag.totalCredit.toFixed(2)} € · Écart : ${orphanDiag.ecart.toFixed(2)} €</div><div style="margin-top:6px;color:var(--txt2)">${D.currentExo?.date_debut&&D.currentExo?.date_fin?`Exercice actif : ${fd(D.currentExo.date_debut)} → ${fd(D.currentExo.date_fin)}.`:''}${orphanDiag.beforeCurrent.length?` Avant période : ${orphanDiag.beforeCurrent.length}.`:''}${orphanDiag.afterCurrent.length?` Après période : ${orphanDiag.afterCurrent.length}.`:''}${orphanDiag.withinCurrent.length?` À corriger dans la période active : ${orphanDiag.withinCurrent.length}.`:' Aucune écriture sans exercice dans la période active.'}</div></div>`:''}
+  <div class="card" style="margin-bottom:12px;padding:12px 16px;font-size:12px;color:${ecart===0?'#1e7e34':'var(--red)'}">${ecart===0?'Journal équilibré sur l’exercice sélectionné.':'Le journal n’est pas équilibré. Vérifiez les anciennes écritures manuelles ou importées.'}${issues.length?`<div style="margin-top:8px;color:var(--txt)">Pièces déséquilibrées détectées : <strong>${issues.length}</strong>${issues.slice(0,3).map(i=>`<div style="margin-top:4px;font-size:11px;color:var(--txt2)">${i.piece} : ${i.ecart.toFixed(2)} €</div>`).join('')}</div>`:''}</div>
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-    ${canWrite?`<button class="btn primary" onclick="openModal('ecr')">+ Nouvelle Ã©criture</button>`:''}
-    <button class="btn" onclick="openEquilibreAssistant()">Assistant dÃ©sÃ©quilibres${issues.length?` (${issues.length})`:''}</button>
-    ${canWrite&&issues.length?`<button class="btn gold" onclick="regulariserEquilibreExo()">Ã‰quilibrer l'exercice</button>`:''}
+    ${canWrite?`<button class="btn primary" onclick="openModal('ecr')">+ Nouvelle écriture</button>`:''}
+    <button class="btn" onclick="openEquilibreAssistant()">Assistant déséquilibres${issues.length?` (${issues.length})`:''}</button>
+    ${canWrite&&issues.length?`<button class="btn gold" onclick="regulariserEquilibreExo()">Équilibrer l'exercice</button>`:''}
   </div>
   <div class="wrap">
     <div style="display:grid;grid-template-columns:90px 70px 1fr 90px 90px;gap:8px;padding:6px 0;font-size:11px;color:var(--txt2);font-weight:500;border-bottom:.5px solid var(--brd2)">
-      <span>Date</span><span>PiÃ¨ce</span><span>Compte / LibellÃ©</span><span style="text-align:right">DÃ©bit</span><span style="text-align:right">CrÃ©dit</span>
+      <span>Date</span><span>Pièce</span><span>Compte / Libellé</span><span style="text-align:right">Débit</span><span style="text-align:right">Crédit</span>
     </div>
     ${jnl.map(j=>`<div style="display:grid;grid-template-columns:90px 70px 1fr 90px 90px;gap:8px;padding:7px 0;border-bottom:.5px solid var(--brd);font-size:12px;align-items:center">
       <span>${fd(j.date_op)}</span>
       <span style="font-size:11px;color:var(--txt2)">${j.piece||''}</span>
       <span><strong style="font-weight:500">${j.compte}</strong><br><span style="font-size:11px;color:var(--txt2)">${j.libelle}</span></span>
-      <span style="color:var(--red);text-align:right;font-weight:500">${+j.debit>0?(+j.debit).toFixed(2)+' â‚¬':''}</span>
-      <span style="color:#1e7e34;text-align:right;font-weight:500">${+j.credit>0?(+j.credit).toFixed(2)+' â‚¬':''}</span>
+      <span style="color:var(--red);text-align:right;font-weight:500">${+j.debit>0?(+j.debit).toFixed(2)+' €':''}</span>
+      <span style="color:#1e7e34;text-align:right;font-weight:500">${+j.credit>0?(+j.credit).toFixed(2)+' €':''}</span>
     </div>`).join('')}
-    ${jnl.length===0?`<div class="empty">Aucune Ã©criture</div>`:''}
+    ${jnl.length===0?`<div class="empty">Aucune écriture</div>`:''}
   </div>`;
 }
 
@@ -3109,23 +3112,23 @@ function vGL(){
     const en=by[acc];
     const tD=en.reduce((s,j)=>s+(+j.debit),0),tC=en.reduce((s,j)=>s+(+j.credit),0),sol=tC-tD;
     return`<div class="gl-acc">
-      <div class="gl-hdr"><strong>${acc}</strong><span style="font-size:12px;color:${sol>=0?'#1e7e34':'var(--red)'}">Solde : ${sol>=0?'+':''}${sol.toFixed(2)} â‚¬</span></div>
-      <div class="gl-row gl-head"><span>Date</span><span>LibellÃ©</span><span style="text-align:right">DÃ©bit</span><span style="text-align:right">CrÃ©dit</span><span style="text-align:right">CumulÃ©</span></div>
+      <div class="gl-hdr"><strong>${acc}</strong><span style="font-size:12px;color:${sol>=0?'#1e7e34':'var(--red)'}">Solde : ${sol>=0?'+':''}${sol.toFixed(2)} €</span></div>
+      <div class="gl-row gl-head"><span>Date</span><span>Libellé</span><span style="text-align:right">Débit</span><span style="text-align:right">Crédit</span><span style="text-align:right">Cumulé</span></div>
       ${(()=>{let s=0;return en.map(j=>{s+=(+j.credit)-(+j.debit);return`<div class="gl-row">
         <span>${fd(j.date_op)}</span><span>${j.libelle}<br><span style="font-size:10px;color:var(--txt2)">${j.piece||''}</span></span>
-        <span style="color:var(--red);text-align:right">${+j.debit>0?(+j.debit).toFixed(2)+' â‚¬':''}</span>
-        <span style="color:#1e7e34;text-align:right">${+j.credit>0?(+j.credit).toFixed(2)+' â‚¬':''}</span>
-        <span style="text-align:right;font-weight:500;color:${s>=0?'#1e7e34':'var(--red)'}">${s.toFixed(2)} â‚¬</span>
+        <span style="color:var(--red);text-align:right">${+j.debit>0?(+j.debit).toFixed(2)+' €':''}</span>
+        <span style="color:#1e7e34;text-align:right">${+j.credit>0?(+j.credit).toFixed(2)+' €':''}</span>
+        <span style="text-align:right;font-weight:500;color:${s>=0?'#1e7e34':'var(--red)'}">${s.toFixed(2)} €</span>
       </div>`;}).join('');})()}
       <div class="gl-row" style="background:var(--bg2);font-weight:500">
         <span></span><span>Totaux</span>
-        <span style="color:var(--red);text-align:right">${tD.toFixed(2)} â‚¬</span>
-        <span style="color:#1e7e34;text-align:right">${tC.toFixed(2)} â‚¬</span>
-        <span style="text-align:right;color:${sol>=0?'#1e7e34':'var(--red)'}">${sol.toFixed(2)} â‚¬</span>
+        <span style="color:var(--red);text-align:right">${tD.toFixed(2)} €</span>
+        <span style="color:#1e7e34;text-align:right">${tC.toFixed(2)} €</span>
+        <span style="text-align:right;color:${sol>=0?'#1e7e34':'var(--red)'}">${sol.toFixed(2)} €</span>
       </div>
     </div>`;
   }).join('')}
-  ${Object.keys(by).length===0?`<div class="empty">Aucune Ã©criture</div>`:''}`;
+  ${Object.keys(by).length===0?`<div class="empty">Aucune écriture</div>`:''}`;
 }
 
 function sumJournal(regex,side){
@@ -3186,20 +3189,20 @@ function calcBilan(){
 
   const actifRows=[
     {label:'2150/2180 - Immobilisations',value:immobilisations},
-    {label:'4110 - CrÃ©ances adhÃ©rents et clients',value:creancesAdherents},
-    {label:'4710 - Comptes d attente dÃ©biteurs',value:Math.max(0,autresActifs)},
-    {label:'4810 - Charges constatÃ©es d avance',value:chargesAvance},
+    {label:'4110 - Créances adhérents et clients',value:creancesAdherents},
+    {label:'4710 - Comptes d attente débiteurs',value:Math.max(0,autresActifs)},
+    {label:'4810 - Charges constatées d avance',value:chargesAvance},
     {label:'5120 - Banque',value:banques},
     {label:'5300 - Caisse',value:caisse},
   ];
   const passifRows=[
-    {label:'1010/1020/1060 - Fonds associatifs et rÃ©serves',value:fondsAssociatifs},
+    {label:'1010/1020/1060 - Fonds associatifs et réserves',value:fondsAssociatifs},
     {label:'1640 - Emprunts',value:emprunts},
     {label:'4010 - Fournisseurs',value:fournisseurs},
     {label:'4310 - Dettes sociales',value:dettesSociales},
-    {label:'4710 - Comptes d attente crÃ©diteurs',value:comptesAttentePassif},
-    {label:'4870 - Produits constatÃ©s d avance',value:produitsConstates},
-    {label:`${resultat>=0?'1200':'1290'} - RÃ©sultat de l exercice`,value:Math.abs(resultat),signed:resultat},
+    {label:'4710 - Comptes d attente créditeurs',value:comptesAttentePassif},
+    {label:'4870 - Produits constatés d avance',value:produitsConstates},
+    {label:`${resultat>=0?'1200':'1290'} - Résultat de l exercice`,value:Math.abs(resultat),signed:resultat},
   ];
   const totalActif=actifRows.reduce((s,r)=>s+Math.max(0,r.value),0);
   const totalPassif=passifRows.reduce((s,r)=>s+Math.max(0,r.value),0);
@@ -3215,77 +3218,77 @@ function vBilan(){
       <div>
         <div class="eyebrow">Publication comptable</div>
         <h2>Bilan final</h2>
-        <p>PrÃ©sentation revue pour une lecture officielle, avec hiÃ©rarchie visuelle plus nette, colonnes Ã©quilibrÃ©es et contrÃ´les de cohÃ©rence clairement identifiÃ©s.</p>
+        <p>Présentation revue pour une lecture officielle, avec hiérarchie visuelle plus nette, colonnes équilibrées et contrôles de cohérence clairement identifiés.</p>
       </div>
     </div>
     <div class="bilan-toolbar">
       <div class="bilan-meta">
         ${D.currentExo?`<span class="badge bblue">${exL}</span>`:''}
-        <span class="badge bgray">Ã‰ditÃ© le ${dateEdition}</span>
+        <span class="badge bgray">Édité le ${dateEdition}</span>
       </div>
-      <button class="btn green" onclick="printBilan()">ðŸ–¨ Imprimer le bilan</button>
+      <button class="btn green" onclick="printBilan()">🖨 Imprimer le bilan</button>
     </div>
     <section class="bilan-board">
       <div class="bilan-board-head">
         <div>
-          <div class="bilan-board-title">Bilan comptable de clÃ´ture</div>
-          <div class="bilan-board-sub">Document de synthÃ¨se de l'actif et du passif Ã©tabli Ã  partir des Ã©critures de l'exercice sÃ©lectionnÃ©. Les totaux ci-dessous peuvent Ãªtre repris dans une communication institutionnelle ou une annexe diffusÃ©e au bureau et aux adhÃ©rents.</div>
+          <div class="bilan-board-title">Bilan comptable de clôture</div>
+          <div class="bilan-board-sub">Document de synthèse de l'actif et du passif établi à partir des écritures de l'exercice sélectionné. Les totaux ci-dessous peuvent être repris dans une communication institutionnelle ou une annexe diffusée au bureau et aux adhérents.</div>
         </div>
         <div class="bilan-stamp">
-          <div class="bilan-stamp-label">Exercice concernÃ©</div>
+          <div class="bilan-stamp-label">Exercice concerné</div>
           <div class="bilan-stamp-value">${exL}</div>
         </div>
       </div>
       <div class="bilan-summary">
-        <div class="bilan-stat"><div class="bilan-stat-label">Produits</div><div class="bilan-stat-value" style="color:#1e7e34">${produits.toFixed(2)} â‚¬</div></div>
-        <div class="bilan-stat"><div class="bilan-stat-label">Charges</div><div class="bilan-stat-value" style="color:var(--red)">${charges.toFixed(2)} â‚¬</div></div>
-        <div class="bilan-stat"><div class="bilan-stat-label">Cotisations</div><div class="bilan-stat-value">${cotisations.toFixed(2)} â‚¬</div></div>
-        <div class="bilan-stat"><div class="bilan-stat-label">Subventions</div><div class="bilan-stat-value">${subventions.toFixed(2)} â‚¬</div></div>
+        <div class="bilan-stat"><div class="bilan-stat-label">Produits</div><div class="bilan-stat-value" style="color:#1e7e34">${produits.toFixed(2)} €</div></div>
+        <div class="bilan-stat"><div class="bilan-stat-label">Charges</div><div class="bilan-stat-value" style="color:var(--red)">${charges.toFixed(2)} €</div></div>
+        <div class="bilan-stat"><div class="bilan-stat-label">Cotisations</div><div class="bilan-stat-value">${cotisations.toFixed(2)} €</div></div>
+        <div class="bilan-stat"><div class="bilan-stat-label">Subventions</div><div class="bilan-stat-value">${subventions.toFixed(2)} €</div></div>
       </div>
       <div class="bilan-grid">
         <section class="bilan-panel">
           <div class="bilan-panel-head">
-            <div><h3>Actif</h3><p>Emplois durables, crÃ©ances et trÃ©sorerie disponible.</p></div>
-            <span class="badge bgray">Total ${totalActif.toFixed(2)} â‚¬</span>
+            <div><h3>Actif</h3><p>Emplois durables, créances et trésorerie disponible.</p></div>
+            <span class="badge bgray">Total ${totalActif.toFixed(2)} €</span>
           </div>
           <table class="bilan-table"><tbody>
-            ${actifRows.map(r=>`<tr><td class="label">${r.label}</td><td class="amount">${Math.max(0,r.value).toFixed(2)} â‚¬</td></tr>`).join('')}
-            <tr class="total"><td class="label">Total actif</td><td class="amount">${totalActif.toFixed(2)} â‚¬</td></tr>
+            ${actifRows.map(r=>`<tr><td class="label">${r.label}</td><td class="amount">${Math.max(0,r.value).toFixed(2)} €</td></tr>`).join('')}
+            <tr class="total"><td class="label">Total actif</td><td class="amount">${totalActif.toFixed(2)} €</td></tr>
           </tbody></table>
         </section>
         <section class="bilan-panel">
           <div class="bilan-panel-head">
-            <div><h3>Passif</h3><p>Fonds associatifs, dettes et rÃ©sultat de clÃ´ture.</p></div>
-            <span class="badge bgray">Total ${totalPassif.toFixed(2)} â‚¬</span>
+            <div><h3>Passif</h3><p>Fonds associatifs, dettes et résultat de clôture.</p></div>
+            <span class="badge bgray">Total ${totalPassif.toFixed(2)} €</span>
           </div>
           <table class="bilan-table"><tbody>
-            ${passifRows.map(r=>`<tr class="${typeof r.signed==='number'?'is-result':''}"><td class="label" style="${typeof r.signed==='number'?`color:${r.signed>=0?'#1e7e34':'var(--red)'}`:''}">${r.label}</td><td class="amount" style="${typeof r.signed==='number'?`color:${r.signed>=0?'#1e7e34':'var(--red)'}`:''}">${(r.value||0).toFixed(2)} â‚¬</td></tr>`).join('')}
-            <tr class="total"><td class="label">Total passif</td><td class="amount">${totalPassif.toFixed(2)} â‚¬</td></tr>
+            ${passifRows.map(r=>`<tr class="${typeof r.signed==='number'?'is-result':''}"><td class="label" style="${typeof r.signed==='number'?`color:${r.signed>=0?'#1e7e34':'var(--red)'}`:''}">${r.label}</td><td class="amount" style="${typeof r.signed==='number'?`color:${r.signed>=0?'#1e7e34':'var(--red)'}`:''}">${(r.value||0).toFixed(2)} €</td></tr>`).join('')}
+            <tr class="total"><td class="label">Total passif</td><td class="amount">${totalPassif.toFixed(2)} €</td></tr>
           </tbody></table>
         </section>
       </div>
       <div class="bilan-notes">
         <div class="bilan-note">
           <h4>Composition des produits</h4>
-          <div class="bilan-kv"><span>Cotisations</span><strong>${cotisations.toFixed(2)} â‚¬</strong></div>
-          <div class="bilan-kv"><span>Subventions</span><strong>${subventions.toFixed(2)} â‚¬</strong></div>
-          <div class="bilan-kv"><span>Autres produits</span><strong>${autresProduits.toFixed(2)} â‚¬</strong></div>
+          <div class="bilan-kv"><span>Cotisations</span><strong>${cotisations.toFixed(2)} €</strong></div>
+          <div class="bilan-kv"><span>Subventions</span><strong>${subventions.toFixed(2)} €</strong></div>
+          <div class="bilan-kv"><span>Autres produits</span><strong>${autresProduits.toFixed(2)} €</strong></div>
         </div>
         <div class="bilan-note">
           <h4>Lecture</h4>
-          <p style="font-size:12px;color:var(--txt2);line-height:1.7">Le rÃ©sultat de l'exercice est intÃ©grÃ© au passif. Les classes 2, 4 et 5 structurent principalement l'actif, tandis que les capitaux associatifs et dettes constituent le passif prÃ©sentÃ©.</p>
+          <p style="font-size:12px;color:var(--txt2);line-height:1.7">Le résultat de l'exercice est intégré au passif. Les classes 2, 4 et 5 structurent principalement l'actif, tandis que les capitaux associatifs et dettes constituent le passif présenté.</p>
         </div>
         <div class="bilan-note">
-          <h4>ContrÃ´le</h4>
-          <div class="bilan-kv ${ecartJournal===0?'ok':'alert'}"><span>Journal dÃ©bit - crÃ©dit</span><strong>${ecartJournal.toFixed(2)} â‚¬</strong></div>
-          <div class="bilan-kv ${ecartBilan===0?'ok':'alert'}"><span>Actif - passif</span><strong>${ecartBilan.toFixed(2)} â‚¬</strong></div>
+          <h4>Contrôle</h4>
+          <div class="bilan-kv ${ecartJournal===0?'ok':'alert'}"><span>Journal débit - crédit</span><strong>${ecartJournal.toFixed(2)} €</strong></div>
+          <div class="bilan-kv ${ecartBilan===0?'ok':'alert'}"><span>Actif - passif</span><strong>${ecartBilan.toFixed(2)} €</strong></div>
         </div>
       </div>
       <div class="bilan-footer">
-        <div class="bilan-footer-text">Version de prÃ©sentation destinÃ©e Ã  une diffusion officielle. Les montants sont issus des Ã©critures de l'exercice actif et le cadrage ci-dessus permet une relecture rapide avant export papier ou PDF.</div>
+        <div class="bilan-footer-text">Version de présentation destinée à une diffusion officielle. Les montants sont issus des écritures de l'exercice actif et le cadrage ci-dessus permet une relecture rapide avant export papier ou PDF.</div>
         <div class="bilan-result-chip">
-          <span>RÃ©sultat net</span>
-          <strong style="color:${resultat>=0?'#1e7e34':'var(--red)'}">${resultat>=0?'+':''}${resultat.toFixed(2)} â‚¬</strong>
+          <span>Résultat net</span>
+          <strong style="color:${resultat>=0?'#1e7e34':'var(--red)'}">${resultat>=0?'+':''}${resultat.toFixed(2)} €</strong>
         </div>
       </div>
     </section>
@@ -3296,7 +3299,7 @@ function printBilan(){
   const {actifRows,passifRows,totalActif,totalPassif,charges,produits,resultat,cotisations,subventions,autresProduits,ecartJournal,ecartBilan}=calcBilan();
   const ci=D.clubInfo||{};
   const exL=D.currentExo?.libelle||'';
-  const logo=D.logoUrl?`<img src="${D.logoUrl}" style="width:66px;height:66px;object-fit:contain;border-radius:50%;border:1px solid #cdbd9f;padding:6px;background:#fff">` :`<span style="font-size:40px">ðŸ¥Š</span>`;
+  const logo=D.logoUrl?`<img src="${D.logoUrl}" style="width:66px;height:66px;object-fit:contain;border-radius:50%;border:1px solid #cdbd9f;padding:6px;background:#fff">` :`<span style="font-size:40px">🥊</span>`;
   const w=window.open('','_blank');
   w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Bilan ${exL}</title>
   <style>
@@ -3350,52 +3353,52 @@ function printBilan(){
       <div class="doc">
         <div class="k">Document officiel</div>
         <div class="v">Bilan comptable</div>
-        <div class="s">${exL}<br>Ã‰ditÃ© le ${new Date().toLocaleDateString('fr-FR')}</div>
+        <div class="s">${exL}<br>Édité le ${new Date().toLocaleDateString('fr-FR')}</div>
       </div>
     </div>
-    <p class="intro">Ã‰tat de synthÃ¨se prÃ©sentant la situation patrimoniale de l'association Ã  la clÃ´ture de l'exercice. Les montants ci-dessous sont issus des Ã©critures comptables enregistrÃ©es dans le journal de l'exercice actif.</p>
+    <p class="intro">État de synthèse présentant la situation patrimoniale de l'association à la clôture de l'exercice. Les montants ci-dessous sont issus des écritures comptables enregistrées dans le journal de l'exercice actif.</p>
     <div class="summary">
-      <div class="stat"><div class="l">Produits</div><div class="v" style="color:#1e7e34">${produits.toFixed(2)} â‚¬</div></div>
-      <div class="stat"><div class="l">Charges</div><div class="v" style="color:#b33627">${charges.toFixed(2)} â‚¬</div></div>
-      <div class="stat"><div class="l">Cotisations</div><div class="v">${cotisations.toFixed(2)} â‚¬</div></div>
-      <div class="stat"><div class="l">Subventions</div><div class="v">${subventions.toFixed(2)} â‚¬</div></div>
+      <div class="stat"><div class="l">Produits</div><div class="v" style="color:#1e7e34">${produits.toFixed(2)} €</div></div>
+      <div class="stat"><div class="l">Charges</div><div class="v" style="color:#b33627">${charges.toFixed(2)} €</div></div>
+      <div class="stat"><div class="l">Cotisations</div><div class="v">${cotisations.toFixed(2)} €</div></div>
+      <div class="stat"><div class="l">Subventions</div><div class="v">${subventions.toFixed(2)} €</div></div>
     </div>
     <div class="grid">
-      <div class="panel"><div class="panel-h"><h2>Actif</h2><p>Immobilisations, crÃ©ances et disponibilitÃ©s.</p></div><table>
-        ${actifRows.map(r=>`<tr><td>${r.label}</td><td>${Math.max(0,r.value).toFixed(2)} â‚¬</td></tr>`).join('')}
-        <tr class="tot"><td>Total actif</td><td>${totalActif.toFixed(2)} â‚¬</td></tr>
+      <div class="panel"><div class="panel-h"><h2>Actif</h2><p>Immobilisations, créances et disponibilités.</p></div><table>
+        ${actifRows.map(r=>`<tr><td>${r.label}</td><td>${Math.max(0,r.value).toFixed(2)} €</td></tr>`).join('')}
+        <tr class="tot"><td>Total actif</td><td>${totalActif.toFixed(2)} €</td></tr>
       </table></div>
-      <div class="panel"><div class="panel-h"><h2>Passif</h2><p>Fonds associatifs, dettes et rÃ©sultat.</p></div><table>
-        ${passifRows.map(r=>`<tr><td style="${typeof r.signed==='number'?`color:${r.signed>=0?'#1e7e34':'#b33627'}`:''}">${r.label}</td><td style="${typeof r.signed==='number'?`color:${r.signed>=0?'#1e7e34':'#b33627'}`:''}">${(r.value||0).toFixed(2)} â‚¬</td></tr>`).join('')}
-        <tr class="tot"><td>Total passif</td><td>${totalPassif.toFixed(2)} â‚¬</td></tr>
+      <div class="panel"><div class="panel-h"><h2>Passif</h2><p>Fonds associatifs, dettes et résultat.</p></div><table>
+        ${passifRows.map(r=>`<tr><td style="${typeof r.signed==='number'?`color:${r.signed>=0?'#1e7e34':'#b33627'}`:''}">${r.label}</td><td style="${typeof r.signed==='number'?`color:${r.signed>=0?'#1e7e34':'#b33627'}`:''}">${(r.value||0).toFixed(2)} €</td></tr>`).join('')}
+        <tr class="tot"><td>Total passif</td><td>${totalPassif.toFixed(2)} €</td></tr>
       </table></div>
     </div>
     <div class="notes">
       <div class="note">
         <h3>Composition des produits</h3>
-        <div class="kv"><span>Cotisations</span><strong>${cotisations.toFixed(2)} â‚¬</strong></div>
-        <div class="kv"><span>Subventions</span><strong>${subventions.toFixed(2)} â‚¬</strong></div>
-        <div class="kv"><span>Autres produits</span><strong>${autresProduits.toFixed(2)} â‚¬</strong></div>
+        <div class="kv"><span>Cotisations</span><strong>${cotisations.toFixed(2)} €</strong></div>
+        <div class="kv"><span>Subventions</span><strong>${subventions.toFixed(2)} €</strong></div>
+        <div class="kv"><span>Autres produits</span><strong>${autresProduits.toFixed(2)} €</strong></div>
       </div>
       <div class="note">
-        <h3>ContrÃ´le technique</h3>
-        <div class="kv"><span>Journal dÃ©bit - crÃ©dit</span><strong style="color:${ecartJournal===0?'#1e7e34':'#b33627'}">${ecartJournal.toFixed(2)} â‚¬</strong></div>
-        <div class="kv"><span>Actif - passif</span><strong style="color:${ecartBilan===0?'#1e7e34':'#b33627'}">${ecartBilan.toFixed(2)} â‚¬</strong></div>
+        <h3>Contrôle technique</h3>
+        <div class="kv"><span>Journal débit - crédit</span><strong style="color:${ecartJournal===0?'#1e7e34':'#b33627'}">${ecartJournal.toFixed(2)} €</strong></div>
+        <div class="kv"><span>Actif - passif</span><strong style="color:${ecartBilan===0?'#1e7e34':'#b33627'}">${ecartBilan.toFixed(2)} €</strong></div>
       </div>
       <div class="note">
-        <h3>Informations de clÃ´ture</h3>
-        <div class="kv"><span>Total produits</span><strong>${produits.toFixed(2)} â‚¬</strong></div>
-        <div class="kv"><span>Total charges</span><strong>${charges.toFixed(2)} â‚¬</strong></div>
+        <h3>Informations de clôture</h3>
+        <div class="kv"><span>Total produits</span><strong>${produits.toFixed(2)} €</strong></div>
+        <div class="kv"><span>Total charges</span><strong>${charges.toFixed(2)} €</strong></div>
         <div class="kv"><span>Association</span><strong>${ci.nom||'AFFBC'}</strong></div>
       </div>
     </div>
     <div class="footer">
-      <p>${ci.nom||'AFFBC'} â€” Association loi 1901. Document gÃ©nÃ©rÃ© pour diffusion interne ou prÃ©sentation officielle aprÃ¨s validation du bureau.</p>
-      <div class="result"><div class="l">RÃ©sultat net de l'exercice</div><div class="v" style="color:${resultat>=0?'#1e7e34':'#b33627'}">${resultat>=0?'+':''}${resultat.toFixed(2)} â‚¬</div></div>
+      <p>${ci.nom||'AFFBC'} — Association loi 1901. Document généré pour diffusion interne ou présentation officielle après validation du bureau.</p>
+      <div class="result"><div class="l">Résultat net de l'exercice</div><div class="v" style="color:${resultat>=0?'#1e7e34':'#b33627'}">${resultat>=0?'+':''}${resultat.toFixed(2)} €</div></div>
     </div>
     <div class="sign">
-      <div class="sign-box">Visa trÃ©sorerie</div>
-      <div class="sign-box">Validation prÃ©sidence</div>
+      <div class="sign-box">Visa trésorerie</div>
+      <div class="sign-box">Validation présidence</div>
     </div>
   </div>
   <script>setTimeout(()=>window.print(),300);<\/script></body></html>`);
@@ -3409,17 +3412,17 @@ function vResultat(){
   const tP=prod.reduce((s,j)=>s+(+j.credit),0),tC=charg.reduce((s,j)=>s+(+j.debit),0);
   return`<div class="g2">
     <div><p class="stit">Produits (classe 7)</p>
-      ${prod.map(j=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:.5px solid var(--brd);font-size:12.5px"><span>${j.libelle}</span><span style="color:#1e7e34">${(+j.credit).toFixed(2)} â‚¬</span></div>`).join('')}
-      <div style="display:flex;justify-content:space-between;padding:7px 0;font-weight:500"><span>Total</span><span style="color:#1e7e34">${tP.toFixed(2)} â‚¬</span></div>
+      ${prod.map(j=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:.5px solid var(--brd);font-size:12.5px"><span>${j.libelle}</span><span style="color:#1e7e34">${(+j.credit).toFixed(2)} €</span></div>`).join('')}
+      <div style="display:flex;justify-content:space-between;padding:7px 0;font-weight:500"><span>Total</span><span style="color:#1e7e34">${tP.toFixed(2)} €</span></div>
     </div>
     <div><p class="stit">Charges (classe 6)</p>
-      ${charg.map(j=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:.5px solid var(--brd);font-size:12.5px"><span>${j.libelle}</span><span style="color:var(--red)">${(+j.debit).toFixed(2)} â‚¬</span></div>`).join('')}
-      <div style="display:flex;justify-content:space-between;padding:7px 0;font-weight:500"><span>Total</span><span style="color:var(--red)">${tC.toFixed(2)} â‚¬</span></div>
+      ${charg.map(j=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:.5px solid var(--brd);font-size:12.5px"><span>${j.libelle}</span><span style="color:var(--red)">${(+j.debit).toFixed(2)} €</span></div>`).join('')}
+      <div style="display:flex;justify-content:space-between;padding:7px 0;font-weight:500"><span>Total</span><span style="color:var(--red)">${tC.toFixed(2)} €</span></div>
     </div>
   </div>
   <div style="margin-top:14px;padding:14px;background:var(--bg2);border-radius:var(--r);display:flex;justify-content:space-between;align-items:center">
-    <strong style="font-weight:500">RÃ©sultat de l'exercice</strong>
-    <strong style="font-size:20px;font-weight:500;color:${tP-tC>=0?'#1e7e34':'var(--red)'}">${tP-tC>=0?'+':''}${(tP-tC).toFixed(2)} â‚¬</strong>
+    <strong style="font-weight:500">Résultat de l'exercice</strong>
+    <strong style="font-size:20px;font-weight:500;color:${tP-tC>=0?'#1e7e34':'var(--red)'}">${tP-tC>=0?'+':''}${(tP-tC).toFixed(2)} €</strong>
   </div>`;
 }
 
@@ -3430,18 +3433,18 @@ function vExercices(){
     ${canWrite?`<button class="btn primary" onclick="openModal('exo')">+ Nouvel exercice</button>`:''}
   </div>
   <div class="wrap"><table>
-    <thead><tr><th>LibellÃ©</th><th>DÃ©but</th><th>Fin</th><th>Ã‰critures</th><th>Statut</th><th></th></tr></thead>
+    <thead><tr><th>Libellé</th><th>Début</th><th>Fin</th><th>Écritures</th><th>Statut</th><th></th></tr></thead>
     <tbody>${D.exercices.map(e=>{
       const nb=D.journal.filter(j=>j.exercice_id===e.id).length;
       return`<tr>
         <td><strong style="font-weight:500">${e.libelle}</strong></td>
         <td>${fd(e.date_debut)}</td><td>${fd(e.date_fin)}</td>
         <td>${nb}</td>
-        <td><span class="badge ${e.statut==='actif'?'bok':e.statut==='cloture'?'bwarn':'barch'}">${e.statut==='actif'?'Actif':e.statut==='cloture'?'ClÃ´turÃ©':'ArchivÃ©'}</span></td>
+        <td><span class="badge ${e.statut==='actif'?'bok':e.statut==='cloture'?'bwarn':'barch'}">${e.statut==='actif'?'Actif':e.statut==='cloture'?'Clôturé':'Archivé'}</span></td>
         <td style="white-space:nowrap">
-          ${canWrite&&e.statut==='actif'?`<button class="btn sm" onclick="setExoActif('${e.id}')">SÃ©lectionner</button>`:''} 
-          ${e.id===D.currentExo?.id?`<span class="badge bok" style="margin-left:4px">âœ“ En cours</span>`:''}
-          ${canWrite&&e.statut==='actif'?`<button class="btn sm gold" style="margin-left:4px" onclick="openModal('exo_close','${e.id}')">ClÃ´turer</button>`:''}
+          ${canWrite&&e.statut==='actif'?`<button class="btn sm" onclick="setExoActif('${e.id}')">Sélectionner</button>`:''} 
+          ${e.id===D.currentExo?.id?`<span class="badge bok" style="margin-left:4px">✓ En cours</span>`:''}
+          ${canWrite&&e.statut==='actif'?`<button class="btn sm gold" style="margin-left:4px" onclick="openModal('exo_close','${e.id}')">Clôturer</button>`:''}
           ${canWrite&&e.statut!=='archive'&&e.id!==D.currentExo?.id?`<button class="btn sm danger" style="margin-left:4px" onclick="archiverExo('${e.id}')">Archiver</button>`:''}
         </td>
       </tr>`;
@@ -3459,7 +3462,7 @@ async function setExoActif(id){
 }
 async function archiverExo(id){
   if(!requireWritePerm('perm_comptabilite')) return;
-  if(!confirm('Archiver cet exercice ? Il ne pourra plus recevoir de nouvelles Ã©critures.'))return;
+  if(!confirm('Archiver cet exercice ? Il ne pourra plus recevoir de nouvelles écritures.'))return;
   const {error}=await SB.from('exercices').update({statut:'archive'}).eq('id',id);
   if(error) return alert('Erreur : '+error.message);
   D.exercices=D.exercices.map(e=>e.id===id?{...e,statut:'archive'}:e);
@@ -3467,9 +3470,9 @@ async function archiverExo(id){
   render();
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 // ACHATS
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 function vAchat(){
   const canWrite=hasPerm('perm_achats','write');
   const filtered=D.achats.filter(a=>{
@@ -3482,16 +3485,16 @@ function vAchat(){
   const en=D.achats.filter(a=>a.statut==='nouveau'||a.statut==='valide').reduce((s,a)=>s+(+a.montant),0);
   return`<div class="view-head">
     <div>
-      <div class="eyebrow">Fournisseurs et dÃ©penses</div>
+      <div class="eyebrow">Fournisseurs et dépenses</div>
       <h2>Achats</h2>
-      <p>Suivez les validations, les modes de paiement et les justificatifs sans perdre le fil des montants engagÃ©s.</p>
+      <p>Suivez les validations, les modes de paiement et les justificatifs sans perdre le fil des montants engagés.</p>
     </div>
   </div>
   <div class="g4" style="margin-bottom:14px">
     <div class="sc"><div class="v vr">${filtered.length}</div><div class="l">Achats</div></div>
-    <div class="sc"><div class="v vgo">${tP.toLocaleString('fr-FR')} â‚¬</div><div class="l">Total rÃ©glÃ©</div></div>
-    <div class="sc"><div class="v">${en.toLocaleString('fr-FR')} â‚¬</div><div class="l">En cours</div></div>
-    <div class="sc"><div class="v">${D.achats.filter(a=>a.statut==='nouveau').length}</div><div class="l">Ã€ valider</div></div>
+    <div class="sc"><div class="v vgo">${tP.toLocaleString('fr-FR')} €</div><div class="l">Total réglé</div></div>
+    <div class="sc"><div class="v">${en.toLocaleString('fr-FR')} €</div><div class="l">En cours</div></div>
+    <div class="sc"><div class="v">${D.achats.filter(a=>a.statut==='nouveau').length}</div><div class="l">À valider</div></div>
   </div>
   <div class="toolbar">
     <input style="flex:1;min-width:160px" placeholder="Rechercher..." value="${UI.search.achats||''}" oninput="UI.search.achats=this.value;render()">
@@ -3499,33 +3502,33 @@ function vAchat(){
       <option value="" ${!UI.achatFilterStatus?'selected':''}>Tous les statuts</option>
       <option value="pending" ${UI.achatFilterStatus==='pending'?'selected':''}>En attente</option>
       <option value="nouveau" ${UI.achatFilterStatus==='nouveau'?'selected':''}>Nouveaux</option>
-      <option value="valide" ${UI.achatFilterStatus==='valide'?'selected':''}>ValidÃ©s</option>
-      <option value="paye" ${UI.achatFilterStatus==='paye'?'selected':''}>PayÃ©s</option>
-      <option value="refuse" ${UI.achatFilterStatus==='refuse'?'selected':''}>RefusÃ©s</option>
+      <option value="valide" ${UI.achatFilterStatus==='valide'?'selected':''}>Validés</option>
+      <option value="paye" ${UI.achatFilterStatus==='paye'?'selected':''}>Payés</option>
+      <option value="refuse" ${UI.achatFilterStatus==='refuse'?'selected':''}>Refusés</option>
     </select>
     ${canWrite?`<button class="btn primary" onclick="openModal('achat')">+ Nouvel achat</button>`:''}
-    <button class="btn" onclick="UI.search.achats='';UI.achatFilterStatus='';render()">RÃ©initialiser</button>
+    <button class="btn" onclick="UI.search.achats='';UI.achatFilterStatus='';render()">Réinitialiser</button>
   </div>
   <div class="wrap"><table>
-    <thead><tr><th>Date</th><th>Fournisseur</th><th>DÃ©signation</th><th>CatÃ©gorie</th><th>Montant</th><th>Mode paiement</th><th>RÃ©fÃ©rence</th><th>PiÃ¨ce</th><th>PDF</th><th>Statut</th><th></th></tr></thead>
+    <thead><tr><th>Date</th><th>Fournisseur</th><th>Désignation</th><th>Catégorie</th><th>Montant</th><th>Mode paiement</th><th>Référence</th><th>Pièce</th><th>PDF</th><th>Statut</th><th></th></tr></thead>
     <tbody>${f.map(a=>`<tr>
       <td>${fd(a.date_op)}</td>
       <td><strong style="font-weight:500">${a.fournisseur}</strong></td>
       <td>${a.designation||''}</td>
       <td><span class="badge bgray">${a.categorie}</span></td>
-      <td><strong style="font-weight:500">${(+a.montant).toFixed(2)} â‚¬</strong></td>
-      <td style="font-size:11px">${a.mode_paiement||'â€”'}</td>
-      <td style="font-size:11px;color:var(--txt2)">${a.reference_paiement||'â€”'}</td>
-      <td style="font-size:11px;color:var(--txt2)">${a.piece||'â€”'}</td>
+      <td><strong style="font-weight:500">${(+a.montant).toFixed(2)} €</strong></td>
+      <td style="font-size:11px">${a.mode_paiement||'—'}</td>
+      <td style="font-size:11px;color:var(--txt2)">${a.reference_paiement||'—'}</td>
+      <td style="font-size:11px;color:var(--txt2)">${a.piece||'—'}</td>
       <td style="white-space:nowrap">
         ${a.pdf_public_url?`<a class="btn sm" href="${a.pdf_public_url}" target="_blank">Voir</a>`:`<span class="badge bgray">Aucun</span>`}
       </td>
-      <td><span class="badge ${a.statut==='paye'?'bok':a.statut==='valide'?'bblue':a.statut==='refuse'?'bno':'bwarn'}">${a.statut==='nouveau'?'Nouveau':a.statut==='valide'?'ValidÃ©':a.statut==='refuse'?'RefusÃ©':'PayÃ©'}</span></td>
+      <td><span class="badge ${a.statut==='paye'?'bok':a.statut==='valide'?'bblue':a.statut==='refuse'?'bno':'bwarn'}">${a.statut==='nouveau'?'Nouveau':a.statut==='valide'?'Validé':a.statut==='refuse'?'Refusé':'Payé'}</span></td>
       <td style="white-space:nowrap">
         ${canWrite?`<button class="btn sm" onclick="openModal('achat','${a.id}')">Modifier</button>
         ${a.statut==='nouveau'?`<button class="btn sm" style="margin-left:4px" onclick="validerAchat('${a.id}')">Valider</button>`:''}
         <button class="btn sm" style="margin-left:4px" onclick="trigPDF('achats','${a.id}')">${a.pdf_public_url?'Remplacer PDF':'Ajouter PDF'}</button>
-        <button class="btn sm danger" style="margin-left:4px" onclick="delAchat('${a.id}')">âœ•</button>`:''}
+        <button class="btn sm danger" style="margin-left:4px" onclick="delAchat('${a.id}')">✕</button>`:''}
       </td>
     </tr>`).join('')}
     ${f.length===0?`<tr><td colspan="11" class="empty">Aucun achat</td></tr>`:''}
@@ -3534,9 +3537,9 @@ function vAchat(){
   ${renderPager('achats',totalPages)}`;
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 // FACTURATION
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 function vFacture(){
   const canWrite=hasPerm('perm_facturation','write');
   const sub=UI.subTab.facture;
@@ -3544,13 +3547,13 @@ function vFacture(){
     <div>
       <div class="eyebrow">Produits et encaissements</div>
       <h2>Ventes</h2>
-      <p>Enregistrez les ventes du club, Ã©ditez un document commercial et alimentez automatiquement les Ã©critures de produits en comptabilitÃ©.</p>
+      <p>Enregistrez les ventes du club, éditez un document commercial et alimentez automatiquement les écritures de produits en comptabilité.</p>
     </div>
   </div>
   <div class="stabs">
     <button class="stab ${sub==='liste'?'active':''}" onclick="showST('facture','liste')">Liste des ventes</button>
     ${canWrite?`<button class="stab ${sub==='edit'?'active':''}" onclick="nouvFac()">+ Nouvelle vente</button>`:''}
-    <button class="stab ${sub==='dons'?'active':''}" onclick="showST('facture','dons')">ReÃ§us de dons</button>
+    <button class="stab ${sub==='dons'?'active':''}" onclick="showST('facture','dons')">Reçus de dons</button>
   </div>
   ${sub==='liste'?vFacListe():sub==='dons'?vDonListe():vFacEditor()}`;
 }
@@ -3558,7 +3561,20 @@ function vFacture(){
 function vFacListe(){
   const canWrite=hasPerm('perm_facturation','write');
   const ventesRaw=D.factures.filter(f=>!isDonationReceipt(f)).map(f=>({...f,statut:normalizeFactureStatus(f.statut,f.date_op)}));
-  const filtered=ventesRaw.filter(f=>{
+  const tPayee=ventesRaw.filter(f=>f.statut==='Payée').reduce((s,f)=>s+(f.lignes||[]).reduce((t,l)=>t+(+l.qte||0)*(+l.pu||0),0),0);
+  const tOuverte=ventesRaw.filter(f=>f.statut==='Émise'||f.statut==='En retard').reduce((s,f)=>s+(f.lignes||[]).reduce((t,l)=>t+(+l.qte||0)*(+l.pu||0),0),0);
+  const tTotal=ventesRaw.reduce((s,f)=>s+(f.lignes||[]).reduce((t,l)=>t+(+l.qte||0)*(+l.pu||0),0),0);
+  const statsHtml=`<div class="g4" style="margin-bottom:14px">
+  <div class="sc"><div class="v vg">${ventesRaw.length}</div><div class="l">Ventes</div></div>
+  <div class="sc"><div class="v vgo">${tTotal.toLocaleString('fr-FR',{minimumFractionDigits:2})} €</div><div class="l">Total facturé</div></div>
+  <div class="sc"><div class="v vg">${tPayee.toLocaleString('fr-FR',{minimumFractionDigits:2})} €</div><div class="l">Encaissé</div></div>
+  <div class="sc"><div class="v vr">${tOuverte.toLocaleString('fr-FR',{minimumFractionDigits:2})} €</div><div class="l">En attente</div></div>
+  </div>`;
+  const ventesRawSorted=[...ventesRaw].sort((a,b)=>{
+    const toISO=d=>{if(!d)return'';const p=d.split('/');return p.length===3?`${p[2]}-${p[1]}-${p[0]}`:d;};
+    return toISO(b.date_op).localeCompare(toISO(a.date_op));
+  });
+  const filtered=ventesRawSorted.filter(f=>{
     const haystack=`${f.numero||''} ${f.destinataire||''} ${f.objet||''}`.toLowerCase();
     const matchesSearch=haystack.includes((UI.search.factures||'').toLowerCase());
     const matchesStatus=factureMatchesFilter(f,UI.factureFilterStatus);
@@ -3566,34 +3582,35 @@ function vFacListe(){
   });
   const {rows:ventes,totalPages}=paginateList(filtered,'factures');
   return`<div>
+  ${statsHtml}
   <div class="toolbar">
     <input style="flex:1;min-width:180px" placeholder="Rechercher une vente..." value="${UI.search.factures||''}" oninput="UI.search.factures=this.value;render()">
     <select style="width:auto;min-width:180px" onchange="UI.factureFilterStatus=this.value;render()">
       <option value="" ${!UI.factureFilterStatus?'selected':''}>Tous les statuts</option>
       <option value="open" ${UI.factureFilterStatus==='open'?'selected':''}>Ouvertes</option>
-      <option value="Ã‰mise" ${UI.factureFilterStatus==='Ã‰mise'?'selected':''}>Ã‰mises</option>
+      <option value="Émise" ${UI.factureFilterStatus==='Émise'?'selected':''}>Émises</option>
       <option value="En retard" ${UI.factureFilterStatus==='En retard'?'selected':''}>En retard</option>
-      <option value="PayÃ©e" ${UI.factureFilterStatus==='PayÃ©e'?'selected':''}>PayÃ©es</option>
+      <option value="Payée" ${UI.factureFilterStatus==='Payée'?'selected':''}>Payées</option>
       <option value="Brouillon" ${UI.factureFilterStatus==='Brouillon'?'selected':''}>Brouillons</option>
-      <option value="AnnulÃ©e" ${UI.factureFilterStatus==='AnnulÃ©e'?'selected':''}>AnnulÃ©es</option>
+      <option value="Annulée" ${UI.factureFilterStatus==='Annulée'?'selected':''}>Annulées</option>
     </select>
     ${canWrite?`<button class="btn primary" onclick="nouvFac()">+ Nouvelle vente</button>`:''}
-    <button class="btn" onclick="UI.search.factures='';UI.factureFilterStatus='';render()">RÃ©initialiser</button>
+    <button class="btn" onclick="UI.search.factures='';UI.factureFilterStatus='';render()">Réinitialiser</button>
   </div>
   <div class="wrap"><table>
-    <thead><tr><th>NÂ° vente</th><th>Date</th><th>Client / destinataire</th><th>Objet</th><th>Total</th><th>Statut</th><th></th></tr></thead>
+    <thead><tr><th>N° vente</th><th>Date</th><th>Client / destinataire</th><th>Objet</th><th>Total</th><th>Statut</th><th></th></tr></thead>
     <tbody>${ventes.map(f=>{
       const tot=(f.lignes||[]).reduce((s,l)=>s+(+l.qte||0)*(+l.pu||0),0);
       return`<tr>
         <td><strong style="font-weight:500">${f.numero}</strong></td>
         <td>${fd(f.date_op)}</td><td>${f.destinataire||''}</td><td>${f.objet||''}</td>
-        <td><strong>${tot.toFixed(2)} â‚¬</strong></td>
+        <td><strong>${tot.toFixed(2)} €</strong></td>
         <td><span class="badge ${factureStatusBadge(f.statut)}">${f.statut}</span></td>
         <td style="white-space:nowrap">
-          <button class="btn sm" onclick="printFac('${f.id}')">ðŸ–¨ Imprimer</button>
-          ${canWrite&&f.statut!=='PayÃ©e'?`<button class="btn sm" style="margin-left:4px" onclick="setFactureStatus('${f.id}','PayÃ©e')">PayÃ©e</button>`:''}
+          <button class="btn sm" onclick="printFac('${f.id}')">🖨 Imprimer</button>
+          ${canWrite&&f.statut!=='Payée'?`<button class="btn sm" style="margin-left:4px" onclick="setFactureStatus('${f.id}','Payée')">Payée</button>`:''}
           ${canWrite&&f.statut!=='En retard'?`<button class="btn sm gold" style="margin-left:4px" onclick="setFactureStatus('${f.id}','En retard')">Retard</button>`:''}
-          ${canWrite?`<button class="btn sm danger" style="margin-left:4px" onclick="delFac('${f.id}')">âœ•</button>`:''}
+          ${canWrite?`<button class="btn sm danger" style="margin-left:4px" onclick="delFac('${f.id}')">✕</button>`:''}
         </td>
       </tr>`;
     }).join('')}
@@ -3609,11 +3626,11 @@ function vDonListe(){
   const {rows:dons,totalPages}=paginateList(donsRaw,'dons');
   return`<div>
     <div class="toolbar">
-      <div style="font-size:12px;color:var(--txt2);flex:1;min-width:180px">CrÃ©ez et imprimez des reÃ§us pour les dons manuels du club.</div>
-      ${canWrite?`<button class="btn primary" onclick="nouvDon()">+ Nouveau reÃ§u de don</button>`:''}
+      <div style="font-size:12px;color:var(--txt2);flex:1;min-width:180px">Créez et imprimez des reçus pour les dons manuels du club.</div>
+      ${canWrite?`<button class="btn primary" onclick="nouvDon()">+ Nouveau reçu de don</button>`:''}
     </div>
     <div class="wrap"><table>
-    <thead><tr><th>NÂ° reÃ§u</th><th>Date</th><th>Donateur</th><th>Objet</th><th>Montant</th><th></th></tr></thead>
+    <thead><tr><th>N° reçu</th><th>Date</th><th>Donateur</th><th>Objet</th><th>Montant</th><th></th></tr></thead>
     <tbody>${dons.map(f=>{
       const tot=(f.lignes||[]).reduce((s,l)=>s+(+l.qte||0)*(+l.pu||0),0);
       return`<tr>
@@ -3621,22 +3638,22 @@ function vDonListe(){
         <td>${fd(f.date_op)}</td>
         <td>${f.destinataire||''}</td>
         <td>${f.objet||''}</td>
-        <td><strong>${tot.toFixed(2)} â‚¬</strong></td>
+        <td><strong>${tot.toFixed(2)} €</strong></td>
         <td style="white-space:nowrap">
           ${canWrite?`<button class="btn sm" onclick="loadDon('${f.id}')">Modifier</button>`:''}
-          <button class="btn sm gold" style="margin-left:4px" onclick="printFac('${f.id}')">ðŸ–¨ Imprimer</button>
-          ${canWrite?`<button class="btn sm danger" style="margin-left:4px" onclick="delFac('${f.id}')">âœ•</button>`:''}
+          <button class="btn sm gold" style="margin-left:4px" onclick="printFac('${f.id}')">🖨 Imprimer</button>
+          ${canWrite?`<button class="btn sm danger" style="margin-left:4px" onclick="delFac('${f.id}')">✕</button>`:''}
         </td>
       </tr>`;
     }).join('')}
-    ${dons.length===0?`<tr><td colspan="6" class="empty">Aucun reÃ§u de don</td></tr>`:''}
+    ${dons.length===0?`<tr><td colspan="6" class="empty">Aucun reçu de don</td></tr>`:''}
     </tbody>
   </table></div>
   ${renderPager('dons',totalPages)}`;
 }
 
 function vFacEditor(){
-  if(!hasPerm('perm_facturation','write')) return `<div class="empty">AccÃ¨s en lecture seule sur les ventes.</div>`;
+  if(!hasPerm('perm_facturation','write')) return `<div class="empty">Accès en lecture seule sur les ventes.</div>`;
   const inv=UI.invState;
   const meta=currentInvMeta();
   return`<div class="g2" style="gap:20px;align-items:start">
@@ -3659,7 +3676,7 @@ function vFacEditor(){
       <textarea id="inv-notes" rows="2" style="resize:vertical;margin-bottom:12px" oninput="UI.invState.notes=this.value;updPrev()">${inv.notes}</textarea>
       <div style="display:flex;gap:8px">
         <button class="btn primary" onclick="saveFac()">${meta.saveLabel}</button>
-        <button class="btn gold" onclick="printFacEditor()">ðŸ–¨ Imprimer</button>
+        <button class="btn gold" onclick="printFacEditor()">🖨 Imprimer</button>
       </div>
     </div>
     <div>
@@ -3672,47 +3689,47 @@ function vFacEditor(){
 function renderLignes(){
   return UI.invState.lignes.map((l,i)=>`<div style="display:grid;grid-template-columns:1fr 55px 80px 24px;gap:6px;margin-bottom:6px;align-items:center">
     <input placeholder="Description" value="${l.desc}" oninput="updL(${i},'desc',this.value)">
-    <input type="number" placeholder="QtÃ©" value="${l.qte}" min="1" oninput="updL(${i},'qte',+this.value)">
+    <input type="number" placeholder="Qté" value="${l.qte}" min="1" oninput="updL(${i},'qte',+this.value)">
     <input type="number" placeholder="P.U." value="${l.pu}" min="0" step="0.01" oninput="updL(${i},'pu',+this.value)">
-    <button class="btn sm danger" onclick="rmL(${i})" style="padding:4px 6px">âœ•</button>
+    <button class="btn sm danger" onclick="rmL(${i})" style="padding:4px 6px">✕</button>
   </div>`).join('');
 }
 
 function currentInvMeta(kind=UI.invKind){
   return kind==='don'
     ? {
-        docTitle:'REÃ‡U DE DON',
-        infoTitle:'Informations du reÃ§u',
-        numberLabel:'NÂ° reÃ§u',
+        docTitle:'REÇU DE DON',
+        infoTitle:'Informations du reçu',
+        numberLabel:'N° reçu',
         partyLabel:'Donateur',
         addressLabel:'Adresse du donateur',
-        saveLabel:'ðŸ’¾ Enregistrer le reÃ§u',
-        previewLabel:'AperÃ§u du reÃ§u'
+        saveLabel:'💾 Enregistrer le reçu',
+        previewLabel:'Aperçu du reçu'
       }
     : {
         docTitle:'FACTURE',
         infoTitle:'Informations de vente',
-        numberLabel:'NÂ° vente',
+        numberLabel:'N° vente',
         partyLabel:'Destinataire',
         addressLabel:'Adresse destinataire',
-        saveLabel:'ðŸ’¾ Enregistrer la vente',
-        previewLabel:'AperÃ§u du document'
+        saveLabel:'💾 Enregistrer la vente',
+        previewLabel:'Aperçu du document'
       };
 }
 
 function isDonationReceipt(f){
-  return (f?.numero||'').startsWith('DON-') || /reÃ§u de don/i.test(f?.objet||'');
+  return (f?.numero||'').startsWith('DON-') || /reçu de don/i.test(f?.objet||'');
 }
 
 function buildFacHTML(f){
-  const logo=D.logoUrl?`<img src="${D.logoUrl}" style="width:100%;height:100%;object-fit:contain">`:`<span style="font-size:26px">ðŸ¥Š</span>`;
+  const logo=D.logoUrl?`<img src="${D.logoUrl}" style="width:100%;height:100%;object-fit:contain">`:`<span style="font-size:26px">🥊</span>`;
   const tot=(f.lignes||[]).reduce((s,l)=>s+(+l.qte||0)*(+l.pu||0),0);
   const deductible=tot*0.66;
   const ci=D.clubInfo||{};
   const clubName=ci.nom||DEFAULT_CLUB_NAME;
   const clubSiret=ci.siret||DEFAULT_SIRET;
   const meta=currentInvMeta(f?.kind||(isDonationReceipt(f)?'don':'facture'));
-  const isDon=meta.docTitle==='REÃ‡U DE DON';
+  const isDon=meta.docTitle==='REÇU DE DON';
   return`<div style="background:#fff;border:.5px solid #ddd;border-radius:10px;overflow:hidden;font-family:sans-serif;font-size:12px;color:#222">
     <div style="background:#111;padding:16px 20px;display:flex;justify-content:space-between;align-items:center">
       <div style="display:flex;align-items:center;gap:10px">
@@ -3721,50 +3738,50 @@ function buildFacHTML(f){
       </div>
       <div style="text-align:right">
         <div style="color:#D4AC0D;font-size:15px;font-weight:500">${meta.docTitle}</div>
-        <div style="color:#fff;font-size:11px;margin-top:2px">${f.numero||'â€”'}</div>
+        <div style="color:#fff;font-size:11px;margin-top:2px">${f.numero||'—'}</div>
         <div style="color:#888;font-size:10px">${fd(f.date||f.date_op)}</div>
       </div>
     </div>
     <div style="padding:16px 20px">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
-        <div><div style="font-size:9px;font-weight:500;color:#888;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Ã‰metteur</div>
+        <div><div style="font-size:9px;font-weight:500;color:#888;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Émetteur</div>
           <p style="font-size:11px;line-height:1.6">${clubName}<br>${ci.adresse||''}<br>SIRET : ${clubSiret}</p></div>
         <div><div style="font-size:9px;font-weight:500;color:#888;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">${meta.partyLabel}</div>
-          <p style="font-size:11px;line-height:1.6">${f.destinataire||'â€”'}<br>${(f.adresse||'').replace(/\n/g,'<br>')}</p></div>
+          <p style="font-size:11px;line-height:1.6">${f.destinataire||'—'}<br>${(f.adresse||'').replace(/\n/g,'<br>')}</p></div>
       </div>
       ${f.objet?`<p style="font-size:10px;color:#888;margin-bottom:10px;padding:5px 8px;background:#f5f5f5;border-radius:4px;border-left:3px solid #111">Objet : ${f.objet}</p>`:''}
       <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:10px">
         <thead><tr style="background:#111;color:#fff">
-          <th style="padding:5px 8px;text-align:left;font-weight:500">DÃ©signation</th>
-          <th style="padding:5px 8px;text-align:right;font-weight:500">QtÃ©</th>
+          <th style="padding:5px 8px;text-align:left;font-weight:500">Désignation</th>
+          <th style="padding:5px 8px;text-align:right;font-weight:500">Qté</th>
           <th style="padding:5px 8px;text-align:right;font-weight:500">P.U.</th>
           <th style="padding:5px 8px;text-align:right;font-weight:500">Total</th>
         </tr></thead>
         <tbody>${(f.lignes||[]).map((l,i)=>`<tr style="background:${i%2===0?'#fff':'#fafafa'}">
-          <td style="padding:5px 8px;border-bottom:.5px solid #eee">${l.desc||'â€”'}</td>
+          <td style="padding:5px 8px;border-bottom:.5px solid #eee">${l.desc||'—'}</td>
           <td style="padding:5px 8px;border-bottom:.5px solid #eee;text-align:right">${l.qte}</td>
-          <td style="padding:5px 8px;border-bottom:.5px solid #eee;text-align:right">${(+l.pu).toFixed(2)} â‚¬</td>
-          <td style="padding:5px 8px;border-bottom:.5px solid #eee;text-align:right;font-weight:500">${((+l.qte)*(+l.pu)).toFixed(2)} â‚¬</td>
+          <td style="padding:5px 8px;border-bottom:.5px solid #eee;text-align:right">${(+l.pu).toFixed(2)} €</td>
+          <td style="padding:5px 8px;border-bottom:.5px solid #eee;text-align:right;font-weight:500">${((+l.qte)*(+l.pu)).toFixed(2)} €</td>
         </tr>`).join('')}</tbody>
       </table>
       <div style="display:flex;justify-content:flex-end">
         <div style="min-width:200px">
           ${isDon
             ? `
-              <div style="display:flex;justify-content:space-between;padding:3px 0;font-size:10px;color:#666"><span>Montant du don</span><span>${tot.toFixed(2)} â‚¬</span></div>
-              <div style="display:flex;justify-content:space-between;padding:6px 10px;font-size:12px;font-weight:600;background:#f3efe7;color:#111;border:.5px solid #ddd;border-radius:4px;margin-top:4px"><span>Montant dÃ©ductible des impÃ´ts (66 %)</span><span>${deductible.toFixed(2)} â‚¬</span></div>
+              <div style="display:flex;justify-content:space-between;padding:3px 0;font-size:10px;color:#666"><span>Montant du don</span><span>${tot.toFixed(2)} €</span></div>
+              <div style="display:flex;justify-content:space-between;padding:6px 10px;font-size:12px;font-weight:600;background:#f3efe7;color:#111;border:.5px solid #ddd;border-radius:4px;margin-top:4px"><span>Montant déductible des impôts (66 %)</span><span>${deductible.toFixed(2)} €</span></div>
             `
             : `
-              <div style="display:flex;justify-content:space-between;padding:3px 0;font-size:10px;color:#666"><span>Sous-total HT</span><span>${tot.toFixed(2)} â‚¬</span></div>
-              <div style="display:flex;justify-content:space-between;padding:3px 0;font-size:10px;color:#666"><span>TVA (exonÃ©rÃ©e art. 261-7-1Â°b)</span><span>0,00 â‚¬</span></div>
-              <div style="display:flex;justify-content:space-between;padding:6px 10px;font-size:13px;font-weight:500;background:#111;color:#fff;border-radius:4px;margin-top:4px"><span>Total TTC</span><span>${tot.toFixed(2)} â‚¬</span></div>
+              <div style="display:flex;justify-content:space-between;padding:3px 0;font-size:10px;color:#666"><span>Sous-total HT</span><span>${tot.toFixed(2)} €</span></div>
+              <div style="display:flex;justify-content:space-between;padding:3px 0;font-size:10px;color:#666"><span>TVA (exonérée art. 261-7-1°b)</span><span>0,00 €</span></div>
+              <div style="display:flex;justify-content:space-between;padding:6px 10px;font-size:13px;font-weight:500;background:#111;color:#fff;border-radius:4px;margin-top:4px"><span>Total TTC</span><span>${tot.toFixed(2)} €</span></div>
             `}
         </div>
       </div>
-      ${isDon?`<p style="font-size:10px;color:#666;margin-top:10px;padding:8px 10px;background:#f8f6f1;border-left:3px solid #D4AC0D;border-radius:4px">RÃ©duction d'impÃ´t indicative pour un particulier : <strong>${deductible.toFixed(2)} â‚¬</strong>, soit 66 % du montant versÃ©.</p>`:''}
+      ${isDon?`<p style="font-size:10px;color:#666;margin-top:10px;padding:8px 10px;background:#f8f6f1;border-left:3px solid #D4AC0D;border-radius:4px">Réduction d'impôt indicative pour un particulier : <strong>${deductible.toFixed(2)} €</strong>, soit 66 % du montant versé.</p>`:''}
       ${f.notes?`<p style="font-size:10px;color:#888;margin-top:10px;padding-top:8px;border-top:.5px solid #eee">${f.notes}</p>`:''}
     </div>
-    <div style="background:#111;padding:7px 20px;font-size:9px;color:#888;text-align:center">${clubName} â€” SIRET ${clubSiret} â€” Association loi 1901 â€” TVA non applicable, art. 261-7-1Â°b CGI</div>
+    <div style="background:#111;padding:7px 20px;font-size:9px;color:#888;text-align:center">${clubName} — SIRET ${clubSiret} — Association loi 1901 — TVA non applicable, art. 261-7-1°b CGI</div>
   </div>`;
 }
 
@@ -3782,20 +3799,20 @@ function nouvFac(){
 function nouvDon(){
   const n=D.factures.filter(isDonationReceipt).length+1;
   UI.invKind='don';
-  UI.invState={numero:`DON-${new Date().getFullYear()}-${String(n).padStart(3,'0')}`,date:td(),destinataire:'',adresse:'',objet:'ReÃ§u de don manuel',lignes:[{desc:'Don manuel au club',qte:1,pu:0}],notes:''};
+  UI.invState={numero:`DON-${new Date().getFullYear()}-${String(n).padStart(3,'0')}`,date:td(),destinataire:'',adresse:'',objet:'Reçu de don manuel',lignes:[{desc:'Don manuel au club',qte:1,pu:0}],notes:''};
   UI.subTab.facture='edit';render();setTimeout(updPrev,80);
 }
 function loadDon(id){
   const f=D.factures.find(x=>x.id===id);
   if(!f) return;
   UI.invKind='don';
-  UI.invState={id:f.id,numero:f.numero||'',date:f.date_op||td(),destinataire:f.destinataire||'',adresse:f.adresse||'',objet:f.objet||'ReÃ§u de don manuel',lignes:Array.isArray(f.lignes)&&f.lignes.length?f.lignes:[{desc:'Don manuel au club',qte:1,pu:0}],notes:f.notes||'',kind:'don'};
+  UI.invState={id:f.id,numero:f.numero||'',date:f.date_op||td(),destinataire:f.destinataire||'',adresse:f.adresse||'',objet:f.objet||'Reçu de don manuel',lignes:Array.isArray(f.lignes)&&f.lignes.length?f.lignes:[{desc:'Don manuel au club',qte:1,pu:0}],notes:f.notes||'',kind:'don'};
   UI.subTab.facture='edit';render();setTimeout(updPrev,80);
 }
 async function saveFac(){
   if(!requireExerciceActif()) return;
   if(!UI.invState.destinataire)return alert('Destinataire obligatoire');
-  const payload={numero:UI.invState.numero,date_op:UI.invState.date,destinataire:UI.invState.destinataire,adresse:UI.invState.adresse,objet:UI.invState.objet,lignes:UI.invState.lignes,statut:normalizeFactureStatus(UI.invState.statut||'Ã‰mise',UI.invState.date),notes:UI.invState.notes,exercice_id:D.currentExo?.id||null};
+  const payload={numero:UI.invState.numero,date_op:UI.invState.date,destinataire:UI.invState.destinataire,adresse:UI.invState.adresse,objet:UI.invState.objet,lignes:UI.invState.lignes,statut:normalizeFactureStatus(UI.invState.statut||'Émise',UI.invState.date),notes:UI.invState.notes,exercice_id:D.currentExo?.id||null};
   if(UI.invState.id){
     const {error}=await SB.from('factures').update(payload).eq('id',UI.invState.id);
     if(error)return alert('Erreur : '+error.message);
@@ -3805,7 +3822,7 @@ async function saveFac(){
       try{
         await syncVenteJournal(idx>=0?{...D.factures[idx],id:UI.invState.id}:{...payload,id:UI.invState.id});
       }catch(e){
-        return alert('Vente enregistrÃ©e, mais Ã©criture comptable non synchronisÃ©e : '+e.message);
+        return alert('Vente enregistrée, mais écriture comptable non synchronisée : '+e.message);
       }
     }
   }else{
@@ -3816,11 +3833,11 @@ async function saveFac(){
       try{
         await syncVenteJournal(normalizeFactureRow(data));
       }catch(e){
-        return alert('Vente enregistrÃ©e, mais Ã©criture comptable non crÃ©Ã©e : '+e.message);
+        return alert('Vente enregistrée, mais écriture comptable non créée : '+e.message);
       }
     }
   }
-  alert(UI.invKind==='don'?'ReÃ§u de don enregistrÃ©.':'Vente enregistrÃ©e et Ã©criture comptable crÃ©Ã©e.');
+  alert(UI.invKind==='don'?'Reçu de don enregistré.':'Vente enregistrée et écriture comptable créée.');
   UI.subTab.facture=UI.invKind==='don'?'dons':'liste';
   render();
 }
@@ -3836,11 +3853,11 @@ async function setFactureStatus(id,status){
 async function delFac(id){
   if(!confirm('Supprimer ?'))return;
   await SB.from('factures').delete().eq('id',id);
-  try{await deleteJournalAuto(autoPiece('vente',id));}catch(e){return alert('Vente supprimÃ©e, mais Ã©criture comptable non supprimÃ©e : '+e.message);}
+  try{await deleteJournalAuto(autoPiece('vente',id));}catch(e){return alert('Vente supprimée, mais écriture comptable non supprimée : '+e.message);}
   D.factures=D.factures.filter(f=>f.id!==id);render();
 }
 function printFac(id){const f=D.factures.find(x=>x.id===id);if(f)pwPrint(buildFacHTML(f),`Vente ${f.numero}`)}
-function printFacEditor(){pwPrint(buildFacHTML(UI.invState),'AperÃ§u vente')}
+function printFacEditor(){pwPrint(buildFacHTML(UI.invState),'Aperçu vente')}
 function pwPrint(html,title){
   const w=window.open('','_blank');
   w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title}</title><style>@import url('https://fonts.googleapis.com/css2?family=Petit+Formal+Script&display=swap');body{margin:20px;font-family:sans-serif}@media print{body{margin:0}}</style></head><body>${html}<script>setTimeout(()=>window.print(),300);<\/script></body></html>`);
@@ -3855,40 +3872,40 @@ function genRecu(id){
     numero:`REC-${new Date().getFullYear()}-${String(n).padStart(3,'0')}`,
     date:td(),destinataire:`${a.nom} ${a.prenom}`,
     adresse:[a.adresse,a.code_postal,a.ville].filter(Boolean).join(', '),
-    objet:`ReÃ§u de cotisation â€” Saison ${season}`,
+    objet:`Reçu de cotisation — Saison ${season}`,
     lignes:[
-      {desc:`Cotisation ${a.discipline||'Club'} â€” saison ${season}`,qte:1,pu:+a.cotisation},
-      ...(+a.montant_pass_region>0?[{desc:'Pass RÃ©gion',qte:1,pu:+a.montant_pass_region}]:[])
+      {desc:`Cotisation ${a.discipline||'Club'} — saison ${season}`,qte:1,pu:+a.cotisation},
+      ...(+a.montant_pass_region>0?[{desc:'Pass Région',qte:1,pu:+a.montant_pass_region}]:[])
     ],
     notes:`Mode de paiement : ${a.paiement}`
   };
   UI.tab='facture';UI.subTab.facture='edit';renderTabs();render();setTimeout(updPrev,100);
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 // ADMINISTRATION
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 function vAdmin(){
   const sub=UI.subTab.admin;
   return`<div class="stabs">
-    <button class="stab ${sub==='users'?'active':''}" onclick="showST('admin','users')">Utilisateurs & accÃ¨s</button>
+    <button class="stab ${sub==='users'?'active':''}" onclick="showST('admin','users')">Utilisateurs & accès</button>
     <button class="stab ${sub==='audit'?'active':''}" onclick="showST('admin','audit')">Journal d'audit</button>
     <button class="stab ${sub==='club'?'active':''}" onclick="showST('admin','club')">Infos club</button>
     <button class="stab ${sub==='logo'?'active':''}" onclick="showST('admin','logo')">Logo</button>
-    <button class="stab ${sub==='imp_adh'?'active':''}" onclick="showST('admin','imp_adh')">ðŸ“¥ Import adhÃ©rents</button>
-    <button class="stab ${sub==='imp_ecr'?'active':''}" onclick="showST('admin','imp_ecr')">ðŸ“¥ Import Ã©critures</button>
+    <button class="stab ${sub==='imp_adh'?'active':''}" onclick="showST('admin','imp_adh')">📥 Import adhérents</button>
+    <button class="stab ${sub==='imp_ecr'?'active':''}" onclick="showST('admin','imp_ecr')">📥 Import écritures</button>
     <button class="stab ${sub==='backup'?'active':''}" onclick="showST('admin','backup')">Sauvegarde</button>
   </div>
   ${sub==='users'?vUsers():sub==='audit'?vAudit():sub==='club'?vClub():sub==='logo'?vLogo():sub==='imp_adh'?vImpAdh():sub==='imp_ecr'?vImpEcr():vBackup()}`;
 }
 
 function vUsers(){
-  if(!hasPerm('perm_administration'))return`<div class="empty">AccÃ¨s rÃ©servÃ© Ã  l'administrateur</div>`;
+  if(!hasPerm('perm_administration'))return`<div class="empty">Accès réservé à l'administrateur</div>`;
   return`<div class="card" style="margin-bottom:14px">
     <div style="display:flex;justify-content:space-between;align-items:end;gap:12px;flex-wrap:wrap;margin-bottom:12px">
       <div>
         <p style="font-size:11px;font-weight:500;color:var(--txt2);margin-bottom:4px">PROFILS UTILISATEUR</p>
-        <p style="font-size:12px;color:var(--txt2)">DÃ©finissez pour chaque rubrique si le profil n'a aucun accÃ¨s, un accÃ¨s en lecture seule, ou un accÃ¨s complet en lecture et Ã©criture. Les administrateurs conservent toujours l'accÃ¨s complet.</p>
+        <p style="font-size:12px;color:var(--txt2)">Définissez pour chaque rubrique si le profil n'a aucun accès, un accès en lecture seule, ou un accès complet en lecture et écriture. Les administrateurs conservent toujours l'accès complet.</p>
       </div>
     </div>
     <div style="display:grid;gap:10px">
@@ -3898,7 +3915,7 @@ function vUsers(){
           <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
             <strong>${label}</strong>
             ${role==='admin'
-              ? `<span class="badge bblue">AccÃ¨s complet</span>`
+              ? `<span class="badge bblue">Accès complet</span>`
               : `<span style="font-size:11px;color:var(--txt2)">${D.users.filter(u=>u.role===role).length} utilisateur(s)</span>`}
           </div>
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px">
@@ -3906,7 +3923,7 @@ function vUsers(){
               <div style="display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;padding:4px 0;gap:6px">
                 <span style="font-size:12px">${txt}</span>
                 ${role==='admin'
-                  ? `<span class="badge bblue">Lecture / Ã©criture</span>`
+                  ? `<span class="badge bblue">Lecture / écriture</span>`
                   : `<select style="font-size:12px;width:100%" onchange="toggleRolePerm('${role}','${perm}',this.value)">
                       ${Object.entries(PERM_LEVELS).map(([level,meta])=>`<option value="${level}" ${perms[perm]===level?'selected':''}>${meta.label}</option>`).join('')}
                     </select>`}
@@ -3932,11 +3949,11 @@ function vUsers(){
       </div>
       ${UI.currentUser?.role==='admin'?`
       <div style="background:var(--bg2);border-radius:var(--r);padding:10px 12px">
-        <p style="font-size:11px;font-weight:500;color:var(--txt2);margin-bottom:8px">ONGLETS HÃ‰RITÃ‰S DU PROFIL</p>
+        <p style="font-size:11px;font-weight:500;color:var(--txt2);margin-bottom:8px">ONGLETS HÉRITÉS DU PROFIL</p>
         <div style="display:flex;flex-wrap:wrap;gap:6px">
           ${u.role==='admin'
             ? `<span class="badge bblue">Tous les onglets</span>`
-            : PERM_META.filter(([perm])=>perms[perm] && perms[perm]!=='none').map(([perm,txt])=>`<span class="badge bgray">${txt} Â· ${PERM_LEVELS[perms[perm]]?.label||perms[perm]}</span>`).join('') || `<span class="badge bno">Aucun onglet actif</span>`}
+            : PERM_META.filter(([perm])=>perms[perm] && perms[perm]!=='none').map(([perm,txt])=>`<span class="badge bgray">${txt} · ${PERM_LEVELS[perms[perm]]?.label||perms[perm]}</span>`).join('') || `<span class="badge bno">Aucun onglet actif</span>`}
         </div>
       </div>`:''}
     </div>`;
@@ -3944,17 +3961,17 @@ function vUsers(){
 }
 
 function vAudit(){
-  if(!hasPerm('perm_administration')) return`<div class="empty">AccÃ¨s rÃ©servÃ© Ã  l'administrateur</div>`;
+  if(!hasPerm('perm_administration')) return`<div class="empty">Accès réservé à l'administrateur</div>`;
   return `<div class="wrap"><table>
-    <thead><tr><th>Date</th><th>Action</th><th>EntitÃ©</th><th>Utilisateur</th><th>DÃ©tails</th></tr></thead>
+    <thead><tr><th>Date</th><th>Action</th><th>Entité</th><th>Utilisateur</th><th>Détails</th></tr></thead>
     <tbody>${(D.auditLogs||[]).map(log=>`<tr>
       <td>${fd(log.created_at)}</td>
       <td><span class="badge bblue">${esc(log.action||'')}</span></td>
       <td>${esc(log.entity_type||'')}</td>
-      <td>${esc(D.users.find(u=>u.id===log.user_id)?.email || log.user_id || 'systÃ¨me')}</td>
+      <td>${esc(D.users.find(u=>u.id===log.user_id)?.email || log.user_id || 'système')}</td>
       <td style="font-size:11px;color:var(--txt2)">${esc(log.details||'').slice(0,160)}</td>
     </tr>`).join('')}
-    ${(D.auditLogs||[]).length===0?`<tr><td colspan="5" class="empty">Aucun Ã©vÃ©nement</td></tr>`:''}
+    ${(D.auditLogs||[]).length===0?`<tr><td colspan="5" class="empty">Aucun événement</td></tr>`:''}
     </tbody>
   </table></div>`;
 }
@@ -3979,11 +3996,11 @@ function vClub(){
   return`<div style="max-width:460px;display:flex;flex-direction:column;gap:12px">
     <div class="fg"><label>Nom du club</label><input id="ci-nom" value="${ci.nom||''}"></div>
     <div class="fg"><label>Adresse</label><input id="ci-adr" value="${ci.adresse||''}"></div>
-    <div class="fg"><label>TÃ©lÃ©phone</label><input id="ci-tel" value="${ci.telephone||''}"></div>
+    <div class="fg"><label>Téléphone</label><input id="ci-tel" value="${ci.telephone||''}"></div>
     <div class="fg"><label>Email</label><input id="ci-email" value="${ci.email||''}"></div>
     <div class="fg"><label>SIRET</label><input id="ci-siret" value="${ci.siret||''}"></div>
     <div class="fg"><label>Code APE</label><input id="ci-ape" value="${ci.ape||''}"></div>
-    ${canWrite?`<button class="btn primary" style="align-self:flex-start" onclick="saveClub()">ðŸ’¾ Sauvegarder</button>`:''}
+    ${canWrite?`<button class="btn primary" style="align-self:flex-start" onclick="saveClub()">💾 Sauvegarder</button>`:''}
   </div>`;
 }
 
@@ -3992,39 +4009,39 @@ function vLogo(){
   return`<div style="max-width:440px">
     <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
       <div style="width:80px;height:80px;border-radius:50%;border:2px solid var(--gold);overflow:hidden;display:flex;align-items:center;justify-content:center;background:#fff">
-        ${D.logoUrl?`<img src="${D.logoUrl}" style="width:100%;height:100%;object-fit:contain">`:`<span style="font-size:36px">ðŸ¥Š</span>`}
+        ${D.logoUrl?`<img src="${D.logoUrl}" style="width:100%;height:100%;object-fit:contain">`:`<span style="font-size:36px">🥊</span>`}
       </div>
       <div><p style="font-weight:500;margin-bottom:4px">Logo du club</p><p style="font-size:11px;color:var(--txt2)">PNG, JPG ou SVG</p></div>
     </div>
     ${canWrite?`<div class="dz" style="margin-bottom:12px" onclick="document.getElementById('logo-input').click()">
-      <div style="font-size:28px;margin-bottom:6px">ðŸ–¼</div>
+      <div style="font-size:28px;margin-bottom:6px">🖼</div>
       <p style="font-size:13px;font-weight:500">Importer depuis votre ordinateur</p>
     </div>
-    <p style="font-size:12px;color:var(--txt2);margin-bottom:6px">Ou via URL Google Drive (fichier partagÃ© publiquement) :</p>
+    <p style="font-size:12px;color:var(--txt2);margin-bottom:6px">Ou via URL Google Drive (fichier partagé publiquement) :</p>
     <div style="display:flex;gap:8px">
       <input id="logo-url" placeholder="https://drive.google.com/uc?id=..." style="flex:1">
       <button class="btn primary" onclick="loadLogoUrl()">Charger</button>
-    </div>`:`<div class="empty">AccÃ¨s en lecture seule sur l'administration.</div>`}
+    </div>`:`<div class="empty">Accès en lecture seule sur l'administration.</div>`}
   </div>`;
 }
 
-// â”€â”€ IMPORT ADHÃ‰RENTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── IMPORT ADHÉRENTS ──────────────────────────────────────
 function vImpAdh(){
   const st=IMP.adh;
   return`<div>
     <div class="import-step">
       <h3><span class="step-num">1</span> Charger votre export DoliAsso ou CSV</h3>
-      <p style="font-size:12px;color:var(--txt2);margin-bottom:12px">Compatible avec DoliAsso et tout export CSV proche. Seuls <strong>Nom</strong> et <strong>PrÃ©nom</strong> sont obligatoires.</p>
+      <p style="font-size:12px;color:var(--txt2);margin-bottom:12px">Compatible avec DoliAsso et tout export CSV proche. Seuls <strong>Nom</strong> et <strong>Prénom</strong> sont obligatoires.</p>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-        <button class="btn primary" onclick="document.getElementById('imp-adh-file').click()">ðŸ“‚ Choisir un fichier</button>
+        <button class="btn primary" onclick="document.getElementById('imp-adh-file').click()">📂 Choisir un fichier</button>
         <select id="adh-sep" style="width:auto" onchange="IMP.adh.sep=this.value;if(IMP.adh.raw)parseImpAdh(IMP.adh.raw)">
-          <option value=";">SÃ©parateur : ; (point-virgule)</option>
-          <option value=",">SÃ©parateur : , (virgule)</option>
-          <option value="&#9;">SÃ©parateur : tabulation</option>
-          <option value="|">SÃ©parateur : | (pipe)</option>
+          <option value=";">Séparateur : ; (point-virgule)</option>
+          <option value=",">Séparateur : , (virgule)</option>
+          <option value="&#9;">Séparateur : tabulation</option>
+          <option value="|">Séparateur : | (pipe)</option>
         </select>
       </div>
-      ${st.headers.length>0?`<div style="margin-top:10px"><span class="badge bok">âœ“ ChargÃ©</span> <span style="font-size:12px;color:var(--txt2);margin-left:6px">${st.rows.length} ligne(s) â€” ${st.headers.length} colonne(s)</span></div>`:''}
+      ${st.headers.length>0?`<div style="margin-top:10px"><span class="badge bok">✓ Chargé</span> <span style="font-size:12px;color:var(--txt2);margin-left:6px">${st.rows.length} ligne(s) — ${st.headers.length} colonne(s)</span></div>`:''}
     </div>
     ${st.headers.length>0?`
     <div class="import-step">
@@ -4032,96 +4049,96 @@ function vImpAdh(){
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 20px">
         ${ADH_FIELDS.map(f=>`<div class="col-map">
           <span style="font-weight:500;font-size:12px">${f.label}</span>
-          <span style="color:var(--txt2)">â†’</span>
+          <span style="color:var(--txt2)">→</span>
           <select id="map-adh-${f.key}" style="font-size:12px" onchange="IMP.adh.mapping['${f.key}']=this.value">
-            <option value="">â€” Ignorer â€”</option>
+            <option value="">— Ignorer —</option>
             ${st.headers.map(h=>`<option value="${h}" ${IMP.adh.mapping[f.key]===h?'selected':''}>${h}</option>`).join('')}
           </select>
         </div>`).join('')}
       </div>
     </div>
     <div class="import-step">
-      <h3><span class="step-num">3</span> AperÃ§u (5 premiÃ¨res lignes)</h3>
+      <h3><span class="step-num">3</span> Aperçu (5 premières lignes)</h3>
       <div class="wrap">
         <table class="preview-table">
           <thead><tr>${ADH_FIELDS.filter(f=>IMP.adh.mapping[f.key]).map(f=>`<th>${f.label}</th>`).join('')}</tr></thead>
-          <tbody>${st.rows.slice(0,5).map(r=>`<tr>${ADH_FIELDS.filter(f=>IMP.adh.mapping[f.key]).map(f=>`<td title="${r[IMP.adh.mapping[f.key]]||''}">${(r[IMP.adh.mapping[f.key]]||'').slice(0,25)||'â€”'}</td>`).join('')}</tr>`).join('')}</tbody>
+          <tbody>${st.rows.slice(0,5).map(r=>`<tr>${ADH_FIELDS.filter(f=>IMP.adh.mapping[f.key]).map(f=>`<td title="${r[IMP.adh.mapping[f.key]]||''}">${(r[IMP.adh.mapping[f.key]]||'').slice(0,25)||'—'}</td>`).join('')}</tr>`).join('')}</tbody>
         </table>
       </div>
     </div>
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <button class="btn green" style="padding:10px 20px" onclick="doImportAdh()" ${st.importing?'disabled':''}>
-        ${st.importing?'â³ Import en cours...':'âœ“ Importer '+st.rows.length+' adhÃ©rent(s)'}
+        ${st.importing?'⏳ Import en cours...':'✓ Importer '+st.rows.length+' adhérent(s)'}
       </button>
       <button class="btn" onclick="IMP.adh={raw:'',headers:[],rows:[],mapping:{},sep:';',importing:false};render()">Recommencer</button>
     </div>
     <div id="adh-imp-res"></div>`:''}
     <div class="import-step" style="background:var(--bg2);margin-top:14px">
-      <h3 style="font-size:12px;margin-bottom:8px">ðŸ“„ Format CSV exemple</h3>
+      <h3 style="font-size:12px;margin-bottom:8px">📄 Format CSV exemple</h3>
       <code style="font-size:11px;color:var(--txt2);line-height:2;display:block;font-family:monospace">
-        Nom;PrÃ©nom;Date naissance;Email;Type adhÃ©sion;Cotisation;Statut;Fin adhÃ©sion<br>
+        Nom;Prénom;Date naissance;Email;Type adhésion;Cotisation;Statut;Fin adhésion<br>
         DUPONT;Lucas;12/03/2005;lucas@mail.com;Club;320;Actif;31/08/2026<br>
-        MARTIN;Emma;20/07/1998;emma@mail.com;CSE ThalÃ¨s;280;Renouvellement;31/08/2026
+        MARTIN;Emma;20/07/1998;emma@mail.com;CSE Thalès;280;Renouvellement;31/08/2026
       </code>
     </div>
   </div>`;
 }
 
-// â”€â”€ IMPORT Ã‰CRITURES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── IMPORT ÉCRITURES ──────────────────────────────────────
 function vImpEcr(){
   const st=IMP.ecr;
   return`<div>
     <div class="import-step">
       <h3><span class="step-num">1</span> Charger votre export comptable DoliAsso ou CSV</h3>
-      <p style="font-size:12px;color:var(--txt2);margin-bottom:12px">Compatible avec DoliAsso, Ciel Compta, EBP, Sage, Quadratus ou tout export CSV. <strong>Date, LibellÃ© et DÃ©bit/CrÃ©dit</strong> sont obligatoires.</p>
+      <p style="font-size:12px;color:var(--txt2);margin-bottom:12px">Compatible avec DoliAsso, Ciel Compta, EBP, Sage, Quadratus ou tout export CSV. <strong>Date, Libellé et Débit/Crédit</strong> sont obligatoires.</p>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-        <button class="btn primary" onclick="document.getElementById('imp-ecr-file').click()">ðŸ“‚ Choisir un fichier</button>
+        <button class="btn primary" onclick="document.getElementById('imp-ecr-file').click()">📂 Choisir un fichier</button>
         <select id="ecr-sep" style="width:auto" onchange="IMP.ecr.sep=this.value;if(IMP.ecr.raw)parseImpEcr(IMP.ecr.raw)">
-          <option value=";">SÃ©parateur : ; (point-virgule)</option>
-          <option value=",">SÃ©parateur : , (virgule)</option>
-          <option value="&#9;">SÃ©parateur : tabulation</option>
-          <option value="|">SÃ©parateur : | (pipe)</option>
+          <option value=";">Séparateur : ; (point-virgule)</option>
+          <option value=",">Séparateur : , (virgule)</option>
+          <option value="&#9;">Séparateur : tabulation</option>
+          <option value="|">Séparateur : | (pipe)</option>
         </select>
       </div>
-      ${st.headers.length>0?`<div style="margin-top:10px"><span class="badge bok">âœ“ ChargÃ©</span> <span style="font-size:12px;color:var(--txt2);margin-left:6px">${st.rows.length} ligne(s) â€” ${st.headers.length} colonne(s)</span></div>`:''}
+      ${st.headers.length>0?`<div style="margin-top:10px"><span class="badge bok">✓ Chargé</span> <span style="font-size:12px;color:var(--txt2);margin-left:6px">${st.rows.length} ligne(s) — ${st.headers.length} colonne(s)</span></div>`:''}
     </div>
     ${st.headers.length>0?`
     <div class="import-step">
       <h3><span class="step-num">2</span> Correspondance des colonnes</h3>
-      <p style="font-size:12px;color:var(--txt2);margin-bottom:10px">Si votre logiciel exporte un montant unique (positif = crÃ©dit, nÃ©gatif = dÃ©bit), mappez-le sur <em>DÃ©bit</em>.</p>
+      <p style="font-size:12px;color:var(--txt2);margin-bottom:10px">Si votre logiciel exporte un montant unique (positif = crédit, négatif = débit), mappez-le sur <em>Débit</em>.</p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 20px">
         ${ECR_FIELDS.map(f=>`<div class="col-map">
           <span style="font-weight:500;font-size:12px">${f.label}</span>
-          <span style="color:var(--txt2)">â†’</span>
+          <span style="color:var(--txt2)">→</span>
           <select id="map-ecr-${f.key}" style="font-size:12px" onchange="IMP.ecr.mapping['${f.key}']=this.value">
-            <option value="">â€” Ignorer â€”</option>
+            <option value="">— Ignorer —</option>
             ${st.headers.map(h=>`<option value="${h}" ${IMP.ecr.mapping[f.key]===h?'selected':''}>${h}</option>`).join('')}
           </select>
         </div>`).join('')}
       </div>
     </div>
     <div class="import-step">
-      <h3><span class="step-num">3</span> AperÃ§u (5 premiÃ¨res lignes)</h3>
+      <h3><span class="step-num">3</span> Aperçu (5 premières lignes)</h3>
       <div class="wrap">
         <table class="preview-table">
           <thead><tr>${ECR_FIELDS.filter(f=>IMP.ecr.mapping[f.key]).map(f=>`<th>${f.label}</th>`).join('')}<th>Exercice</th></tr></thead>
-          <tbody>${st.rows.slice(0,5).map(r=>`<tr>${ECR_FIELDS.filter(f=>IMP.ecr.mapping[f.key]).map(f=>`<td>${(r[IMP.ecr.mapping[f.key]]||'').slice(0,25)||'â€”'}</td>`).join('')}<td style="font-size:10px;color:var(--txt2)">${D.currentExo?.libelle||'â€”'}</td></tr>`).join('')}</tbody>
+          <tbody>${st.rows.slice(0,5).map(r=>`<tr>${ECR_FIELDS.filter(f=>IMP.ecr.mapping[f.key]).map(f=>`<td>${(r[IMP.ecr.mapping[f.key]]||'').slice(0,25)||'—'}</td>`).join('')}<td style="font-size:10px;color:var(--txt2)">${D.currentExo?.libelle||'—'}</td></tr>`).join('')}</tbody>
         </table>
       </div>
     </div>
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <button class="btn green" style="padding:10px 20px" onclick="doImportEcr()" ${st.importing?'disabled':''}>
-        ${st.importing?'â³ Import en cours...':'âœ“ Importer '+st.rows.length+' Ã©criture(s)'}
+        ${st.importing?'⏳ Import en cours...':'✓ Importer '+st.rows.length+' écriture(s)'}
       </button>
       <button class="btn" onclick="IMP.ecr={raw:'',headers:[],rows:[],mapping:{},sep:';',importing:false};render()">Recommencer</button>
     </div>
     <div id="ecr-imp-res"></div>`:''}
     <div class="import-step" style="background:var(--bg2);margin-top:14px">
-      <h3 style="font-size:12px;margin-bottom:8px">ðŸ“„ Format CSV exemple</h3>
+      <h3 style="font-size:12px;margin-bottom:8px">📄 Format CSV exemple</h3>
       <code style="font-size:11px;color:var(--txt2);line-height:2;display:block;font-family:monospace">
-        Date;NÂ° PiÃ¨ce;Compte;LibellÃ©;DÃ©bit;CrÃ©dit<br>
+        Date;N° Pièce;Compte;Libellé;Débit;Crédit<br>
         05/09/2025;REC-001;7561 - Cotisations membres actifs;Cotisation Lucas Dupont;;320.00<br>
-        01/10/2025;FAC-089;6061 - Fournitures non stockÃ©es;Gants de boxe;150.00;
+        01/10/2025;FAC-089;6061 - Fournitures non stockées;Gants de boxe;150.00;
       </code>
     </div>
   </div>`;
@@ -4131,41 +4148,41 @@ function vBackup(){
   return`<div>
     <div class="view-head">
       <div>
-        <div class="eyebrow">SÃ©curitÃ© des donnÃ©es</div>
+        <div class="eyebrow">Sécurité des données</div>
         <h2>Sauvegarde et exports</h2>
-        <p>Centralisez les sauvegardes du club et rÃ©cupÃ©rez rapidement les exports nÃ©cessaires pour le suivi administratif ou comptable.</p>
+        <p>Centralisez les sauvegardes du club et récupérez rapidement les exports nécessaires pour le suivi administratif ou comptable.</p>
       </div>
     </div>
     <div class="g2" style="margin-bottom:14px">
-      <div class="card"><p style="font-weight:500;margin-bottom:6px">ðŸ’¾ Export JSON</p>
-        <p style="font-size:12px;color:var(--txt2);margin-bottom:10px">Sauvegarde complÃ¨te de toutes les donnÃ©es.</p>
-        <button class="btn primary" onclick="backupJSON()">TÃ©lÃ©charger</button>
+      <div class="card"><p style="font-weight:500;margin-bottom:6px">💾 Export JSON</p>
+        <p style="font-size:12px;color:var(--txt2);margin-bottom:10px">Sauvegarde complète de toutes les données.</p>
+        <button class="btn primary" onclick="backupJSON()">Télécharger</button>
       </div>
-      <div class="card"><p style="font-weight:500;margin-bottom:6px">ðŸ“¥ Import JSON</p>
-        <p style="font-size:12px;color:var(--txt2);margin-bottom:10px">Restaure une sauvegarde complÃ¨te et remplace les donnÃ©es courantes dans Supabase.</p>
+      <div class="card"><p style="font-weight:500;margin-bottom:6px">📥 Import JSON</p>
+        <p style="font-size:12px;color:var(--txt2);margin-bottom:10px">Restaure une sauvegarde complète et remplace les données courantes dans Supabase.</p>
         <button class="btn ${IMP.backup.restoring?'':'gold'}" onclick="triggerBackupImport()" ${IMP.backup.restoring?'disabled':''}>${IMP.backup.restoring?'Import en cours...':'Choisir un fichier'}</button>
         ${IMP.backup.lastMessage?`<div class="${IMP.backup.lastMessage.includes('Erreur')?'imp-err':'imp-ok'}" style="margin-top:10px">${IMP.backup.lastMessage}</div>`:''}
       </div>
     </div>
-    <div class="card" style="margin-bottom:14px"><p style="font-weight:500;margin-bottom:6px">ðŸ“ Drive du club</p>
-      <p style="font-size:12px;color:var(--txt2);margin-bottom:10px">DÃ©posez le backup dans le dossier partagÃ©.</p>
-      <a href="https://drive.google.com/drive/folders/1CJc6yK6XBvpz4n78kasiLLKbJCk9y6-m" target="_blank" class="btn">Ouvrir Drive â†—</a>
+    <div class="card" style="margin-bottom:14px"><p style="font-weight:500;margin-bottom:6px">📁 Drive du club</p>
+      <p style="font-size:12px;color:var(--txt2);margin-bottom:10px">Déposez le backup dans le dossier partagé.</p>
+      <a href="https://drive.google.com/drive/folders/1CJc6yK6XBvpz4n78kasiLLKbJCk9y6-m" target="_blank" class="btn">Ouvrir Drive ↗</a>
     </div>
     <div class="card">
-      <p style="font-weight:500;margin-bottom:8px">ðŸ“Š Exports CSV</p>
+      <p style="font-weight:500;margin-bottom:8px">📊 Exports CSV</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn sm" onclick="exportCSV()">AdhÃ©rents</button>
+        <button class="btn sm" onclick="exportCSV()">Adhérents</button>
         <button class="btn sm" onclick="exportAchatsCSV()">Achats</button>
         <button class="btn sm" onclick="exportJournalCSV()">Journal</button>
       </div>
     </div>
-    <p style="font-size:12px;color:var(--txt2);margin-top:12px">âœ“ DonnÃ©es sauvegardÃ©es automatiquement dans Supabase Ã  chaque action.</p>
+    <p style="font-size:12px;color:var(--txt2);margin-top:12px">✓ Données sauvegardées automatiquement dans Supabase à chaque action.</p>
   </div>`;
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 // MODALS
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 function renderModal(){
   document.querySelector('.modal-bg')?.remove();
   if(!UI.modal) return;
@@ -4174,59 +4191,59 @@ function renderModal(){
   if(UI.modal==='adh'){
     const a=UI.editObj||{nom:'',prenom:'',naissance:'',couleur_ceinture:'',numero_licence:'',email:'',telephone:'',adresse:'',code_postal:'',ville:'',discipline:'Club',droit_image:false,certificat:false,pass_region:false,montant_pass_region:0,reglement:false,cotisation:0,paiement:'Virement',statut:'Actif',date_inscription:td(),date_fin_adhesion:'',urgence_nom:'',urgence_telephone:'',urgence_lien:'',notes:'',pdf_public_url:'',pdf_nom_fichier:''};
     const signupDocs=getAdherentDocuments(a.id);
-    html=`<div class="modal" style="max-width:720px"><h2>ðŸ‘¥ ${UI.editObj?'Modifier':'Nouvel'} adhÃ©rent</h2>
+    html=`<div class="modal" style="max-width:720px"><h2>👥 ${UI.editObj?'Modifier':'Nouvel'} adhérent</h2>
     <div class="g2">
       <div class="fg"><label>Nom</label><input id="f-nom" value="${a.nom}"></div>
-      <div class="fg"><label>PrÃ©nom</label><input id="f-prn" value="${a.prenom}"></div>
+      <div class="fg"><label>Prénom</label><input id="f-prn" value="${a.prenom}"></div>
       <div class="fg"><label>Date de naissance</label><input id="f-nai" type="date" value="${a.naissance||''}"></div>
-      <div class="fg"><label>Type adhÃ©sion</label><select id="f-dis" onchange="onAdhTypeChange(this.value)">${ADH_TYPES.map(d=>`<option ${a.discipline===d?'selected':''}>${d}</option>`).join('')}</select></div>
-      <div class="fg"><label>Couleur de ceinture</label><select id="f-cei"><option value="">â€”</option>${CEINTURE_COLORS.map(c=>`<option value="${c}" ${a.couleur_ceinture===c?'selected':''}>${c}</option>`).join('')}${a.couleur_ceinture&&!CEINTURE_COLORS.includes(a.couleur_ceinture)?`<option value="${a.couleur_ceinture}" selected>${a.couleur_ceinture}</option>`:''}</select></div>
-      <div class="fg"><label>NumÃ©ro de licence</label><input id="f-lic" value="${a.numero_licence||''}" placeholder="Ex. 12345678"></div>
+      <div class="fg"><label>Type adhésion</label><select id="f-dis" onchange="onAdhTypeChange(this.value)">${ADH_TYPES.map(d=>`<option ${a.discipline===d?'selected':''}>${d}</option>`).join('')}</select></div>
+      <div class="fg"><label>Couleur de ceinture</label><select id="f-cei"><option value="">—</option>${CEINTURE_COLORS.map(c=>`<option value="${c}" ${a.couleur_ceinture===c?'selected':''}>${c}</option>`).join('')}${a.couleur_ceinture&&!CEINTURE_COLORS.includes(a.couleur_ceinture)?`<option value="${a.couleur_ceinture}" selected>${a.couleur_ceinture}</option>`:''}</select></div>
+      <div class="fg"><label>Numéro de licence</label><input id="f-lic" value="${a.numero_licence||''}" placeholder="Ex. 12345678"></div>
       <div class="fg"><label>Email</label><input id="f-eml" value="${a.email||''}"></div>
-      <div class="fg"><label>TÃ©lÃ©phone</label><input id="f-tel" value="${a.telephone||''}"></div>
+      <div class="fg"><label>Téléphone</label><input id="f-tel" value="${a.telephone||''}"></div>
       <div class="fg full"><label>Adresse</label><input id="f-adr" value="${a.adresse||''}"></div>
       <div class="fg"><label>Code postal</label><input id="f-cp" value="${a.code_postal||''}"></div>
       <div class="fg"><label>Ville</label><input id="f-vil" value="${a.ville||''}"></div>
       <div class="fg full" style="background:var(--bg2);padding:10px;border-radius:var(--r)">
         <p style="font-size:12px;font-weight:500;margin-bottom:8px">Documents administratifs</p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-          <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer"><input type="checkbox" id="f-di" ${a.droit_image?'checked':''} style="width:auto;accent-color:var(--red)"> Droit Ã  l'image</label>
-          <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer"><input type="checkbox" id="f-ce" ${a.certificat?'checked':''} style="width:auto;accent-color:var(--red)"> Certificat mÃ©dical</label>
-          <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer"><input type="checkbox" id="f-ri" ${a.reglement?'checked':''} style="width:auto;accent-color:var(--red)"> RÃ¨glement intÃ©rieur</label>
+          <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer"><input type="checkbox" id="f-di" ${a.droit_image?'checked':''} style="width:auto;accent-color:var(--red)"> Droit à l'image</label>
+          <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer"><input type="checkbox" id="f-ce" ${a.certificat?'checked':''} style="width:auto;accent-color:var(--red)"> Certificat médical</label>
+          <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer"><input type="checkbox" id="f-ri" ${a.reglement?'checked':''} style="width:auto;accent-color:var(--red)"> Règlement intérieur</label>
         </div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer">
-            <input type="checkbox" id="f-pr" ${a.pass_region?'checked':''} style="width:auto;accent-color:var(--red)" onchange="document.getElementById('f-mpr').style.display=this.checked?'flex':'none'"> Pass RÃ©gion
+            <input type="checkbox" id="f-pr" ${a.pass_region?'checked':''} style="width:auto;accent-color:var(--red)" onchange="document.getElementById('f-mpr').style.display=this.checked?'flex':'none'"> Pass Région
           </label>
           <div id="f-mpr" style="display:${a.pass_region?'flex':'none'};align-items:center;gap:6px">
             <span style="font-size:12px;color:var(--txt2)">Montant pass :</span>
             <input id="f-mpr-val" type="number" value="${a.montant_pass_region||0}" min="0" step="0.01" style="width:80px">
-            <span style="font-size:12px;color:var(--txt2)">â‚¬</span>
+            <span style="font-size:12px;color:var(--txt2)">€</span>
           </div>
         </div>
       </div>
-      <div class="fg"><label>Cotisation (â‚¬)</label><input id="f-cot" type="number" value="${a.cotisation||0}" min="0" step="0.01"></div>
+      <div class="fg"><label>Cotisation (€)</label><input id="f-cot" type="number" value="${a.cotisation||0}" min="0" step="0.01"></div>
       <div class="fg"><label>Mode de paiement</label><select id="f-pay">${MODES_PAIE.map(p=>`<option ${a.paiement===p?'selected':''}>${p}</option>`).join('')}</select></div>
       <div class="fg"><label>Date d'inscription</label><input id="f-di2" type="date" value="${a.date_inscription||td()}" onchange="if(!document.getElementById('f-fin').value)document.getElementById('f-fin').value=defaultAdhesionEnd(this.value)"></div>
-      <div class="fg"><label>Date fin d'adhÃ©sion</label><input id="f-fin" type="date" value="${a.date_fin_adhesion||defaultAdhesionEnd(a.date_inscription||td())}"></div>
+      <div class="fg"><label>Date fin d'adhésion</label><input id="f-fin" type="date" value="${a.date_fin_adhesion||defaultAdhesionEnd(a.date_inscription||td())}"></div>
       <div class="fg"><label>Statut</label><select id="f-sta">${ADH_STATUTS.map(s=>`<option ${a.statut===s?'selected':''}>${s}</option>`).join('')}</select></div>
       <div class="fg full" style="background:var(--bg2);padding:10px;border-radius:var(--r)">
-        <p style="font-size:12px;font-weight:500;margin-bottom:8px">Personne Ã  prÃ©venir en cas d'urgence</p>
+        <p style="font-size:12px;font-weight:500;margin-bottom:8px">Personne à prévenir en cas d'urgence</p>
         <div class="g3">
           <div class="fg"><label>Nom</label><input id="f-urn" value="${a.urgence_nom||''}"></div>
-          <div class="fg"><label>TÃ©lÃ©phone</label><input id="f-urt" value="${a.urgence_telephone||''}"></div>
+          <div class="fg"><label>Téléphone</label><input id="f-urt" value="${a.urgence_telephone||''}"></div>
           <div class="fg"><label>Lien (parent, conjoint...)</label><input id="f-url" value="${a.urgence_lien||''}"></div>
         </div>
       </div>
       <div class="fg full" style="background:var(--bg2);padding:10px;border-radius:var(--r)">
-        <p style="font-size:12px;font-weight:500;margin-bottom:8px">Document PDF adhÃ©rent</p>
+        <p style="font-size:12px;font-weight:500;margin-bottom:8px">Document PDF adhérent</p>
         ${a.id?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <button class="btn sm" onclick="trigPDF('adherents','${a.id}')">${a.pdf_public_url?'Remplacer le PDF':'TÃ©lÃ©verser un PDF'}</button>
-          ${a.pdf_public_url?`<a class="btn sm" href="${a.pdf_public_url}" target="_blank">Ouvrir</a><span style="font-size:12px;color:var(--txt2)">${a.pdf_nom_fichier||'document.pdf'}</span>`:`<span style="font-size:12px;color:var(--txt2)">Aucun fichier stockÃ©</span>`}
-        </div>`:`<p style="font-size:12px;color:var(--txt2)">Enregistrez d'abord l'adhÃ©rent, puis ajoutez son PDF.</p>`}
+          <button class="btn sm" onclick="trigPDF('adherents','${a.id}')">${a.pdf_public_url?'Remplacer le PDF':'Téléverser un PDF'}</button>
+          ${a.pdf_public_url?`<a class="btn sm" href="${a.pdf_public_url}" target="_blank">Ouvrir</a><span style="font-size:12px;color:var(--txt2)">${a.pdf_nom_fichier||'document.pdf'}</span>`:`<span style="font-size:12px;color:var(--txt2)">Aucun fichier stocké</span>`}
+        </div>`:`<p style="font-size:12px;color:var(--txt2)">Enregistrez d'abord l'adhérent, puis ajoutez son PDF.</p>`}
       </div>
       <div class="fg full" style="background:var(--bg2);padding:10px;border-radius:var(--r)">
-        <p style="font-size:12px;font-weight:500;margin-bottom:8px">PiÃ¨ces de l'inscription en ligne</p>
+        <p style="font-size:12px;font-weight:500;margin-bottom:8px">Pièces de l'inscription en ligne</p>
         ${signupDocs.length?`<div style="display:flex;flex-direction:column;gap:8px">
           ${signupDocs.map(doc=>`<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
             <div>
@@ -4235,7 +4252,7 @@ function renderModal(){
             </div>
             <a class="btn sm" href="${doc.url}" target="_blank">Ouvrir</a>
           </div>`).join('')}
-        </div>`:`<p style="font-size:12px;color:var(--txt2)">Aucune piÃ¨ce issue de l'inscription web n'est rattachÃ©e Ã  cet adhÃ©rent.</p>`}
+        </div>`:`<p style="font-size:12px;color:var(--txt2)">Aucune pièce issue de l'inscription web n'est rattachée à cet adhérent.</p>`}
       </div>
       <div class="fg full"><label>Notes</label><textarea id="f-not" rows="2" style="resize:vertical">${a.notes||''}</textarea></div>
     </div>
@@ -4243,74 +4260,74 @@ function renderModal(){
     </div>`;
 
   }else if(UI.modal==='compte'){
-    html=`<div class="modal" style="max-width:380px"><h2>ðŸ¦ Nouveau compte</h2>
+    html=`<div class="modal" style="max-width:380px"><h2>🏦 Nouveau compte</h2>
     <div style="display:flex;flex-direction:column;gap:10px">
       <div class="fg"><label>Nom</label><input id="c-nom" placeholder="Compte principal CM"></div>
-      <div class="fg"><label>NumÃ©ro</label><input id="c-num" placeholder="30027 xxxxx"></div>
-      <div class="fg"><label>Solde initial (â‚¬)</label><input id="c-sol" type="number" value="0" step="0.01"></div>
+      <div class="fg"><label>Numéro</label><input id="c-num" placeholder="30027 xxxxx"></div>
+      <div class="fg"><label>Solde initial (€)</label><input id="c-sol" type="number" value="0" step="0.01"></div>
     </div>
-    <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="saveCpt()">CrÃ©er</button></div>
+    <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="saveCpt()">Créer</button></div>
     </div>`;
 
   }else if(UI.modal==='ecr'){
     const e=UI.editObj||{date_op:td(),piece:'',compte:'471 - Comptes d attente',contrepartie:'512 - Banque',libelle:'',debit:0,credit:0};
-    html=`<div class="modal" style="max-width:540px"><h2>ðŸ“Š Nouvelle Ã©criture</h2>
+    html=`<div class="modal" style="max-width:540px"><h2>📊 Nouvelle écriture</h2>
     <div class="g2">
       <div class="fg"><label>Date</label><input id="e-dat" type="date" value="${e.date_op||td()}"></div>
-      <div class="fg"><label>NÂ° piÃ¨ce</label><input id="e-pie" value="${esc(e.piece||'')}" placeholder="FAC-2025-001"></div>
-      <div class="fg full"><label>Compte â€” Plan comptable loi 1901</label><select id="e-cpt" style="width:100%">${PLAN.map(p=>`<option value="${p}" ${p===e.compte?'selected':''}>${p}</option>`).join('')}</select></div>
+      <div class="fg"><label>N° pièce</label><input id="e-pie" value="${esc(e.piece||'')}" placeholder="FAC-2025-001"></div>
+      <div class="fg full"><label>Compte — Plan comptable loi 1901</label><select id="e-cpt" style="width:100%">${PLAN.map(p=>`<option value="${p}" ${p===e.compte?'selected':''}>${p}</option>`).join('')}</select></div>
       <div class="fg full"><label>Compte de contrepartie</label><select id="e-cpt-ctr" style="width:100%">${PLAN.map(p=>`<option value="${p}" ${p===e.contrepartie?'selected':''}>${p}</option>`).join('')}</select></div>
-      <div class="fg full"><label>LibellÃ©</label><input id="e-lib" value="${esc(e.libelle||'')}" placeholder="Description de l'opÃ©ration"></div>
-      <div class="fg"><label>DÃ©bit (â‚¬)</label><input id="e-deb" type="number" value="${e.debit||0}" min="0" step="0.01"></div>
-      <div class="fg"><label>CrÃ©dit (â‚¬)</label><input id="e-cre" type="number" value="${e.credit||0}" min="0" step="0.01"></div>
+      <div class="fg full"><label>Libellé</label><input id="e-lib" value="${esc(e.libelle||'')}" placeholder="Description de l'opération"></div>
+      <div class="fg"><label>Débit (€)</label><input id="e-deb" type="number" value="${e.debit||0}" min="0" step="0.01"></div>
+      <div class="fg"><label>Crédit (€)</label><input id="e-cre" type="number" value="${e.credit||0}" min="0" step="0.01"></div>
     </div>
-    <div style="background:var(--bg2);border-radius:var(--r);padding:10px;margin-top:12px;font-size:12px;color:var(--txt2)">Si vous ne renseignez qu'un dÃ©bit ou qu'un crÃ©dit, la ligne de contrepartie sera crÃ©Ã©e automatiquement pour garder le journal Ã©quilibrÃ©.</div>
+    <div style="background:var(--bg2);border-radius:var(--r);padding:10px;margin-top:12px;font-size:12px;color:var(--txt2)">Si vous ne renseignez qu'un débit ou qu'un crédit, la ligne de contrepartie sera créée automatiquement pour garder le journal équilibré.</div>
     <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="saveEcr()">Enregistrer</button></div>
     </div>`;
 
   }else if(UI.modal==='equilibre_help'){
     const issues=pieceBalanceDiagnostics(jnlExo());
     const totalEcart=issues.reduce((sum,issue)=>sum+Math.abs(issue.ecart),0);
-    html=`<div class="modal" style="max-width:860px"><h2>ðŸ§­ Assistant dÃ©sÃ©quilibres</h2>
+    html=`<div class="modal" style="max-width:860px"><h2>🧭 Assistant déséquilibres</h2>
     <div style="display:flex;flex-direction:column;gap:14px">
       <div class="card" style="padding:14px">
         <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">
           <div>
             <strong style="font-weight:600">${D.currentExo?.libelle||'Exercice actif'}</strong>
-            <div style="font-size:12px;color:var(--txt2);margin-top:4px">RepÃ©rez les piÃ¨ces dÃ©sÃ©quilibrÃ©es, corrigez-les une par une ou lancez une rÃ©gularisation globale sur le compte 471.</div>
+            <div style="font-size:12px;color:var(--txt2);margin-top:4px">Repérez les pièces déséquilibrées, corrigez-les une par une ou lancez une régularisation globale sur le compte 471.</div>
           </div>
-          <span class="badge ${issues.length?'bno':'bok'}">${issues.length?`${issues.length} piÃ¨ce(s) Ã  traiter`:'Journal Ã©quilibrÃ©'}</span>
+          <span class="badge ${issues.length?'bno':'bok'}">${issues.length?`${issues.length} pièce(s) à traiter`:'Journal équilibré'}</span>
         </div>
         <div class="g3" style="margin-top:12px">
-          <div class="sc"><div class="v ${issues.length?'vr':'vg'}">${issues.length}</div><div class="l">PiÃ¨ces dÃ©sÃ©quilibrÃ©es</div></div>
-          <div class="sc"><div class="v vr">${totalEcart.toFixed(2)} â‚¬</div><div class="l">Ã‰cart cumulÃ© absolu</div></div>
+          <div class="sc"><div class="v ${issues.length?'vr':'vg'}">${issues.length}</div><div class="l">Pièces déséquilibrées</div></div>
+          <div class="sc"><div class="v vr">${totalEcart.toFixed(2)} €</div><div class="l">Écart cumulé absolu</div></div>
           <div class="sc"><div class="v vg">${jnlExo().length}</div><div class="l">Lignes du journal</div></div>
         </div>
         ${issues.length?`<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
-          ${hasPerm('perm_comptabilite','write')?`<button class="btn gold" onclick="regulariserEquilibreExo()">RÃ©gulariser tout sur 471</button>`:''}
+          ${hasPerm('perm_comptabilite','write')?`<button class="btn gold" onclick="regulariserEquilibreExo()">Régulariser tout sur 471</button>`:''}
           <button class="btn" onclick="closeModal()">Fermer</button>
-        </div>`:`<div><div class="imp-ok" style="margin-top:12px">Aucune anomalie dÃ©tectÃ©e sur l'exercice actif.</div><div style="margin-top:12px"><button class="btn" onclick="closeModal()">Fermer</button></div></div>`}
+        </div>`:`<div><div class="imp-ok" style="margin-top:12px">Aucune anomalie détectée sur l'exercice actif.</div><div style="margin-top:12px"><button class="btn" onclick="closeModal()">Fermer</button></div></div>`}
       </div>
       ${issues.map(issue=>{const analysis=buildEquilibreSuggestions(issue);return `<div class="card" style="padding:14px">
         <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">
           <div>
             <strong style="font-weight:600">${esc(issue.piece)}</strong>
-            <div style="font-size:12px;color:var(--txt2);margin-top:4px">${fd(issue.firstDate)} Â· ${issue.rows.length} ligne(s) Â· DÃ©bit ${issue.debit.toFixed(2)} â‚¬ Â· CrÃ©dit ${issue.credit.toFixed(2)} â‚¬</div>
+            <div style="font-size:12px;color:var(--txt2);margin-top:4px">${fd(issue.firstDate)} · ${issue.rows.length} ligne(s) · Débit ${issue.debit.toFixed(2)} € · Crédit ${issue.credit.toFixed(2)} €</div>
           </div>
-          <span class="badge ${issue.ecart===0?'bok':'bno'}">Ã‰cart ${issue.ecart>0?'+':''}${issue.ecart.toFixed(2)} â‚¬</span>
+          <span class="badge ${issue.ecart===0?'bok':'bno'}">Écart ${issue.ecart>0?'+':''}${issue.ecart.toFixed(2)} €</span>
         </div>
         <div style="margin-top:10px;padding:10px 12px;background:var(--bg2);border-radius:14px;font-size:12px;color:var(--txt2)">
           <strong style="display:block;color:var(--txt);font-weight:600;margin-bottom:4px">Analyse</strong>
-          Type probable : ${analysis.pieceType==='achat'?'achat':analysis.pieceType==='vente'?'vente':analysis.pieceType==='adhesion'?'adhÃ©sion / encaissement':'Ã©criture gÃ©nÃ©rale'} Â·
-          il manque ${analysis.needSide==='credit'?'un crÃ©dit':'un dÃ©bit'} de <strong style="color:var(--txt)">${analysis.amount.toFixed(2)} â‚¬</strong>.
-          ${analysis.exactAccounts.length?`Comptes dÃ©jÃ  prÃ©sents : ${analysis.exactAccounts.map(esc).join(', ')}.`:'Aucun compte exploitable dÃ©tectÃ© dans la piÃ¨ce.'}
+          Type probable : ${analysis.pieceType==='achat'?'achat':analysis.pieceType==='vente'?'vente':analysis.pieceType==='adhesion'?'adhésion / encaissement':'écriture générale'} ·
+          il manque ${analysis.needSide==='credit'?'un crédit':'un débit'} de <strong style="color:var(--txt)">${analysis.amount.toFixed(2)} €</strong>.
+          ${analysis.exactAccounts.length?`Comptes déjà présents : ${analysis.exactAccounts.map(esc).join(', ')}.`:'Aucun compte exploitable détecté dans la pièce.'}
         </div>
         <div style="margin-top:10px;font-size:12px;color:var(--txt2)">
           ${issue.rows.slice(0,4).map(row=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:4px 0;border-bottom:.5px solid var(--brd)">
-            <span style="min-width:0;flex:1"><strong style="font-weight:500;color:var(--txt)">${esc(row.compte||'')}</strong> Â· ${esc(row.libelle||'')}</span>
-            <span style="white-space:nowrap">${(+row.debit||0).toFixed(2)} / ${(+row.credit||0).toFixed(2)} â‚¬</span>
+            <span style="min-width:0;flex:1"><strong style="font-weight:500;color:var(--txt)">${esc(row.compte||'')}</strong> · ${esc(row.libelle||'')}</span>
+            <span style="white-space:nowrap">${(+row.debit||0).toFixed(2)} / ${(+row.credit||0).toFixed(2)} €</span>
           </div>`).join('')}
-          ${issue.rows.length>4?`<div style="margin-top:6px">â€¦ ${issue.rows.length-4} autre(s) ligne(s)</div>`:''}
+          ${issue.rows.length>4?`<div style="margin-top:6px">… ${issue.rows.length-4} autre(s) ligne(s)</div>`:''}
         </div>
         <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
           ${analysis.suggestions.map((s,idx)=>`<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--brd);border-radius:14px;background:rgba(255,255,255,.62)">
@@ -4321,7 +4338,7 @@ function renderModal(){
               </div>
               <div style="font-size:12px;color:var(--txt2);margin-top:4px">${esc(s.reason)}</div>
             </div>
-            ${hasPerm('perm_comptabilite','write')?`<button class="btn ${idx===0?'primary':''}" onclick='regulariserPieceEquilibreAvecCompte(${JSON.stringify(issue.key)}, ${JSON.stringify(s.compte)}, ${JSON.stringify('RÃ©gularisation suggÃ©rÃ©e')})'>Utiliser</button>`:''}
+            ${hasPerm('perm_comptabilite','write')?`<button class="btn ${idx===0?'primary':''}" onclick='regulariserPieceEquilibreAvecCompte(${JSON.stringify(issue.key)}, ${JSON.stringify(s.compte)}, ${JSON.stringify('Régularisation suggérée')})'>Utiliser</button>`:''}
           </div>`).join('')}
         </div>
         ${hasPerm('perm_comptabilite','write')?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
@@ -4332,23 +4349,23 @@ function renderModal(){
     </div>`;
 
   }else if(UI.modal==='achat'){
-    const a=UI.editObj||{date_op:td(),fournisseur:'',designation:'',categorie:'Ã‰quipement',montant:0,mode_paiement:'Virement',reference_paiement:'',statut:'nouveau',piece:'',notes:'',pdf_public_url:'',pdf_nom_fichier:''};
-    html=`<div class="modal" style="max-width:580px"><h2>ðŸ›’ ${UI.editObj?'Modifier':'Nouvel'} achat</h2>
+    const a=UI.editObj||{date_op:td(),fournisseur:'',designation:'',categorie:'Équipement',montant:0,mode_paiement:'Virement',reference_paiement:'',statut:'nouveau',piece:'',notes:'',pdf_public_url:'',pdf_nom_fichier:''};
+    html=`<div class="modal" style="max-width:580px"><h2>🛒 ${UI.editObj?'Modifier':'Nouvel'} achat</h2>
     <div class="g2">
       <div class="fg"><label>Date</label><input id="a-dat" type="date" value="${a.date_op}"></div>
       <div class="fg"><label>Fournisseur</label><input id="a-fou" value="${a.fournisseur}"></div>
-      <div class="fg full"><label>DÃ©signation</label><input id="a-des" value="${a.designation||''}"></div>
-      <div class="fg"><label>CatÃ©gorie</label><select id="a-cat">${['Ã‰quipement','Location','Textile','Fournitures','Transport','Formation','Autre'].map(c=>`<option ${a.categorie===c?'selected':''}>${c}</option>`).join('')}</select></div>
-      <div class="fg"><label>Montant TTC (â‚¬)</label><input id="a-mnt" type="number" value="${a.montant}" min="0" step="0.01"></div>
+      <div class="fg full"><label>Désignation</label><input id="a-des" value="${a.designation||''}"></div>
+      <div class="fg"><label>Catégorie</label><select id="a-cat">${['Équipement','Location','Textile','Fournitures','Transport','Formation','Autre'].map(c=>`<option ${a.categorie===c?'selected':''}>${c}</option>`).join('')}</select></div>
+      <div class="fg"><label>Montant TTC (€)</label><input id="a-mnt" type="number" value="${a.montant}" min="0" step="0.01"></div>
       <div class="fg"><label>Mode de paiement</label><select id="a-mod">${MODES_PAIE.map(p=>`<option ${a.mode_paiement===p?'selected':''}>${p}</option>`).join('')}</select></div>
-      <div class="fg"><label>RÃ©fÃ©rence paiement</label><input id="a-ref" value="${a.reference_paiement||''}" placeholder="NÂ° chÃ¨que, rÃ©f. virement..."></div>
-      <div class="fg"><label>NÂ° piÃ¨ce justificative</label><input id="a-pie" value="${a.piece||''}" placeholder="FA-001"></div>
-      <div class="fg"><label>Statut</label><select id="a-sta">${[['nouveau','Nouveau'],['valide','ValidÃ©'],['paye','PayÃ©'],['refuse','RefusÃ©']].map(([v,l])=>`<option value="${v}" ${a.statut===v?'selected':''}>${l}</option>`).join('')}</select></div>
+      <div class="fg"><label>Référence paiement</label><input id="a-ref" value="${a.reference_paiement||''}" placeholder="N° chèque, réf. virement..."></div>
+      <div class="fg"><label>N° pièce justificative</label><input id="a-pie" value="${a.piece||''}" placeholder="FA-001"></div>
+      <div class="fg"><label>Statut</label><select id="a-sta">${[['nouveau','Nouveau'],['valide','Validé'],['paye','Payé'],['refuse','Refusé']].map(([v,l])=>`<option value="${v}" ${a.statut===v?'selected':''}>${l}</option>`).join('')}</select></div>
       <div class="fg full" style="background:var(--bg2);padding:10px;border-radius:var(--r)">
         <p style="font-size:12px;font-weight:500;margin-bottom:8px">Facture PDF</p>
         ${a.id?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <button class="btn sm" onclick="trigPDF('achats','${a.id}')">${a.pdf_public_url?'Remplacer le PDF':'TÃ©lÃ©verser le PDF'}</button>
-          ${a.pdf_public_url?`<a class="btn sm" href="${a.pdf_public_url}" target="_blank">Ouvrir</a><span style="font-size:12px;color:var(--txt2)">${a.pdf_nom_fichier||'facture.pdf'}</span>`:`<span style="font-size:12px;color:var(--txt2)">Aucun fichier stockÃ©</span>`}
+          <button class="btn sm" onclick="trigPDF('achats','${a.id}')">${a.pdf_public_url?'Remplacer le PDF':'Téléverser le PDF'}</button>
+          ${a.pdf_public_url?`<a class="btn sm" href="${a.pdf_public_url}" target="_blank">Ouvrir</a><span style="font-size:12px;color:var(--txt2)">${a.pdf_nom_fichier||'facture.pdf'}</span>`:`<span style="font-size:12px;color:var(--txt2)">Aucun fichier stocké</span>`}
         </div>`:`<p style="font-size:12px;color:var(--txt2)">Enregistrez d'abord l'achat, puis ajoutez sa facture PDF.</p>`}
       </div>
       <div class="fg full"><label>Notes</label><textarea id="a-not" rows="2" style="resize:vertical">${a.notes||''}</textarea></div>
@@ -4358,73 +4375,73 @@ function renderModal(){
 
   }else if(UI.modal==='user'){
     const u=UI.editObj||{prenom:'',nom:'',email:'',mot_de_passe:'',role:'membre',actif:true};
-    html=`<div class="modal" style="max-width:440px"><h2>âš™ï¸ ${UI.editObj?'Modifier':'Nouvel'} utilisateur</h2>
+    html=`<div class="modal" style="max-width:440px"><h2>⚙️ ${UI.editObj?'Modifier':'Nouvel'} utilisateur</h2>
     <div class="g2">
-      <div class="fg"><label>PrÃ©nom</label><input id="u-pre" value="${u.prenom}"></div>
+      <div class="fg"><label>Prénom</label><input id="u-pre" value="${u.prenom}"></div>
       <div class="fg"><label>Nom</label><input id="u-nom" value="${u.nom}"></div>
       <div class="fg full"><label>Email (identifiant de connexion)</label><input id="u-eml" type="email" value="${u.email||''}"></div>
-      <div class="fg full"><label>Mot de passe${UI.editObj?' (vide = inchangÃ©)':''}</label><input id="u-pwd" type="password" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"></div>
-      <div class="fg"><label>RÃ´le</label><select id="u-rol">${Object.entries(ROLES).map(([k,v])=>`<option value="${k}" ${u.role===k?'selected':''}>${v}</option>`).join('')}</select></div>
+      <div class="fg full"><label>Mot de passe${UI.editObj?' (vide = inchangé)':''}</label><input id="u-pwd" type="password" placeholder="••••••••"></div>
+      <div class="fg"><label>Rôle</label><select id="u-rol">${Object.entries(ROLES).map(([k,v])=>`<option value="${k}" ${u.role===k?'selected':''}>${v}</option>`).join('')}</select></div>
       <div class="fg"><label>Statut</label><select id="u-act"><option value="1" ${u.actif?'selected':''}>Actif</option><option value="0" ${!u.actif?'selected':''}>Inactif</option></select></div>
     </div>
     <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="saveUser('${u.id||''}')">Enregistrer</button></div>
     </div>`;
 
   }else if(UI.modal==='pwd'){
-    html=`<div class="modal" style="max-width:440px"><h2>ðŸ” Modifier mon mot de passe</h2>
+    html=`<div class="modal" style="max-width:440px"><h2>🔐 Modifier mon mot de passe</h2>
     <div style="display:flex;flex-direction:column;gap:12px">
-      <div class="fg"><label>Mot de passe actuel</label><input id="pwd-cur" type="password" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"></div>
-      <div class="fg"><label>Nouveau mot de passe</label><input id="pwd-new" type="password" placeholder="Au moins 6 caractÃ¨res"></div>
-      <div class="fg"><label>Confirmation</label><input id="pwd-cfm" type="password" placeholder="RÃ©pÃ©tez le nouveau mot de passe"></div>
+      <div class="fg"><label>Mot de passe actuel</label><input id="pwd-cur" type="password" placeholder="••••••••"></div>
+      <div class="fg"><label>Nouveau mot de passe</label><input id="pwd-new" type="password" placeholder="Au moins 6 caractères"></div>
+      <div class="fg"><label>Confirmation</label><input id="pwd-cfm" type="password" placeholder="Répétez le nouveau mot de passe"></div>
     </div>
     <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="saveOwnPassword()">Enregistrer</button></div>
     </div>`;
 
   }else if(UI.modal==='exo'){
     const yr=new Date().getFullYear();
-    html=`<div class="modal" style="max-width:440px"><h2>ðŸ“… Nouvel exercice</h2>
+    html=`<div class="modal" style="max-width:440px"><h2>📅 Nouvel exercice</h2>
     <div style="display:flex;flex-direction:column;gap:12px">
-      <div class="fg"><label>LibellÃ©</label><input id="exo-lib" value="Exercice ${yr}-${yr+1}"></div>
-      <div class="fg"><label>Date de dÃ©but</label><input id="exo-deb" type="date" value="${yr}-09-01"></div>
+      <div class="fg"><label>Libellé</label><input id="exo-lib" value="Exercice ${yr}-${yr+1}"></div>
+      <div class="fg"><label>Date de début</label><input id="exo-deb" type="date" value="${yr}-09-01"></div>
       <div class="fg"><label>Date de fin</label><input id="exo-fin" type="date" value="${yr+1}-08-31"></div>
     </div>
-    <div style="background:var(--gold-l);border-radius:var(--r);padding:10px;margin-top:12px;font-size:12px;color:var(--gold-d)">âš  Pensez Ã  archiver l'exercice courant avant d'en crÃ©er un nouveau.</div>
-    <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="saveExo()">CrÃ©er</button></div>
+    <div style="background:var(--gold-l);border-radius:var(--r);padding:10px;margin-top:12px;font-size:12px;color:var(--gold-d)">⚠ Pensez à archiver l'exercice courant avant d'en créer un nouveau.</div>
+    <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="saveExo()">Créer</button></div>
     </div>`;
   }else if(UI.modal==='exo_close'){
     const exo=UI.editObj||D.currentExo;
     const diag=exerciceDiagnostics(exo?.id);
     const next=nextExerciceDefaults(exo);
-    html=`<div class="modal" style="max-width:720px"><h2>ðŸ§¾ Assistant de clÃ´ture</h2>
+    html=`<div class="modal" style="max-width:720px"><h2>🧾 Assistant de clôture</h2>
     <div style="display:flex;flex-direction:column;gap:14px">
       <div class="card" style="padding:14px">
         <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
-          <div><strong style="font-weight:600">${exo?.libelle||'Exercice'}</strong><div style="font-size:12px;color:var(--txt2);margin-top:4px">${fd(exo?.date_debut)} â†’ ${fd(exo?.date_fin)}</div></div>
-          <span class="badge ${diag.ecartJournal===0?'bok':'bno'}">${diag.ecartJournal===0?'Ã‰quilibrÃ©':'DÃ©sÃ©quilibrÃ©'}</span>
+          <div><strong style="font-weight:600">${exo?.libelle||'Exercice'}</strong><div style="font-size:12px;color:var(--txt2);margin-top:4px">${fd(exo?.date_debut)} → ${fd(exo?.date_fin)}</div></div>
+          <span class="badge ${diag.ecartJournal===0?'bok':'bno'}">${diag.ecartJournal===0?'Équilibré':'Déséquilibré'}</span>
         </div>
         <div class="g4" style="margin-top:12px">
-          <div class="sc"><div class="v vr">${diag.totalDebit.toFixed(2)} â‚¬</div><div class="l">DÃ©bits</div></div>
-          <div class="sc"><div class="v vg">${diag.totalCredit.toFixed(2)} â‚¬</div><div class="l">CrÃ©dits</div></div>
-          <div class="sc"><div class="v ${diag.resultat>=0?'vg':'vr'}">${diag.resultat>=0?'+':''}${diag.resultat.toFixed(2)} â‚¬</div><div class="l">RÃ©sultat</div></div>
-          <div class="sc"><div class="v ${diag.ecartJournal===0?'vg':'vr'}">${diag.ecartJournal.toFixed(2)} â‚¬</div><div class="l">Ã‰cart</div></div>
+          <div class="sc"><div class="v vr">${diag.totalDebit.toFixed(2)} €</div><div class="l">Débits</div></div>
+          <div class="sc"><div class="v vg">${diag.totalCredit.toFixed(2)} €</div><div class="l">Crédits</div></div>
+          <div class="sc"><div class="v ${diag.resultat>=0?'vg':'vr'}">${diag.resultat>=0?'+':''}${diag.resultat.toFixed(2)} €</div><div class="l">Résultat</div></div>
+          <div class="sc"><div class="v ${diag.ecartJournal===0?'vg':'vr'}">${diag.ecartJournal.toFixed(2)} €</div><div class="l">Écart</div></div>
         </div>
-        ${diag.issues.length?`<div class="imp-err" style="margin-top:12px">Des piÃ¨ces sont dÃ©sÃ©quilibrÃ©es. Corrigez-les avant la clÃ´ture ou utilisez la rÃ©gularisation automatique.<div style="margin-top:6px;font-size:11px">${diag.issues.slice(0,4).map(i=>`${i.piece} : ${i.ecart.toFixed(2)} â‚¬`).join('<br>')}</div></div>`:`<div class="imp-ok" style="margin-top:12px">Le journal de l'exercice est prÃªt pour la clÃ´ture.</div>`}
+        ${diag.issues.length?`<div class="imp-err" style="margin-top:12px">Des pièces sont déséquilibrées. Corrigez-les avant la clôture ou utilisez la régularisation automatique.<div style="margin-top:6px;font-size:11px">${diag.issues.slice(0,4).map(i=>`${i.piece} : ${i.ecart.toFixed(2)} €`).join('<br>')}</div></div>`:`<div class="imp-ok" style="margin-top:12px">Le journal de l'exercice est prêt pour la clôture.</div>`}
       </div>
       <div class="card" style="padding:14px">
-        <p style="font-weight:600;margin-bottom:10px">Ã‰tapes de clÃ´ture</p>
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:10px;cursor:pointer"><input id="exo-close-report" type="checkbox" checked style="width:auto;accent-color:var(--red)"> Reporter automatiquement le rÃ©sultat sur le compte 1060 - RÃ©serves</label>
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px;cursor:pointer"><input id="exo-close-next" type="checkbox" checked style="width:auto;accent-color:var(--red)" onchange="document.getElementById('exo-next-fields').style.display=this.checked?'grid':'none'"> CrÃ©er automatiquement le nouvel exercice actif</label>
+        <p style="font-weight:600;margin-bottom:10px">Étapes de clôture</p>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:10px;cursor:pointer"><input id="exo-close-report" type="checkbox" checked style="width:auto;accent-color:var(--red)"> Reporter automatiquement le résultat sur le compte 1060 - Réserves</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px;cursor:pointer"><input id="exo-close-next" type="checkbox" checked style="width:auto;accent-color:var(--red)" onchange="document.getElementById('exo-next-fields').style.display=this.checked?'grid':'none'"> Créer automatiquement le nouvel exercice actif</label>
         <div id="exo-next-fields" class="g3" style="display:grid">
-          <div class="fg full"><label>LibellÃ© du nouvel exercice</label><input id="exo-next-lib" value="${next.libelle}"></div>
-          <div class="fg"><label>Date de dÃ©but</label><input id="exo-next-deb" type="date" value="${next.date_debut}"></div>
+          <div class="fg full"><label>Libellé du nouvel exercice</label><input id="exo-next-lib" value="${next.libelle}"></div>
+          <div class="fg"><label>Date de début</label><input id="exo-next-deb" type="date" value="${next.date_debut}"></div>
           <div class="fg"><label>Date de fin</label><input id="exo-next-fin" type="date" value="${next.date_fin}"></div>
         </div>
       </div>
     </div>
     <div class="modal-act">
-      ${diag.issues.length?`<button class="btn gold" onclick="regulariserEquilibreExo()">RÃ©gulariser d'abord</button>`:''}
+      ${diag.issues.length?`<button class="btn gold" onclick="regulariserEquilibreExo()">Régulariser d'abord</button>`:''}
       <button class="btn" onclick="closeModal()">Annuler</button>
-      <button class="btn primary" onclick="finalizeExoClose('${exo?.id||''}')" ${diag.ecartJournal!==0?'disabled':''}>ClÃ´turer l'exercice</button>
+      <button class="btn primary" onclick="finalizeExoClose('${exo?.id||''}')" ${diag.ecartJournal!==0?'disabled':''}>Clôturer l'exercice</button>
     </div>
     </div>`;
   }
@@ -4457,16 +4474,16 @@ function openPasswordModal(){
 }
 function forcePasswordRotation(){
   openPasswordModal();
-  alert('Votre mot de passe doit Ãªtre renouvelÃ© avant de continuer.');
+  alert('Votre mot de passe doit être renouvelé avant de continuer.');
 }
 function closeModal(){UI.modal=null;UI.editObj=null;renderModal()}
 
 function achatCompteAuto(categorie){
   const map={
-    'Ã‰quipement':'6051 - Achats de matÃ©riels et Ã©quipements sportifs',
-    'Location':'6132 - Locations immobiliÃ¨res',
+    'Équipement':'6051 - Achats de matériels et équipements sportifs',
+    'Location':'6132 - Locations immobilières',
     'Textile':'6052 - Achats de textile et tenues',
-    'Fournitures':'6061 - Fournitures non stockÃ©es',
+    'Fournitures':'6061 - Fournitures non stockées',
     'Transport':'6241 - Transports sur achats',
     'Formation':'6226 - Honoraires',
     'Autre':'6580 - Charges diverses de gestion courante',
@@ -4476,7 +4493,7 @@ function achatCompteAuto(categorie){
 
 function venteCompteAuto(f){
   const txt=`${f.objet||''} ${(f.lignes||[]).map(l=>l.desc||'').join(' ')}`.toLowerCase();
-  if(txt.includes('manifestation')||txt.includes('buvette')||txt.includes('sponsor')) return '7080 - Produits des activitÃ©s annexes';
+  if(txt.includes('manifestation')||txt.includes('buvette')||txt.includes('sponsor')) return '7080 - Produits des activités annexes';
   if(txt.includes('cotisation')) return '7561 - Cotisations membres actifs';
   if(txt.includes('stage')||txt.includes('cours')) return '7061 - Cours et stages';
   return '7060 - Prestations de services';
@@ -4484,7 +4501,7 @@ function venteCompteAuto(f){
 
 function paiementCompteAuto(mode){
   if(mode==='Gratuit') return '471 - Comptes d attente';
-  return mode==='EspÃ¨ces' ? '5300 - Caisse' : '512 - Banque';
+  return mode==='Espèces' ? '5300 - Caisse' : '512 - Banque';
 }
 
 function autoPiece(type,id){
@@ -4500,7 +4517,7 @@ function totalVente(f){
 }
 
 function libelleAchatAuto(a){
-  return `Achat - ${a.fournisseur}${a.designation?` - ${a.designation}`:''}${a.piece?` - PiÃ¨ce ${a.piece}`:''}`;
+  return `Achat - ${a.fournisseur}${a.designation?` - ${a.designation}`:''}${a.piece?` - Pièce ${a.piece}`:''}`;
 }
 
 function libelleVenteAuto(f){
@@ -4591,7 +4608,7 @@ async function syncVenteJournal(facture){
     {
       date_op:dateOp,
       piece:`${piece}-CLI`,
-      compte:'411 - AdhÃ©rents et clients',
+      compte:'411 - Adhérents et clients',
       libelle,
       debit:total,
       credit:0,
@@ -4630,7 +4647,7 @@ async function syncAdherentJournal(adherent){
       ...base,
       piece:`${prefix}-ENC`,
       compte:comptePaiement,
-      libelle:`Encaissement adhÃ©sion - ${nom}`,
+      libelle:`Encaissement adhésion - ${nom}`,
       debit:total,
       credit:0
     }
@@ -4640,7 +4657,7 @@ async function syncAdherentJournal(adherent){
       ...base,
       piece:`${prefix}-COT`,
       compte:'7561 - Cotisations membres actifs',
-      libelle:`Cotisation adhÃ©rent - ${nom}`,
+      libelle:`Cotisation adhérent - ${nom}`,
       debit:0,
       credit:cotisation
     });
@@ -4649,8 +4666,8 @@ async function syncAdherentJournal(adherent){
     rows.push({
       ...base,
       piece:`${prefix}-PAS`,
-      compte:'7088 - Participations et produits accessoires Pass RÃ©gion',
-      libelle:`Pass RÃ©gion - ${nom}`,
+      compte:'7088 - Participations et produits accessoires Pass Région',
+      libelle:`Pass Région - ${nom}`,
       debit:0,
       credit:passRegion
     });
@@ -4658,9 +4675,9 @@ async function syncAdherentJournal(adherent){
   await insertJournalRows(rows);
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 // SAVE
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 async function saveAdh(id){
   if(!requireExerciceActif()) return;
   const g=n=>document.getElementById(n);
@@ -4668,7 +4685,7 @@ async function saveAdh(id){
   const finAdhesion=g('f-fin').value||defaultAdhesionEnd(inscription);
   const discipline=g('f-dis').value;
   const d=normalizeAdherentFinance({nom:g('f-nom').value.trim(),prenom:g('f-prn').value.trim(),naissance:g('f-nai').value||null,couleur_ceinture:g('f-cei').value.trim(),numero_licence:g('f-lic').value.trim(),discipline,email:g('f-eml').value.trim().toLowerCase(),telephone:g('f-tel').value.trim(),adresse:g('f-adr').value.trim(),code_postal:g('f-cp').value.trim(),ville:g('f-vil').value.trim(),droit_image:g('f-di').checked,certificat:g('f-ce').checked,pass_region:g('f-pr').checked,montant_pass_region:parseFloat(g('f-mpr-val')?.value)||0,reglement:g('f-ri').checked,cotisation:parseFloat(g('f-cot').value)||0,paiement:g('f-pay').value,statut:g('f-sta').value,date_inscription:inscription,date_fin_adhesion:finAdhesion,urgence_nom:g('f-urn').value.trim(),urgence_telephone:g('f-urt').value.trim(),urgence_lien:g('f-url').value.trim(),notes:g('f-not').value,exercice_id:D.currentExo?.id||null,updated_at:new Date().toISOString()});
-  if(!d.nom||!d.prenom)return alert('Nom et prÃ©nom obligatoires');
+  if(!d.nom||!d.prenom)return alert('Nom et prénom obligatoires');
   if(id){
     const {error}=await SB.from('adherents').update(d).eq('id',id);
     if(error)return alert('Erreur : '+error.message);
@@ -4677,7 +4694,7 @@ async function saveAdh(id){
     try{
       await syncAdherentJournal(idx>=0?{...D.adherents[idx],id}:{...d,id});
     }catch(e){
-      return alert('AdhÃ©rent enregistrÃ©, mais Ã©critures comptables non synchronisÃ©es : '+e.message);
+      return alert('Adhérent enregistré, mais écritures comptables non synchronisées : '+e.message);
     }
   }else{
     const {data,error}=await SB.from('adherents').insert(d).select().single();
@@ -4687,7 +4704,7 @@ async function saveAdh(id){
     try{
       await syncAdherentJournal(data);
     }catch(e){
-      return alert('AdhÃ©rent crÃ©Ã©, mais Ã©critures comptables non crÃ©Ã©es : '+e.message);
+      return alert('Adhérent créé, mais écritures comptables non créées : '+e.message);
     }
   }
   closeModal();render();
@@ -4704,15 +4721,15 @@ async function saveCpt(){
 
 async function saveEcr(){
   if(!requireExerciceActif()) return;
-  const lib=document.getElementById('e-lib').value.trim();if(!lib)return alert('LibellÃ© obligatoire');
+  const lib=document.getElementById('e-lib').value.trim();if(!lib)return alert('Libellé obligatoire');
   const dateOp=document.getElementById('e-dat').value;
   const piece=document.getElementById('e-pie').value.trim()||`MAN-${Date.now()}`;
   const compte=document.getElementById('e-cpt').value;
   const contrepartie=document.getElementById('e-cpt-ctr').value;
   const debit=parseFloat(document.getElementById('e-deb').value)||0;
   const credit=parseFloat(document.getElementById('e-cre').value)||0;
-  if(debit<=0&&credit<=0)return alert('Saisissez un dÃ©bit ou un crÃ©dit.');
-  if(debit>0&&credit>0)return alert('Saisissez un seul montant par ligne. La contrepartie sera crÃ©Ã©e automatiquement.');
+  if(debit<=0&&credit<=0)return alert('Saisissez un débit ou un crédit.');
+  if(debit>0&&credit>0)return alert('Saisissez un seul montant par ligne. La contrepartie sera créée automatiquement.');
   const rows=[
     {date_op:dateOp,piece:`${piece}-L1`,compte,libelle:lib,debit,credit,exercice_id:D.currentExo?.id||null},
     {date_op:dateOp,piece:`${piece}-L2`,compte:contrepartie,libelle:`Contrepartie - ${lib}`,debit:credit>0?credit:0,credit:debit>0?debit:0,exercice_id:D.currentExo?.id||null}
@@ -4738,7 +4755,7 @@ async function saveAchat(id){
     try{
       await syncAchatJournal(idx>=0?{...D.achats[idx],id}:{...d,id});
     }catch(e){
-      return alert('Achat enregistrÃ©, mais Ã©criture comptable non synchronisÃ©e : '+e.message);
+      return alert('Achat enregistré, mais écriture comptable non synchronisée : '+e.message);
     }
   }else{
     const {data,error}=await SB.from('achats').insert(d).select().single();
@@ -4747,7 +4764,7 @@ async function saveAchat(id){
     try{
       await syncAchatJournal(data);
     }catch(e){
-      return alert('Achat enregistrÃ©, mais Ã©criture comptable non crÃ©Ã©e : '+e.message);
+      return alert('Achat enregistré, mais écriture comptable non créée : '+e.message);
     }
   }
   closeModal();render();
@@ -4755,7 +4772,7 @@ async function saveAchat(id){
 async function delAchat(id){
   if(!confirm('Supprimer ?'))return;
   await SB.from('achats').delete().eq('id',id);
-  try{await deleteJournalAuto(autoPiece('achat',id));}catch(e){return alert('Achat supprimÃ©, mais Ã©criture comptable non supprimÃ©e : '+e.message);}
+  try{await deleteJournalAuto(autoPiece('achat',id));}catch(e){return alert('Achat supprimé, mais écriture comptable non supprimée : '+e.message);}
   D.achats=D.achats.filter(a=>a.id!==id);render()
 }
 async function validerAchat(id){
@@ -4763,7 +4780,7 @@ async function validerAchat(id){
   const achat=D.achats.find(a=>a.id===id);
   if(achat){
     achat.statut='valide';
-    try{await syncAchatJournal(achat);}catch(e){return alert('Achat validÃ©, mais Ã©criture comptable non synchronisÃ©e : '+e.message);}
+    try{await syncAchatJournal(achat);}catch(e){return alert('Achat validé, mais écriture comptable non synchronisée : '+e.message);}
   }
   render()
 }
@@ -4772,15 +4789,15 @@ async function saveUser(id){
   const g=n=>document.getElementById(n);
   const pwd=g('u-pwd').value;
   const d={prenom:g('u-pre').value.trim(),nom:g('u-nom').value.trim(),email:g('u-eml').value.trim().toLowerCase(),role:g('u-rol').value,actif:g('u-act').value==='1'};
-  // CompatibilitÃ© avec les anciennes bases oÃ¹ les permissions utilisateur
-  // sont stockÃ©es dans des colonnes boolÃ©ennes NOT NULL.
-  // La granularitÃ© read/write reste pilotÃ©e par D.rolePerms via club_info.
+  // Compatibilité avec les anciennes bases où les permissions utilisateur
+  // sont stockées dans des colonnes booléennes NOT NULL.
+  // La granularité read/write reste pilotée par D.rolePerms via club_info.
   const rolePerms=cloneRolePerms(D.rolePerms)[d.role]||DEFAULT_ROLE_PERMS[d.role]||{};
   PERM_META.forEach(([perm])=>{ d[perm]=(rolePerms[perm]||'none')!=='none'; });
   if(pwd) d.mot_de_passe=pwd;
   const safeLocal={...d};
   delete safeLocal.mot_de_passe;
-  if(!d.prenom||!d.nom||!d.email)return alert('PrÃ©nom, nom et email obligatoires');
+  if(!d.prenom||!d.nom||!d.email)return alert('Prénom, nom et email obligatoires');
   if(id){
     const {error}=await SB.from('utilisateurs').update(d).eq('id',id);
     if(error)return alert('Erreur : '+error.message);
@@ -4799,7 +4816,7 @@ async function saveOwnPassword(){
   const current=document.getElementById('pwd-cur').value;
   const next=document.getElementById('pwd-new').value;
   const confirmPwd=document.getElementById('pwd-cfm').value;
-  if(!next || next.length<8) return alert('Le nouveau mot de passe doit contenir au moins 8 caractÃ¨res.');
+  if(!next || next.length<8) return alert('Le nouveau mot de passe doit contenir au moins 8 caractères.');
   if(next!==confirmPwd) return alert('La confirmation du mot de passe ne correspond pas.');
   const {error}=await apiRequest('/auth/password',{
     method:'POST',
@@ -4810,7 +4827,7 @@ async function saveOwnPassword(){
   const idx=D.users.findIndex(u=>u.id===UI.currentUser.id);
   if(idx>=0) D.users[idx]={...D.users[idx],must_change_password:false};
   closeModal();
-  notify('success','Mot de passe mis Ã  jour.');
+  notify('success','Mot de passe mis à jour.');
 }
 
 async function saveExo(){
@@ -4847,7 +4864,7 @@ async function finalizeExoClose(id){
   const exo=D.exercices.find(e=>e.id===id);
   if(!exo) return;
   const diag=exerciceDiagnostics(exo.id);
-  if(diag.ecartJournal!==0) return alert('Lâ€™exercice nâ€™est pas Ã©quilibrÃ©. RÃ©gularisez-le avant de le clÃ´turer.');
+  if(diag.ecartJournal!==0) return alert('L’exercice n’est pas équilibré. Régularisez-le avant de le clôturer.');
   const doReport=document.getElementById('exo-close-report')?.checked;
   const doNext=document.getElementById('exo-close-next')?.checked;
   if(doReport&&Math.abs(diag.resultat)>=0.01){
@@ -4855,11 +4872,11 @@ async function finalizeExoClose(id){
     try{
       await deleteJournalPiecePrefix(prefix);
       await insertJournalRows([
-        {date_op:exo.date_fin||td(),piece:`${prefix}-RES1`,compte:diag.resultat>=0?'1200 - RÃ©sultat de l exercice excÃ©dent':'1290 - RÃ©sultat de l exercice dÃ©ficit',libelle:`ClÃ´ture rÃ©sultat - ${exo.libelle}`,debit:diag.resultat>=0?Math.abs(diag.resultat):0,credit:diag.resultat<0?Math.abs(diag.resultat):0,exercice_id:exo.id},
-        {date_op:exo.date_fin||td(),piece:`${prefix}-RES2`,compte:'1060 - RÃ©serves',libelle:`Affectation rÃ©sultat - ${exo.libelle}`,debit:diag.resultat<0?Math.abs(diag.resultat):0,credit:diag.resultat>=0?Math.abs(diag.resultat):0,exercice_id:exo.id}
+        {date_op:exo.date_fin||td(),piece:`${prefix}-RES1`,compte:diag.resultat>=0?'1200 - Résultat de l exercice excédent':'1290 - Résultat de l exercice déficit',libelle:`Clôture résultat - ${exo.libelle}`,debit:diag.resultat>=0?Math.abs(diag.resultat):0,credit:diag.resultat<0?Math.abs(diag.resultat):0,exercice_id:exo.id},
+        {date_op:exo.date_fin||td(),piece:`${prefix}-RES2`,compte:'1060 - Réserves',libelle:`Affectation résultat - ${exo.libelle}`,debit:diag.resultat<0?Math.abs(diag.resultat):0,credit:diag.resultat>=0?Math.abs(diag.resultat):0,exercice_id:exo.id}
       ]);
     }catch(error){
-      return alert('Erreur lors du report du rÃ©sultat : '+error.message);
+      return alert('Erreur lors du report du résultat : '+error.message);
     }
   }
   const payload={statut:'cloture',date_cloture:new Date().toISOString()};
@@ -4884,12 +4901,12 @@ async function saveClub(){
   await SB.from('club_info').upsert(ups,{onConflict:'cle'});
   ups.forEach(u=>D.clubInfo[u.cle]=u.valeur);
   document.getElementById('hdr-nom').textContent=D.clubInfo.nom;
-  alert('Infos club sauvegardÃ©es !');
+  alert('Infos club sauvegardées !');
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 // BANQUE
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 async function importBankCSV(e){
   const file=e.target.files[0];if(!file)return;
   const cid=document.getElementById('cible-cpt')?.value;
@@ -4908,18 +4925,18 @@ async function importBankCSV(e){
       existing.add(fp);
       rows.push(row);
     });
-    if(!rows.length)return alert('Aucune ligne valide ou toutes les opÃ©rations existent dÃ©jÃ .');
+    if(!rows.length)return alert('Aucune ligne valide ou toutes les opérations existent déjà.');
     const {data,error}=await SB.from('transactions').insert(rows).select();
     if(error)return alert('Erreur : '+error.message);
     c.transactions=[...(c.transactions||[]),...(data||[])];
-    alert(`${(data||[]).length} transaction(s) importÃ©e(s) !`);render();
+    alert(`${(data||[]).length} transaction(s) importée(s) !`);render();
   };
   r.readAsText(file,'ISO-8859-1');
   e.target.value='';
 }
 
 async function readPdfPages(file){
-  if(typeof pdfjsLib==='undefined') throw new Error('La bibliothÃ¨que PDF.js n est pas chargÃ©e.');
+  if(typeof pdfjsLib==='undefined') throw new Error('La bibliothèque PDF.js n est pas chargée.');
   const bytes=await file.arrayBuffer();
   const pdf=await pdfjsLib.getDocument({data:bytes}).promise;
   const pages=[];
@@ -4969,11 +4986,11 @@ function parseCreditMutuelPdfText(text){
   const lines=text.split(/\r?\n/).map(normalizeLine).filter(Boolean);
   const rows=[];
   let lastRow=null;
-  const stopMeta=/^HT\.|^QXBAN|^IBAN|^Vous disposez|^Alerte|^Attention|^Information sur la protection|^Sous rÃ©serve|^CAISSE DE CREDIT MUTUEL|^TVA intracommunautaire|^MÃ©diateur du CrÃ©dit Mutuel|^Pour toute demande/i;
+  const stopMeta=/^HT\.|^QXBAN|^IBAN|^Vous disposez|^Alerte|^Attention|^Information sur la protection|^Sous réserve|^CAISSE DE CREDIT MUTUEL|^TVA intracommunautaire|^Médiateur du Crédit Mutuel|^Pour toute demande/i;
 
   function inferBankSide(libelle){
     const t=(libelle||'').toUpperCase();
-    if(/VIR EPARGNE|PASSEPORT SPOR|FULL FIGHTING|VIR ACHAT|ACHAT | ACHAT|PRLV|FACT|CARTE|CB |COTIS\.|VIR SEPA|CHEQUE|CHQ|FRAIS|TEL(E|Ã‰)COM|BOUYGUES|ORANGE|SFR/.test(t)) return 'debit';
+    if(/VIR EPARGNE|PASSEPORT SPOR|FULL FIGHTING|VIR ACHAT|ACHAT | ACHAT|PRLV|FACT|CARTE|CB |COTIS\.|VIR SEPA|CHEQUE|CHQ|FRAIS|TEL(E|É)COM|BOUYGUES|ORANGE|SFR/.test(t)) return 'debit';
     if(/VIR DE|VIR INST|VERSEMENT|REMISE|SOUTIEN|SUBVENTION|HELLOASSO|COTISATION|PASSAGE CEINTURE/.test(t)) return 'credit';
     return 'credit';
   }
@@ -4988,7 +5005,7 @@ function parseCreditMutuelPdfText(text){
 
   for(let i=0;i<lines.length;i++){
     const line=lines[i];
-    if(/solde crediteur|solde dÃ©biteur|releve et informations bancaires|iban|page \d+/i.test(line) || stopMeta.test(line)){
+    if(/solde crediteur|solde débiteur|releve et informations bancaires|iban|page \d+/i.test(line) || stopMeta.test(line)){
       if(stopMeta.test(line)) lastRow=null;
       continue;
     }
@@ -5017,7 +5034,7 @@ function parseCreditMutuelPdfText(text){
       let amount=0;
       for(let j=i+1;j<Math.min(lines.length,i+6);j++){
         const next=lines[j]||'';
-        if(/^R[Ã©e]f\s*:|^Ref\s*:/i.test(next)){
+        if(/^R[ée]f\s*:|^Ref\s*:/i.test(next)){
           rest+=` ${next}`;
           i=j;
           continue;
@@ -5028,7 +5045,7 @@ function parseCreditMutuelPdfText(text){
           i=j;
           break;
         }
-        if(/^\d{2}\/\d{2}\/\d{4}\b/.test(next) || /solde crediteur|solde dÃ©biteur|total des mouvements/i.test(next)) break;
+        if(/^\d{2}\/\d{2}\/\d{4}\b/.test(next) || /solde crediteur|solde débiteur|total des mouvements/i.test(next)) break;
         if(next && !/qxban|iban|information sur la protection/i.test(next)) rest+=` ${next}`;
       }
       if(!amount) continue;
@@ -5037,7 +5054,7 @@ function parseCreditMutuelPdfText(text){
     lastRow={
       date_op:dateOp,
       date_valeur:frDateToISO(dateValeur),
-      libelle:rest || 'OpÃ©ration importÃ©e depuis PDF CrÃ©dit Mutuel',
+      libelle:rest || 'Opération importée depuis PDF Crédit Mutuel',
       debit,
       credit,
       rapproche:false,
@@ -5051,7 +5068,7 @@ function parseCreditMutuelPdfText(text){
 
 function parseCreditMutuelPdfPages(pages){
   const rows=[];
-  const stopMeta=/^HT\.|^QXBAN|^IBAN|^Vous disposez|^Alerte|^Attention|^Information sur la protection|^Sous rÃ©serve|^CAISSE DE CREDIT MUTUEL|^TVA intracommunautaire|^MÃ©diateur du CrÃ©dit Mutuel|^Pour toute demande/i;
+  const stopMeta=/^HT\.|^QXBAN|^IBAN|^Vous disposez|^Alerte|^Attention|^Information sur la protection|^Sous réserve|^CAISSE DE CREDIT MUTUEL|^TVA intracommunautaire|^Médiateur du Crédit Mutuel|^Pour toute demande/i;
   let debitX=null,creditX=null;
 
   function findAmountItems(items){
@@ -5064,12 +5081,12 @@ function parseCreditMutuelPdfPages(pages){
     for(const line of page.lines){
       const txt=normalizeLine(line.text);
       if(!txt) continue;
-      if(txt.includes('DÃ©bit EUROS')){
-        const debitItem=line.items.find(it=>/DÃ©bit/i.test(it.str));
+      if(txt.includes('Débit EUROS')){
+        const debitItem=line.items.find(it=>/Débit/i.test(it.str));
         if(debitItem) debitX=(debitItem.x||0)+((debitItem.width||0)/2);
       }
-      if(txt.includes('CrÃ©dit EUROS')){
-        const creditItem=line.items.find(it=>/CrÃ©dit|Credit/i.test(it.str));
+      if(txt.includes('Crédit EUROS')){
+        const creditItem=line.items.find(it=>/Crédit|Credit/i.test(it.str));
         if(creditItem) creditX=(creditItem.x||0)+((creditItem.width||0)/2);
       }
     }
@@ -5080,7 +5097,7 @@ function parseCreditMutuelPdfPages(pages){
     for(const line of page.lines){
       const txt=normalizeLine(line.text);
       if(!txt) continue;
-      if(/solde crediteur|solde dÃ©biteur|releve et informations bancaires|iban|page \d+|total des mouvements/i.test(txt) || stopMeta.test(txt)){
+      if(/solde crediteur|solde débiteur|releve et informations bancaires|iban|page \d+|total des mouvements/i.test(txt) || stopMeta.test(txt)){
         if(stopMeta.test(txt)) current=null;
         continue;
       }
@@ -5109,7 +5126,7 @@ function parseCreditMutuelPdfPages(pages){
         }else{
           continue;
         }
-        current={date_op:m[1],date_valeur:frDateToISO(m[2]),libelle:rest||'OpÃ©ration importÃ©e depuis PDF CrÃ©dit Mutuel',debit,credit,rapproche:false,source_document:'credit_mutuel_pdf',source_format:'pdf'};
+        current={date_op:m[1],date_valeur:frDateToISO(m[2]),libelle:rest||'Opération importée depuis PDF Crédit Mutuel',debit,credit,rapproche:false,source_document:'credit_mutuel_pdf',source_format:'pdf'};
         rows.push(current);
         continue;
       }
@@ -5141,12 +5158,12 @@ async function importBankPDF(e){
         existing.add(fp);
         return true;
       });
-    if(!parsed.length) return alert('Aucune opÃ©ration exploitable dÃ©tectÃ©e dans ce PDF, ou toutes les opÃ©rations sont dÃ©jÃ  importÃ©es.');
+    if(!parsed.length) return alert('Aucune opération exploitable détectée dans ce PDF, ou toutes les opérations sont déjà importées.');
     const {data,error}=await SB.from('transactions').insert(parsed).select();
     if(error) return alert('Erreur : '+error.message);
     c.transactions=[...(c.transactions||[]),...(data||[])];
     render();
-    alert(`${(data||[]).length} transaction(s) importÃ©e(s) depuis le PDF.`);
+    alert(`${(data||[]).length} transaction(s) importée(s) depuis le PDF.`);
   }catch(err){
     alert('Import PDF impossible : '+err.message);
   }
@@ -5184,22 +5201,22 @@ async function toutRappr(){
   D.comptes.forEach(c=>(c.transactions||[]).forEach(t=>{t.rapproche=true}));render();
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 // LOGO
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 function importLogo(e){
   const file=e.target.files[0];if(!file)return;
   const r=new FileReader();
-  r.onload=()=>{D.logoUrl=clubLogoUrl();render();alert("L'import direct n'est pas disponible ici. Utilisez l'URL du logo publiÃ©e.");};
+  r.onload=()=>{D.logoUrl=clubLogoUrl();render();alert("L'import direct n'est pas disponible ici. Utilisez l'URL du logo publiée.");};
   r.readAsDataURL(file);
 }
 function loadLogoUrl(){
-  D.logoUrl=clubLogoUrl();updLogo();alert('Le logo configurÃ© a Ã©tÃ© appliquÃ©.');
+  D.logoUrl=clubLogoUrl();updLogo();alert('Le logo configuré a été appliqué.');
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// IMPORT CSV ADHÃ‰RENTS
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
+// IMPORT CSV ADHÉRENTS
+// ═══════════════════════════════════════════════════
 function parseCSV(txt,sep){
   const lines=txt.split(/\r?\n/).filter(l=>l.trim());
   if(!lines.length)return{headers:[],rows:[]};
@@ -5253,13 +5270,13 @@ async function doImportAdh(){
   if(!requireExerciceActif()) return;
   const m=IMP.adh.mapping;
   if(!m.nom||!m.prenom){
-    document.getElementById('adh-imp-res').innerHTML=`<div class="imp-err">âœ— Les colonnes Nom et PrÃ©nom sont obligatoires</div>`;return;
+    document.getElementById('adh-imp-res').innerHTML=`<div class="imp-err">✗ Les colonnes Nom et Prénom sont obligatoires</div>`;return;
   }
   IMP.adh.importing=true;render();
   const dateISO=v=>{if(!v)return null;v=v.trim();const x=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);if(x)return`${x[3].length===2?'20'+x[3]:x[3]}-${x[2].padStart(2,'0')}-${x[1].padStart(2,'0')}`;if(/^\d{4}-\d{2}-\d{2}$/.test(v))return v;return null;};
   const bool=v=>{if(!v)return false;const s=v.toLowerCase().trim();return['oui','yes','true','1','x'].includes(s);};
   const num=v=>parseFloat((v||'').replace(',','.'))||0;
-  const rows=IMP.adh.rows.map(r=>normalizeAdherentFinance({nom:(r[m.nom]||'').trim().toUpperCase(),prenom:(r[m.prenom]||'').trim(),naissance:dateISO(r[m.naissance]),couleur_ceinture:(r[m.couleur_ceinture]||'').trim(),numero_licence:(r[m.numero_licence]||'').trim(),email:(r[m.email]||'').trim().toLowerCase(),telephone:(r[m.telephone]||'').trim(),adresse:(r[m.adresse]||'').trim(),code_postal:(r[m.code_postal]||'').trim(),ville:(r[m.ville]||'').trim(),discipline:r[m.discipline]||'Club',cotisation:num(r[m.cotisation]),paiement:r[m.paiement]||'ChÃ¨que',date_inscription:dateISO(r[m.date_inscription])||td(),date_fin_adhesion:dateISO(r[m.date_fin_adhesion]),statut:r[m.statut]||'Actif',certificat:bool(r[m.certificat]),droit_image:bool(r[m.droit_image]),reglement:bool(r[m.reglement]),pass_region:bool(r[m.pass_region]),montant_pass_region:num(r[m.montant_pass_region]),urgence_nom:(r[m.urgence_nom]||'').trim(),urgence_telephone:(r[m.urgence_telephone]||'').trim(),notes:(r[m.notes]||'').trim(),exercice_id:D.currentExo?.id||null})).filter(r=>r.nom&&r.prenom);
+  const rows=IMP.adh.rows.map(r=>normalizeAdherentFinance({nom:(r[m.nom]||'').trim().toUpperCase(),prenom:(r[m.prenom]||'').trim(),naissance:dateISO(r[m.naissance]),couleur_ceinture:(r[m.couleur_ceinture]||'').trim(),numero_licence:(r[m.numero_licence]||'').trim(),email:(r[m.email]||'').trim().toLowerCase(),telephone:(r[m.telephone]||'').trim(),adresse:(r[m.adresse]||'').trim(),code_postal:(r[m.code_postal]||'').trim(),ville:(r[m.ville]||'').trim(),discipline:r[m.discipline]||'Club',cotisation:num(r[m.cotisation]),paiement:r[m.paiement]||'Chèque',date_inscription:dateISO(r[m.date_inscription])||td(),date_fin_adhesion:dateISO(r[m.date_fin_adhesion]),statut:r[m.statut]||'Actif',certificat:bool(r[m.certificat]),droit_image:bool(r[m.droit_image]),reglement:bool(r[m.reglement]),pass_region:bool(r[m.pass_region]),montant_pass_region:num(r[m.montant_pass_region]),urgence_nom:(r[m.urgence_nom]||'').trim(),urgence_telephone:(r[m.urgence_telephone]||'').trim(),notes:(r[m.notes]||'').trim(),exercice_id:D.currentExo?.id||null})).filter(r=>r.nom&&r.prenom);
   let ok=0,err=0;
   for(let i=0;i<rows.length;i+=50){
     const {data,error}=await SB.from('adherents').insert(rows.slice(i,i+50)).select();
@@ -5274,13 +5291,13 @@ async function doImportAdh(){
   D.adherents=sortAdherentsList(D.adherents);
   IMP.adh.importing=false;
   const res=document.getElementById('adh-imp-res');
-  if(res)res.innerHTML=`<div class="${err===0?'imp-ok':'imp-warn'}">${err===0?'âœ“':'âš '} Import terminÃ© : <strong>${ok} adhÃ©rent(s)</strong> importÃ©(s)${err>0?` â€” ${err} erreur(s)`:''}.
-    <a href="#" onclick="showTab('adherents');return false" style="margin-left:8px;color:inherit;font-weight:500">Voir la liste â†’</a></div>`;
+  if(res)res.innerHTML=`<div class="${err===0?'imp-ok':'imp-warn'}">${err===0?'✓':'⚠'} Import terminé : <strong>${ok} adhérent(s)</strong> importé(s)${err>0?` — ${err} erreur(s)`:''}.
+    <a href="#" onclick="showTab('adherents');return false" style="margin-left:8px;color:inherit;font-weight:500">Voir la liste →</a></div>`;
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// IMPORT CSV Ã‰CRITURES
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
+// IMPORT CSV ÉCRITURES
+// ═══════════════════════════════════════════════════
 function onImpEcrFile(e){
   const file=e.target.files[0];if(!file)return;
   const r=new FileReader();
@@ -5299,7 +5316,7 @@ async function doImportEcr(){
   if(!requireExerciceActif()) return;
   const m=IMP.ecr.mapping;
   if(!m.date_op||!m.libelle||(!m.debit&&!m.credit)){
-    document.getElementById('ecr-imp-res').innerHTML=`<div class="imp-err">âœ— Date, LibellÃ© et DÃ©bit/CrÃ©dit sont obligatoires</div>`;return;
+    document.getElementById('ecr-imp-res').innerHTML=`<div class="imp-err">✗ Date, Libellé et Débit/Crédit sont obligatoires</div>`;return;
   }
   IMP.ecr.importing=true;render();
   const dateISO=v=>{if(!v)return td();v=v.trim();const x=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);if(x)return`${x[3].length===2?'20'+x[3]:x[3]}-${x[2].padStart(2,'0')}-${x[1].padStart(2,'0')}`;if(/^\d{4}-\d{2}-\d{2}$/.test(v))return v;return td();};
@@ -5309,7 +5326,7 @@ async function doImportEcr(){
     rows=IMP.ecr.rows.map((r,idx)=>{
       let deb=num(r[m.debit]),cred=num(r[m.credit]);
       if(m.debit&&!m.credit&&deb<0){cred=Math.abs(deb);deb=0;}
-      if(deb>0&&cred>0) throw new Error(`Ligne ${idx+2} invalide : renseignez soit le dÃ©bit, soit le crÃ©dit.`);
+      if(deb>0&&cred>0) throw new Error(`Ligne ${idx+2} invalide : renseignez soit le débit, soit le crédit.`);
       if(deb<=0&&cred<=0) return null;
       let compte=(r[m.compte]||'').trim();
       if(compte&&!compte.includes(' - ')){const match=PLAN.find(p=>p.startsWith(compte));if(match)compte=match;}
@@ -5319,14 +5336,14 @@ async function doImportEcr(){
   }catch(error){
     IMP.ecr.importing=false;
     render();
-    document.getElementById('ecr-imp-res').innerHTML=`<div class="imp-err">âœ• ${error.message}</div>`;
+    document.getElementById('ecr-imp-res').innerHTML=`<div class="imp-err">✕ ${error.message}</div>`;
     return;
   }
   const issues=pieceBalanceDiagnostics(rows);
   if(issues.length){
     IMP.ecr.importing=false;
     render();
-    document.getElementById('ecr-imp-res').innerHTML=`<div class="imp-err">âœ• Import refusÃ© : le fichier comptable n'est pas Ã©quilibrÃ©. ${issues.length} piÃ¨ce(s) prÃ©sentent un Ã©cart. PremiÃ¨re piÃ¨ce : <strong>${issues[0].piece}</strong> (${issues[0].ecart.toFixed(2)} â‚¬).</div>`;
+    document.getElementById('ecr-imp-res').innerHTML=`<div class="imp-err">✕ Import refusé : le fichier comptable n'est pas équilibré. ${issues.length} pièce(s) présentent un écart. Première pièce : <strong>${issues[0].piece}</strong> (${issues[0].ecart.toFixed(2)} €).</div>`;
     return;
   }
   let ok=0,err=0;
@@ -5337,26 +5354,26 @@ async function doImportEcr(){
   D.journal.sort((a,b)=>a.date_op<b.date_op?-1:1);
   IMP.ecr.importing=false;
   const res=document.getElementById('ecr-imp-res');
-  if(res)res.innerHTML=`<div class="${err===0?'imp-ok':'imp-warn'}">${err===0?'âœ“':'âš '} Import terminÃ© : <strong>${ok} Ã©criture(s)</strong> importÃ©e(s)${err>0?` â€” ${err} erreur(s)`:''}.
-    <a href="#" onclick="showTab('comptabilite');return false" style="margin-left:8px;color:inherit;font-weight:500">Voir le journal â†’</a></div>`;
+  if(res)res.innerHTML=`<div class="${err===0?'imp-ok':'imp-warn'}">${err===0?'✓':'⚠'} Import terminé : <strong>${ok} écriture(s)</strong> importée(s)${err>0?` — ${err} erreur(s)`:''}.
+    <a href="#" onclick="showTab('comptabilite');return false" style="margin-left:8px;color:inherit;font-weight:500">Voir le journal →</a></div>`;
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 // EXPORTS
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 function dl(c,n,m){const b=new Blob([c],{type:m});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=n;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)}
 function exportCSV(){
-  const rows=[['Nom','PrÃ©nom','Couleur ceinture','NÂ° licence','Type adhÃ©sion','Certif.','Droit image','Pass RÃ©gion','Montant Pass','RÃ¨glement','Cotisation','Paiement','Statut','Saison','Fin adhÃ©sion','Adresse','CP','Ville','Urgence nom','Urgence tÃ©l']];
+  const rows=[['Nom','Prénom','Couleur ceinture','N° licence','Type adhésion','Certif.','Droit image','Pass Région','Montant Pass','Règlement','Cotisation','Paiement','Statut','Saison','Fin adhésion','Adresse','CP','Ville','Urgence nom','Urgence tél']];
   D.adherents.forEach(a=>rows.push([a.nom,a.prenom,a.couleur_ceinture||'',a.numero_licence||'',a.discipline||'Club',a.certificat?'Oui':'Non',a.droit_image?'Oui':'Non',a.pass_region?'Oui':'Non',(+a.montant_pass_region||0).toFixed(2),a.reglement?'Oui':'Non',(+a.cotisation).toFixed(2),a.paiement,a.statut,seasonFromDate(a.date_fin_adhesion||a.date_inscription)||'',a.date_fin_adhesion||'',a.adresse||'',a.code_postal||'',a.ville||'',a.urgence_nom||'',a.urgence_telephone||'']));
   dl('\uFEFF'+rows.map(r=>r.join(';')).join('\n'),`adherents_${td()}.csv`,'text/csv;charset=utf-8');
 }
 function exportAchatsCSV(){
-  const rows=[['Date','Fournisseur','DÃ©signation','CatÃ©gorie','Montant','Mode paiement','RÃ©fÃ©rence','Statut','PiÃ¨ce']];
+  const rows=[['Date','Fournisseur','Désignation','Catégorie','Montant','Mode paiement','Référence','Statut','Pièce']];
   D.achats.forEach(a=>rows.push([a.date_op,a.fournisseur,a.designation,a.categorie,(+a.montant).toFixed(2),a.mode_paiement||'',a.reference_paiement||'',a.statut,a.piece||'']));
   dl('\uFEFF'+rows.map(r=>r.join(';')).join('\n'),`achats_${td()}.csv`,'text/csv;charset=utf-8');
 }
 function exportJournalCSV(){
-  const rows=[['Date','PiÃ¨ce','Compte','LibellÃ©','DÃ©bit','CrÃ©dit']];
+  const rows=[['Date','Pièce','Compte','Libellé','Débit','Crédit']];
   D.journal.forEach(j=>rows.push([j.date_op,j.piece||'',j.compte,j.libelle,(+j.debit).toFixed(2),(+j.credit).toFixed(2)]));
   dl('\uFEFF'+rows.map(r=>r.join(';')).join('\n'),`journal_${td()}.csv`,'text/csv;charset=utf-8');
 }
@@ -5376,7 +5393,7 @@ function onBackupJSONFile(e){
     try{
       const payload=JSON.parse(ev.target.result);
       await restoreBackupJSON(payload);
-      IMP.backup.lastMessage='Import JSON terminÃ© avec succÃ¨s.';
+      IMP.backup.lastMessage='Import JSON terminé avec succès.';
     }catch(err){
       IMP.backup.lastMessage=`Erreur import JSON : ${err.message||err}`;
     }
@@ -5392,35 +5409,35 @@ function onBackupJSONFile(e){
 
 async function restoreBackupJSON(payload){
   if(!payload||typeof payload!=='object') throw new Error('Fichier JSON invalide.');
-  if(!confirm('Cette restauration va remplacer les donnÃ©es actuelles. Voulez-vous continuer ?')) throw new Error('Import annulÃ©.');
-  const confirmText=window.prompt(`OpÃ©ration critique. Saisissez ${DANGEROUS_RESTORE_PHRASE} pour confirmer la restauration complÃ¨te.`);
+  if(!confirm('Cette restauration va remplacer les données actuelles. Voulez-vous continuer ?')) throw new Error('Import annulé.');
+  const confirmText=window.prompt(`Opération critique. Saisissez ${DANGEROUS_RESTORE_PHRASE} pour confirmer la restauration complète.`);
   if(String(confirmText||'').trim().toUpperCase()!==DANGEROUS_RESTORE_PHRASE) throw new Error('Confirmation invalide.');
   const {error}=await apiRequest('/admin/restore',{
     method:'POST',
     body:JSON.stringify({...payload,confirmText:DANGEROUS_RESTORE_PHRASE})
   });
-  if(error) throw new Error(error.message||'Restauration refusÃ©e.');
-  notify('success','Restauration terminÃ©e. Les donnÃ©es ont Ã©tÃ© rechargÃ©es.');
+  if(error) throw new Error(error.message||'Restauration refusée.');
+  notify('success','Restauration terminée. Les données ont été rechargées.');
   await loadAll();
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
 // UTILS
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-function bdg(v){return v?`<span class="badge bok">âœ“</span>`:`<span class="badge bno">âœ—</span>`}
+// ═══════════════════════════════════════════════════
+function bdg(v){return v?`<span class="badge bok">✓</span>`:`<span class="badge bno">✗</span>`}
 function fd(d){if(!d)return'';if(typeof d==='string'&&d.includes('/'))return d;const s=(d+'').split('T')[0];const p=s.split('-');return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:d}
 function td(){return new Date().toISOString().split('T')[0]}
 function showEl(id,msg){const el=document.getElementById(id);if(el){el.textContent=msg;el.style.display='block';}}
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// DÃ‰MARRAGE
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
+// DÉMARRAGE
+// ═══════════════════════════════════════════════════
 window.addEventListener('load', async ()=>{
   const ok=await initBackend();
   if(!ok){
     document.body.innerHTML=`<div style="position:fixed;inset:0;background:#1a0a05;display:flex;align-items:center;justify-content:center;font-family:sans-serif">
       <div style="background:#fff;border-radius:16px;padding:32px;max-width:520px;text-align:center">
-        <div style="font-size:40px;margin-bottom:14px">âš ï¸</div>
+        <div style="font-size:40px;margin-bottom:14px">⚠️</div>
         <h2 style="font-size:18px;margin-bottom:10px">Backend indisponible</h2>
         <p style="font-size:13px;color:#666;line-height:1.7;margin-bottom:18px">Le backend Cloudflare n'est pas accessible.</p>
         <button onclick="location.reload()" style="background:#C0392B;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:14px;cursor:pointer">Recharger la page</button>
