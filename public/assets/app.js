@@ -4794,7 +4794,7 @@ async function saveUser(id){
   // La granularité read/write reste pilotée par D.rolePerms via club_info.
   const rolePerms=cloneRolePerms(D.rolePerms)[d.role]||DEFAULT_ROLE_PERMS[d.role]||{};
   PERM_META.forEach(([perm])=>{ d[perm]=(rolePerms[perm]||'none')!=='none'; });
-  if(pwd) d.mot_de_passe=pwd;
+  if(pwd) d.mot_de_passe_plain=pwd;
   const safeLocal={...d};
   delete safeLocal.mot_de_passe;
   if(!d.prenom||!d.nom||!d.email)return alert('Prénom, nom et email obligatoires');
