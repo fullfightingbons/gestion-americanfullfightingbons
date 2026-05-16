@@ -4,7 +4,7 @@
   "name": "gestion-americanfullfightingbons",
   "upload_source_maps": true,
   "assets": {
-    "directory": "."
+    "directory": "./public"
   },
   "d1_databases": [
     {
