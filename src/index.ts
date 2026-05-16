@@ -9,6 +9,7 @@ type Ceinture = typeof CEINTURES[number];
  
 const ALLOWED_HOSTS = [
   "gestion-americanfullfightingbons.fullfightingbons.workers.dev",
+  "gestion.americanfullfightingbons.fr", 
   // Ajoutez ici d'autres domaines personnalisés si nécessaire
 ];
  
