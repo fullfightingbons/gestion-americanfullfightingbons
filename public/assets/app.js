@@ -5622,11 +5622,12 @@ window.addEventListener('load', async ()=>{
   }
 
   try{
-    const {data}=await apiRequest('/auth/session');
-    if(data){
-      UI.currentUser=normalizeUserRow(data);
-      document.getElementById('cu-name').textContent=data.prenom||data.nom;
-      document.getElementById('cu-role').textContent=ROLES[data.role]||data.role;
+    const {data} = await apiRequest('/auth/session');
+    const sessionUser = data?.user || data;
+    if(sessionUser?.id){
+      UI.currentUser = normalizeUserRow(sessionUser);
+      document.getElementById('cu-name').textContent = sessionUser.prenom || sessionUser.nom;
+      document.getElementById('cu-role').textContent = ROLES[sessionUser.role] || sessionUser.role;
       document.getElementById('login-screen').style.display='none';
       document.getElementById('app').style.display='block';
       resetLoadedData();
