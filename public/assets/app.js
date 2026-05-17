@@ -4025,6 +4025,129 @@ function vLogo(){
   </div>`;
 }
 
+// ── TARIFS EN LIGNE ───────────────────────────────────────
+function getTarifsData(){
+  try{ return JSON.parse(D.clubInfo?.tarifs_inscription||'{}'); }catch(e){ return {}; }
+}
+
+function tarifRowHTML(t, i){
+  const canWrite = hasPerm('perm_administration','write');
+  return `<div class="tarif-row" data-idx="${i}" style="display:grid;grid-template-columns:2fr 110px 2fr 56px${canWrite?' 36px':''};gap:8px;align-items:end;padding:12px;background:rgba(255,255,255,.56);border:1px solid var(--brd);border-radius:var(--r)">
+  <div class="fg">
+  <label>Intitulé</label>
+  <input class="tarif-label" placeholder="Adulte, Enfant, CSE…" value="${esc(t.label||'')}">
+  </div>
+  <div class="fg">
+  <label>Montant (€)</label>
+  <input class="tarif-montant" type="number" min="0" step="0.50" placeholder="0" value="${t.montant??''}">
+  </div>
+  <div class="fg">
+  <label>Description (optionnel)</label>
+  <input class="tarif-desc" placeholder="Pass région inclus…" value="${esc(t.description||'')}">
+  </div>
+  <div class="fg" style="align-items:center;gap:6px">
+  <label style="white-space:nowrap">Affiché</label>
+  <input type="checkbox" class="tarif-actif" style="width:auto;height:18px;cursor:pointer;margin-top:2px" ${t.actif!==false?'checked':''}>
+  </div>
+  ${canWrite?`<div style="padding-bottom:2px"><button class="btn sm danger" onclick="removeTarifRow(${i})" title="Supprimer">✕</button></div>`:''}
+  </div>`;
+}
+
+function collectTarifRows(){
+  const rows=[];
+  document.querySelectorAll('.tarif-row').forEach((row,i)=>{
+    rows.push({
+      id: row.dataset.id || (Date.now().toString(36)+i),
+              label: row.querySelector('.tarif-label')?.value?.trim()||'',
+              montant: parseFloat(row.querySelector('.tarif-montant')?.value)||0,
+              description: row.querySelector('.tarif-desc')?.value?.trim()||'',
+              actif: row.querySelector('.tarif-actif')?.checked!==false,
+    });
+  });
+  return rows;
+}
+
+function vTarifs(){
+  if(!hasPerm('perm_administration')) return`<div class="empty">Accès réservé à l'administrateur</div>`;
+  const canWrite = hasPerm('perm_administration','write');
+  const p = safeParseJSON(D.clubInfo?.inscription_pricing, {});
+  const updated = p.updated_at ? ` — mis à jour le ${fd(p.updated_at)}` : '';
+  const fields = [
+    {key:'base',           label:'Tarif de base',               desc:'Cotisation standard'},
+    {key:'family',         label:'Tarif famille',               desc:'Par membre, 2 minimum'},
+    {key:'pro',            label:'Tarif pro',                   desc:'Sur justificatif'},
+    {key:'cseThales',      label:'Tarif CSE Thalès',            desc:'Sur justificatif'},
+    {key:'bureau',         label:'Tarif Membres du Bureau',     desc:'Renouvellement reconnu uniquement'},
+    {key:'passport',       label:'Passeport sportif',           desc:'Optionnel'},
+    {key:'newMemberKit',   label:'Kit nouvelle inscription',    desc:'Première adhésion uniquement'},
+    {key:'tshirt',         label:'T-shirt club',                desc:'Par pièce'},
+    {key:'pantalon',       label:'Pantalon club',               desc:'Par pièce'},
+    {key:'passRegionMale', label:'Remise Pass Région garçon',   desc:'Déduit de la cotisation'},
+    {key:'passRegionFemale',label:'Remise Pass Région fille',  desc:'Déduit de la cotisation'},
+  ];
+  return`<div style="max-width:680px;display:flex;flex-direction:column;gap:14px">
+  <div class="card">
+  <p style="font-size:11px;font-weight:500;color:var(--txt2);letter-spacing:.06em;margin-bottom:4px">TARIFS DU FORMULAIRE D'INSCRIPTION${updated}</p>
+  <p style="font-size:12px;color:var(--txt2);margin-bottom:16px">Ces montants sont lus en temps réel par <strong>inscription.americanfullfightingbons.fr</strong>. Toute sauvegarde est immédiatement visible sur le site.</p>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+  ${fields.map(f=>`<div class="fg">
+    <label style="line-height:1.3">${esc(f.label)}<br><span style="font-weight:400">${esc(f.desc)}</span></label>
+    <div style="display:flex;align-items:center;gap:6px">
+    <input id="tp-${f.key}" type="number" min="0" step="0.50" value="${p[f.key]??''}" placeholder="0" ${canWrite?'':'readonly'} style="flex:1">
+    <span style="font-size:12px;color:var(--txt2)">€</span>
+    </div>
+    </div>`).join('')}
+    </div>
+    ${canWrite?`<button class="btn primary" onclick="saveTarifs()">💾 Sauvegarder et publier</button>`:''}
+    </div>
+    <div class="card">
+    <p style="font-size:11px;font-weight:500;color:var(--txt2);letter-spacing:.06em;margin-bottom:6px">ENDPOINT UTILISÉ PAR LE SITE</p>
+    <div style="display:flex;gap:8px;align-items:center">
+    <code style="font-size:12px;background:var(--bg3);padding:8px 12px;border-radius:var(--r);flex:1">https://inscription.americanfullfightingbons.fr/api/public/tarifs</code>
+    <a class="btn sm" href="https://inscription.americanfullfightingbons.fr/api/public/tarifs" target="_blank">Tester</a>
+    </div>
+    </div>
+    </div>`;
+}
+
+function addTarifRow(){
+  const rows = collectTarifRows();
+  const saison = document.getElementById('tarif-saison')?.value?.trim() || currentSeasonLabel();
+  const tarifs = getTarifsData();
+  tarifs.saison = saison;
+  tarifs.tarifs = [...rows, {id:Date.now().toString(36), label:'', montant:0, description:'', actif:true}];
+  D.clubInfo.tarifs_inscription = JSON.stringify(tarifs);
+  render();
+}
+
+function removeTarifRow(i){
+  const rows = collectTarifRows();
+  const saison = document.getElementById('tarif-saison')?.value?.trim() || currentSeasonLabel();
+  rows.splice(i, 1);
+  const tarifs = getTarifsData();
+  tarifs.saison = saison;
+  tarifs.tarifs = rows;
+  D.clubInfo.tarifs_inscription = JSON.stringify(tarifs);
+  render();
+}
+
+async function saveTarifs(){
+  if(!requireWritePerm('perm_administration')) return;
+  const keys = ['base','family','pro','cseThales','bureau','passport','newMemberKit','tshirt','pantalon','passRegionMale','passRegionFemale'];
+  const pricing = {};
+  for(const key of keys){
+    const v = parseFloat(document.getElementById('tp-'+key)?.value);
+    if(Number.isFinite(v)) pricing[key] = v;
+  }
+  if(!Object.keys(pricing).length) return notify('warn','Renseignez au moins un tarif.');
+  const payload = JSON.stringify({...pricing, updated_at: new Date().toISOString()});
+  const {error} = await SB.from('club_info').upsert({cle:'inscription_pricing',valeur:payload},{onConflict:'cle'});
+  if(error) return notify('error','Erreur : '+error.message);
+  D.clubInfo.inscription_pricing = payload;
+  notify('success','Tarifs publiés — le site d\'inscription les applique immédiatement ✓');
+  render();
+}
+
 // ── IMPORT ADHÉRENTS ──────────────────────────────────────
 function vImpAdh(){
   const st=IMP.adh;
