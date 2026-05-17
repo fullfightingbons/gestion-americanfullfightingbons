@@ -2758,24 +2758,34 @@ function vBankImport(){
 function vRappr(){
   const all=D.comptes.flatMap(c=>(c.transactions||[]).map(t=>({...t,cname:c.nom})));
   const nonR=all.filter(t=>!t.rapproche);
-  return`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-  <strong>${nonR.length} transaction(s) en attente</strong>
+  const autoCount=nonR.filter(t=>{ const r=bestRapprochementEntry(t); return r?.auto; }).length;
+  const suggestCount=nonR.filter(t=>{ const r=bestRapprochementEntry(t); return r && !r.auto; }).length;
+  return`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+  <div>
+    <strong>${nonR.length} transaction(s) en attente</strong>
+    ${autoCount||suggestCount?`<div style="font-size:11px;color:var(--txt2);margin-top:3px">${autoCount?`<span style="color:#1e7e34">● ${autoCount} match(s) fiable(s)</span>`:''} ${suggestCount?`<span style="color:var(--gold-d)">● ${suggestCount} suggestion(s) à valider</span>`:''}</div>`:''}
+  </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
-  <button class="btn sm" onclick="preselectRapprochements()">Pré-sélection auto</button>
+  <button class="btn sm gold" onclick="preselectRapprochements()">⚡ Pré-sélection auto</button>
   <button class="btn sm primary" onclick="toutRappr()">Tout rapprocher</button>
   </div>
   </div>
   ${all.length===0?`<div class="empty">Importez d'abord un relevé bancaire</div>`:`
     <div class="wrap"><table>
-    <thead><tr><th>Date</th><th>Libellé</th><th>Compte</th><th>Débit</th><th>Crédit</th><th>Écriture</th><th>Statut</th><th></th></tr></thead>
-    <tbody>${all.map((t,i)=>`<tr>
-      <td>${fd(frDateToISO(t.date_op)||t.date_op)||''}</td><td>${t.libelle}</td><td style="font-size:11px">${t.cname}</td>
+    <thead><tr><th>Date</th><th>Libellé</th><th>Compte</th><th>Débit</th><th>Crédit</th><th>Écriture suggérée</th><th>Confiance</th><th>Statut</th><th></th></tr></thead>
+    <tbody>${all.map((t,i)=>{
+      const result=!t.rapproche?bestRapprochementEntry(t):null;
+      const confidence=result?Math.round((result.score/5)*100):0;
+      const confBadge=result?(result.auto?`<span class="badge bok">Haute ${confidence}%</span>`:`<span class="badge bwarn">Moyenne ${confidence}%</span>`):`<span class="badge bgray">—</span>`;
+      return`<tr>
+      <td>${fd(frDateToISO(t.date_op)||t.date_op)||''}</td><td>${esc(t.libelle||'')}</td><td style="font-size:11px">${esc(t.cname||'')}</td>
       <td style="color:var(--red);text-align:right">${+t.debit>0?(+t.debit).toFixed(2)+' €':'-'}</td>
       <td style="color:#1e7e34;text-align:right">${+t.credit>0?(+t.credit).toFixed(2)+' €':'-'}</td>
-      <td>${t.rapproche?`<span class="badge bok">${t.ecriture_piece||'✓'}</span>`:`<select style="font-size:11px;padding:3px 6px;width:auto" id="ecr-${i}"><option value="">--</option>${D.journal.map(j=>`<option value="${j.piece||j.id.slice(0,8)}" ${suggestRapprochementPiece(t)===(j.piece||j.id.slice(0,8))?'selected':''}>${j.piece||''} ${(j.libelle||'').slice(0,20)}</option>`).join('')}</select>`}</td>
-      <td>${t.rapproche?`<span class="badge bok">✓</span>`:`<span class="badge bwarn">En attente</span>`}</td>
+      <td>${t.rapproche?`<span class="badge bok">${esc(t.ecriture_piece||'✓')}</span>`:`<select style="font-size:11px;padding:3px 6px;width:auto" id="ecr-${i}"><option value="">--</option>${D.journal.map(j=>`<option value="${esc(j.piece||j.id.slice(0,8))}" ${suggestRapprochementPiece(t)===(j.piece||j.id.slice(0,8))?'selected':''}>${esc(j.piece||'')} ${esc((j.libelle||'').slice(0,22))}</option>`).join('')}</select>`}</td>
+      <td>${t.rapproche?'':confBadge}</td>
+      <td>${t.rapproche?`<span class="badge bok">✓ Rapprochée</span>`:`<span class="badge bwarn">En attente</span>`}</td>
       <td>${!t.rapproche?`<button class="btn sm" onclick="rapprocher('${t.id}',${i})">✓</button>`:''}</td>
-      </tr>`).join('')}
+      </tr>`;}).join('')}
       </tbody>
       </table></div>`}`;
 }
@@ -5246,30 +5256,124 @@ async function rapprocher(id,i){
   const t=D.comptes.flatMap(c=>c.transactions||[]).find(x=>x.id===id);
   if(t){t.rapproche=true;t.ecriture_piece=ecr?.value||'';}render();
 }
+// ─── Rapprochement — scoring multi-critères ───────────────────────────────
+// Score max = 5 points
+//   +2  montant identique à ±0.01 €
+//   +1  montant proche à ±1 €
+//   +1  date dans les 3 jours (bonus si ≤7 jours)
+//   +1  libellé contient un mot commun significatif (≥4 caractères)
+//   +0.5 sens cohérent (débit tx ↔ débit journal, crédit tx ↔ crédit journal)
+// Seuil rapprochement automatique : score ≥ 3.5
+// Seuil suggestion manuelle      : score ≥ 1.5
+const RAPPR_AUTO_THRESHOLD   = 3.5;
+const RAPPR_SUGGEST_THRESHOLD = 1.5;
+
+function scoreRapprochement(transaction, entry){
+  let score = 0;
+  const txAmount  = Math.max(+transaction.credit||0, +transaction.debit||0);
+  const entAmount = Math.max(+entry.credit||0, +entry.debit||0);
+  const diff = Math.abs(entAmount - txAmount);
+  if(diff < 0.01)       score += 2;
+  else if(diff <= 1.00) score += 1;
+  else if(diff > txAmount * 0.10) return 0; // écart >10% → éliminé d'office
+
+  const txDate  = new Date(frDateToISO(transaction.date_op) || transaction.date_op || '');
+  const entDate = new Date(entry.date_op || '');
+  if(!isNaN(txDate) && !isNaN(entDate)){
+    const deltaDays = Math.abs(txDate - entDate) / (1000*60*60*24);
+    if(deltaDays <= 3)      score += 1;
+    else if(deltaDays <= 7) score += 0.5;
+    else if(deltaDays > 31) return 0; // trop loin dans le temps → éliminé
+  }
+
+  // Sens débit/crédit cohérent
+  const txIsDebit   = (+transaction.debit||0) > 0;
+  const entIsDebit  = (+entry.debit||0) > 0;
+  if(txIsDebit === entIsDebit) score += 0.5;
+
+  // Matching libellé — mots significatifs en commun
+  const txWords  = (transaction.libelle||'').toLowerCase().split(/\W+/).filter(w=>w.length>=4);
+  const entWords = (entry.libelle||'').toLowerCase().split(/\W+/).filter(w=>w.length>=4);
+  const common   = txWords.filter(w=>entWords.includes(w));
+  if(common.length >= 2)      score += 1;
+  else if(common.length === 1) score += 0.5;
+
+  return score;
+}
+
 function suggestRapprochementPiece(transaction){
-  const amount=Math.max(+transaction.credit||0,+transaction.debit||0);
-  const txDate=frDateToISO(transaction.date_op)||transaction.date_op||'';
-  const candidate=D.journal.find(entry=>{
-    const entryAmount=Math.max(+entry.credit||0,+entry.debit||0);
-    const sameAmount=Math.abs(entryAmount-amount)<0.01;
-    const delta=Math.abs(new Date(entry.date_op||txDate)-new Date(txDate))/(1000*60*60*24);
-    return sameAmount && delta<=7;
-  });
-  return candidate?.piece||'';
+  const result = bestRapprochementEntry(transaction);
+  return result?.entry?.piece || '';
 }
-function preselectRapprochements(){
-  D.comptes.flatMap(c=>c.transactions||[]).forEach((transaction,index)=>{
+
+function bestRapprochementEntry(transaction){
+  let best = null;
+  let bestScore = 0;
+  for(const entry of D.journal){
+    if(!entry.piece && !entry.id) continue;
+    const score = scoreRapprochement(transaction, entry);
+    if(score > bestScore){ bestScore = score; best = entry; }
+  }
+  if(bestScore < RAPPR_SUGGEST_THRESHOLD) return null;
+  return { entry: best, score: bestScore, auto: bestScore >= RAPPR_AUTO_THRESHOLD };
+}
+
+async function preselectRapprochements(){
+  const transactions = D.comptes.flatMap(c=>c.transactions||[]);
+  const toAutoRapproch = [];
+  let nbAuto = 0; let nbSuggest = 0;
+
+  transactions.forEach((transaction, index)=>{
     if(transaction.rapproche) return;
-    const select=document.getElementById(`ecr-${index}`);
-    const suggestion=suggestRapprochementPiece(transaction);
-    if(select && suggestion) select.value=suggestion;
+    const result = bestRapprochementEntry(transaction);
+    if(!result) return;
+    const piece = result.entry.piece || result.entry.id.slice(0,8);
+    if(result.auto){
+      // Haute confiance → on marque pour rapprochement automatique
+      toAutoRapproch.push({ id: transaction.id, piece, transaction, index });
+      nbAuto++;
+    } else {
+      // Confiance moyenne → pré-sélection manuelle uniquement
+      const select = document.getElementById(`ecr-${index}`);
+      if(select){ select.value = piece; nbSuggest++; }
+    }
   });
+
+  // Rapprochement automatique en base pour les matches haute confiance
+  if(toAutoRapproch.length){
+    const confirmed = confirm(
+      `${nbAuto} transaction(s) ont un match fiable et seront rapprochées automatiquement.\n` +
+      `${nbSuggest} autre(s) ont été pré-sélectionnées pour validation manuelle.\n\n` +
+      `Confirmer le rapprochement automatique ?`
+    );
+    if(confirmed){
+      for(const item of toAutoRapproch){
+        await SB.from('transactions').update({rapproche:true, ecriture_piece:item.piece}).eq('id',item.id);
+        const t = D.comptes.flatMap(c=>c.transactions||[]).find(x=>x.id===item.id);
+        if(t){ t.rapproche=true; t.ecriture_piece=item.piece; }
+      }
+      notify('success',
+        `${nbAuto} rapprochement(s) automatique(s) effectué(s)` +
+        (nbSuggest ? ` · ${nbSuggest} suggestion(s) manuelle(s) en attente de validation` : '') + '.',
+        'Rapprochement'
+      );
+    }
+  } else if(nbSuggest){
+    notify('info', `${nbSuggest} suggestion(s) pré-sélectionnée(s) — vérifiez et validez chaque ligne.`, 'Rapprochement');
+  } else {
+    notify('warn', 'Aucun rapprochement possible trouvé. Vérifiez que le journal comptable est bien renseigné.', 'Rapprochement');
+  }
+  render();
 }
+
 async function toutRappr(){
   const ids=D.comptes.flatMap(c=>(c.transactions||[]).filter(t=>!t.rapproche).map(t=>t.id));
-  if(!ids.length)return;
+  if(!ids.length) return;
+  if(!confirm(`Rapprocher les ${ids.length} transaction(s) restantes sans vérification ?`)) return;
   await SB.from('transactions').update({rapproche:true}).in('id',ids);
-  D.comptes.forEach(c=>(c.transactions||[]).forEach(t=>{t.rapproche=true}));render();
+  D.comptes.forEach(c=>(c.transactions||[]).forEach(t=>{t.rapproche=true}));
+  notify('success', `${ids.length} transaction(s) rapprochées.`, 'Rapprochement');
+  render();
 }
 
 // ═══════════════════════════════════════════════════
