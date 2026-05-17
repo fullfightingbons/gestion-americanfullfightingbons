@@ -2,7 +2,7 @@
 // CONSTANTES
 // ═══════════════════════════════════════════════════
 const CLOUDFLARE_API_BASE = '/api';
-const FORCED_LOGO_URL = '/assets/Logo_1_nnoir_copie-removebg-preview.png.png';
+const FORCED_LOGO_URL = '/assets/Logo_1_nnoir_copie-removebg-preview.png';
 const DIPLOME_BUCKET = 'storage';
 const DIPLOME_IMAGE_RE = /\.(png|jpe?g|webp)$/i;
 const DIPLOME_LAYOUTS_KEY = 'diplome_layouts';
@@ -263,6 +263,15 @@ function renderNotices(){
 
 window.dismissNotice=dismissNotice;
 window.alert=function(message){ notify('info',message); };
+window._onSessionExpired=function(){
+  if(UI.currentUser){
+    UI.currentUser=null;
+    const appEl=document.getElementById('app');
+    if(appEl) appEl.style.display='none';
+    showLoginScreen();
+    notify('warn','Votre session a expiré. Reconnectez-vous pour continuer.','Session expirée');
+  }
+};
 window.addEventListener('error',function(event){
   const msg=event?.error?.message || event?.message;
   if(msg) notify('error',msg,'Erreur JavaScript');

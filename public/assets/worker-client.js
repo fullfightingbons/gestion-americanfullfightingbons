@@ -18,6 +18,12 @@
     if (!res.ok && !payload.error) {
       payload.error = { message: `HTTP ${res.status}` };
     }
+    if (res.status === 401) {
+      // Session expirée — déléguer à la couche app si disponible
+      if (typeof window !== "undefined" && typeof window._onSessionExpired === "function") {
+        window._onSessionExpired();
+      }
+    }
     return payload;
   }
 

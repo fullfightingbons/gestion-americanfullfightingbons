@@ -12,6 +12,7 @@ const LEGACY_SHA256_RE = /^[a-f0-9]{64}$/i;
 const TABLES = new Set([
   "adherents",
   "achats",
+  "audit_logs",
   "club_info",
   "comptes_bancaires",
   "exercices",
@@ -25,6 +26,7 @@ const TABLES = new Set([
 const PRIMARY_KEYS: Record<string, string> = {
   adherents: "id",
   achats: "id",
+  audit_logs: "id",
   club_info: "cle",
   comptes_bancaires: "id",
   exercices: "id",
@@ -38,6 +40,7 @@ const PRIMARY_KEYS: Record<string, string> = {
 const TABLE_PERMISSIONS: Record<string, { read: string; write: string }> = {
   adherents: { read: "perm_adherents", write: "perm_adherents" },
   achats: { read: "perm_achats", write: "perm_achats" },
+  audit_logs: { read: "perm_administration", write: "perm_administration" },
   club_info: { read: "perm_administration", write: "perm_administration" },
   comptes_bancaires: { read: "perm_banque", write: "perm_banque" },
   exercices: { read: "perm_comptabilite", write: "perm_comptabilite" },
@@ -231,7 +234,11 @@ async function hmacSha256Base64Url(secret: string, value: string): Promise<strin
 }
 
 function getPasswordPepper(env: Env): string {
-  return String((env as any).PASSWORD_PEPPER || "");
+  const pepper = String((env as any).PASSWORD_PEPPER || "");
+  if (!pepper) {
+    console.warn("[security] PASSWORD_PEPPER is not set — PBKDF2 pepper is empty. Set it as a Cloudflare Worker secret.");
+  }
+  return pepper;
 }
 
 async function derivePasswordHash(
@@ -785,28 +792,33 @@ export default {
     }
 
     if (path === "/api/bootstrap" && (method === "GET" || method === "HEAD")) {
-      const user = await getCurrentUser(request, env);
-      const db = (env as any).DB as D1Database;
+      try {
+        const user = await getCurrentUser(request, env);
+        const db = (env as any).DB as D1Database;
 
-      const clubInfoRows = await db.prepare(`SELECT * FROM club_info`).all();
-      const clubInfo: Record<string, unknown> = {};
-      for (const row of clubInfoRows.results || []) {
-        const r = row as Record<string, unknown>;
-        clubInfo[String(r.cle)] = r.valeur;
+        const clubInfoRows = await db.prepare(`SELECT * FROM club_info`).all();
+        const clubInfo: Record<string, unknown> = {};
+        for (const row of clubInfoRows.results || []) {
+          const r = row as Record<string, unknown>;
+          clubInfo[String(r.cle)] = r.valeur;
+        }
+
+        const exercices = user
+          ? (await db.prepare(`SELECT * FROM exercices ORDER BY date_debut DESC`).all()).results
+          : [];
+
+        return withSecurityHeaders(json({
+          data: {
+            clubInfo,
+            exercices,
+            currentUser: user ? sanitizeRow("utilisateurs", user) : null,
+          },
+          error: null,
+        }));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Database unavailable";
+        return withSecurityHeaders(json({ data: null, error: { message } }, { status: 503 }));
       }
-
-      const exercices = user
-      ? (await db.prepare(`SELECT * FROM exercices ORDER BY date_debut DESC`).all()).results
-      : [];
-
-      return withSecurityHeaders(json({
-        data: {
-          clubInfo,
-          exercices,
-          currentUser: user ? sanitizeRow("utilisateurs", user) : null,
-        },
-        error: null,
-      }));
     }
 
     if (path === "/api/auth/login" && method === "POST") {
