@@ -37,10 +37,11 @@ const DEFAULT_DIPLOME_FIELDS = {
   logo:{enabled:false,left:50,top:18,width:16,height:18,align:'center',objectFit:'contain'},
   signature:{enabled:false,left:82,top:86,width:18,height:10,align:'center',objectFit:'contain'},
 };
-const DEFAULT_CLUB_NAME = 'American Full Fighting Bons En Chablais';
+const DEFAULT_CLUB_NAME = 'AMERICAN FULL FIGHTING BONS EN CHABLAIS';
 const DEFAULT_SIRET = '92470461200010';
 const DANGEROUS_RESTORE_PHRASE = 'RESTAURER';
 const NOTICE_LIFETIME = 5200;
+const INSCRIPTION_BOUTIQUE_PRODUCTS_URL = 'https://boutique.americanfullfightingbons.fr/api/products';
 
 const ROLES = {admin:'Administrateur',tresorier:'Trésorier',secretaire:'Secrétaire',entraineur:'Entraîneur',membre:'Membre'};
 const AVC   = ['#C0392B','#D4AC0D','#1D9E75','#378ADD','#8e44ad','#e67e22'];
@@ -528,6 +529,92 @@ function clamp(n,min,max){
 function safeParseJSON(raw,fallback){
   if(!raw) return fallback;
   try{return JSON.parse(raw);}catch(e){return fallback;}
+}
+
+function normalizeInscriptionOrderProduct(raw={}){
+  return {
+    id:(raw.id||crypto.randomUUID()).toString(),
+    source:raw.source==='boutique'?'boutique':'gestion',
+    active:raw.active!==false,
+    name:(raw.name||'').toString(),
+    description:(raw.description||'').toString(),
+    price:Number.isFinite(Number(raw.price))?Number(raw.price):0,
+    defaultQtyNew:Math.max(0,parseInt(raw.defaultQtyNew||0,10)||0),
+    requiresSize:Boolean(raw.requiresSize),
+    boutiqueProductId:raw.boutiqueProductId?String(raw.boutiqueProductId):'',
+  };
+}
+
+function getInscriptionOrderProducts(){
+  const items=safeParseJSON(D.clubInfo?.inscription_order_products,[]);
+  return Array.isArray(items)?items.map(normalizeInscriptionOrderProduct):[];
+}
+
+async function loadInscriptionBoutiqueProducts(force=false){
+  if(!force && Array.isArray(D.inscriptionBoutiqueProducts)) return D.inscriptionBoutiqueProducts;
+  try{
+    const res=await fetch(INSCRIPTION_BOUTIQUE_PRODUCTS_URL,{cache:'no-store'});
+    const data=await res.json().catch(()=>null);
+    if(!res.ok || !Array.isArray(data)) throw new Error(`HTTP ${res.status}`);
+    D.inscriptionBoutiqueProducts=data.map(p=>({
+      id:String(p.id||''),
+      name:(p.name||'').toString(),
+      description:(p.description||'').toString(),
+      price:Number(p.price||0),
+      sizes:Array.isArray(p.sizes)?p.sizes:[],
+      stock:Number(p.stock||0),
+    })).filter(p=>p.id);
+  }catch(e){
+    D.inscriptionBoutiqueProducts=[];
+    notify('warn','Catalogue boutique indisponible. La configuration reste possible en saisissant l’ID produit.','Boutique');
+  }
+  setTimeout(()=>{ try{ render(); }catch(e){} },0);
+  return D.inscriptionBoutiqueProducts;
+}
+
+function setInscriptionOrderProducts(items){
+  D.clubInfo=D.clubInfo||{};
+  D.clubInfo.inscription_order_products=JSON.stringify(items.map(normalizeInscriptionOrderProduct));
+}
+
+function renderInscriptionOrderProductsRows(canWrite){
+  const items=getInscriptionOrderProducts();
+  if(!items.length) return `<div class="empty">Aucun produit additionnel configuré pour l'inscription.</div>`;
+  return items.map((item,index)=>`
+    <div class="card" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="fg"><label>Source</label>
+        <select ${canWrite?'':'disabled'} onchange="setInscriptionOrderProductField(${index},'source',this.value)">
+          <option value="gestion" ${item.source==='gestion'?'selected':''}>Gestion</option>
+          <option value="boutique" ${item.source==='boutique'?'selected':''}>Boutique</option>
+        </select>
+      </div>
+      <div class="fg"><label>Actif</label>
+        <select ${canWrite?'':'disabled'} onchange="setInscriptionOrderProductField(${index},'active',this.value==='true')">
+          <option value="true" ${item.active!==false?'selected':''}>Oui</option>
+          <option value="false" ${item.active===false?'selected':''}>Non</option>
+        </select>
+      </div>
+      <div class="fg" style="grid-column:1/-1"><label>ID interne</label><input value="${esc(item.id)}" ${canWrite?'':'readonly'} onchange="setInscriptionOrderProductField(${index},'id',this.value)"></div>
+      <div class="fg"><label>ID produit boutique</label><input value="${esc(item.boutiqueProductId||'')}" placeholder="ex: 12" ${canWrite?'':'readonly'} onchange="setInscriptionOrderProductField(${index},'boutiqueProductId',this.value)"></div>
+      <div class="fg"><label>Produit boutique</label>
+        <select ${canWrite?'':'disabled'} onchange="applyBoutiqueProductToInscriptionOrder(${index},this.value)">
+          <option value="">Sélectionner</option>
+          ${(D.inscriptionBoutiqueProducts||[]).map(p=>`<option value="${esc(p.id)}" ${String(item.boutiqueProductId||'')===String(p.id)?'selected':''}>${esc(p.name)} · ${Number(p.price||0).toFixed(2)} € · stock ${Number(p.stock||0)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="fg"><label>Nom</label><input value="${esc(item.name)}" ${canWrite?'':'readonly'} onchange="setInscriptionOrderProductField(${index},'name',this.value)"></div>
+      <div class="fg"><label>Prix</label><input type="number" min="0" step="0.50" value="${Number(item.price||0)}" ${canWrite?'':'readonly'} onchange="setInscriptionOrderProductField(${index},'price',this.value)"></div>
+      <div class="fg" style="grid-column:1/-1"><label>Description</label><input value="${esc(item.description)}" ${canWrite?'':'readonly'} onchange="setInscriptionOrderProductField(${index},'description',this.value)"></div>
+      <div class="fg"><label>Qté par défaut nouvelle inscription</label><input type="number" min="0" step="1" value="${Number(item.defaultQtyNew||0)}" ${canWrite?'':'readonly'} onchange="setInscriptionOrderProductField(${index},'defaultQtyNew',this.value)"></div>
+      <div class="fg"><label>Taille obligatoire</label>
+        <select ${canWrite?'':'disabled'} onchange="setInscriptionOrderProductField(${index},'requiresSize',this.value==='true')">
+          <option value="false" ${!item.requiresSize?'selected':''}>Non</option>
+          <option value="true" ${item.requiresSize?'selected':''}>Oui</option>
+        </select>
+      </div>
+      ${canWrite?`<div style="grid-column:1/-1;display:flex;justify-content:flex-end"><button class="btn" onclick="removeInscriptionOrderProduct(${index})">Supprimer</button></div>`:''}
+    </div>
+  `).join('');
 }
 
 function renderLogoNode(el,url,size,rounded){
@@ -4050,6 +4137,7 @@ function vTarifs(){
   if(!hasPerm('perm_administration')) return`<div class="empty">Accès réservé à l'administrateur</div>`;
   const canWrite = hasPerm('perm_administration','write');
   const p = safeParseJSON(D.clubInfo?.inscription_pricing, {});
+  loadInscriptionBoutiqueProducts();
   const updated = p.updated_at ? ` — mis à jour le ${fd(p.updated_at)}` : '';
   const fields = [
     {key:'base',           label:'Tarif de base',               desc:'Cotisation standard'},
@@ -4080,6 +4168,17 @@ function vTarifs(){
     ${canWrite?`<button class="btn primary" onclick="saveTarifs()">💾 Sauvegarder et publier</button>`:''}
     </div>
     <div class="card">
+    <p style="font-size:11px;font-weight:500;color:var(--txt2);letter-spacing:.06em;margin-bottom:4px">PRODUITS COMMANDE INSCRIPTION</p>
+    <p style="font-size:12px;color:var(--txt2);margin-bottom:12px">Ajoutez ici les produits optionnels affichés dans l'onglet <strong>Commande</strong> du site d'inscription. Source <strong>Gestion</strong> pour un produit libre, source <strong>Boutique</strong> pour reprendre un article du catalogue.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      ${canWrite?`<button class="btn" onclick="addInscriptionOrderProduct('gestion')">+ Produit gestion</button>`:''}
+      ${canWrite?`<button class="btn" onclick="addInscriptionOrderProduct('boutique')">+ Produit boutique</button>`:''}
+      ${canWrite?`<button class="btn" onclick="refreshInscriptionBoutiqueProducts()">Actualiser la boutique</button>`:''}
+      ${canWrite?`<button class="btn primary" onclick="saveInscriptionOrderProducts()">💾 Sauvegarder les produits</button>`:''}
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">${renderInscriptionOrderProductsRows(canWrite)}</div>
+    </div>
+    <div class="card">
     <p style="font-size:11px;font-weight:500;color:var(--txt2);letter-spacing:.06em;margin-bottom:6px">ENDPOINT UTILISÉ PAR LE SITE</p>
     <div style="display:flex;gap:8px;align-items:center">
     <code style="font-size:12px;background:var(--bg3);padding:8px 12px;border-radius:var(--r);flex:1">https://inscription.americanfullfightingbons.fr/api/public/tarifs</code>
@@ -4103,6 +4202,87 @@ async function saveTarifs(){
   if(error) return notify('error','Erreur : '+error.message);
   D.clubInfo.inscription_pricing = payload;
   notify('success','Tarifs publiés — le site d\'inscription les applique immédiatement ✓');
+  render();
+}
+
+function setInscriptionOrderProductField(index,key,value){
+  if(!requireWritePerm('perm_administration')) return;
+  const items=getInscriptionOrderProducts();
+  if(!items[index]) return;
+  const next={...items[index],[key]:value};
+  if(key==='price') next.price=Number.isFinite(Number(value))?Number(value):0;
+  if(key==='defaultQtyNew') next.defaultQtyNew=Math.max(0,parseInt(value||0,10)||0);
+  if(key==='requiresSize' || key==='active') next[key]=Boolean(value);
+  if(key==='source' && value!=='boutique'){
+    next.boutiqueProductId='';
+  }
+  items[index]=normalizeInscriptionOrderProduct(next);
+  setInscriptionOrderProducts(items);
+  render();
+}
+
+function addInscriptionOrderProduct(source='gestion'){
+  if(!requireWritePerm('perm_administration')) return;
+  const items=getInscriptionOrderProducts();
+  items.push(normalizeInscriptionOrderProduct({
+    source,
+    name:source==='boutique'?'Produit boutique':'Nouveau produit',
+    description:'',
+    price:0,
+    defaultQtyNew:0,
+    requiresSize:false,
+  }));
+  setInscriptionOrderProducts(items);
+  render();
+}
+
+function removeInscriptionOrderProduct(index){
+  if(!requireWritePerm('perm_administration')) return;
+  const items=getInscriptionOrderProducts();
+  items.splice(index,1);
+  setInscriptionOrderProducts(items);
+  render();
+}
+
+function applyBoutiqueProductToInscriptionOrder(index,productId){
+  if(!requireWritePerm('perm_administration')) return;
+  const items=getInscriptionOrderProducts();
+  const item=items[index];
+  if(!item) return;
+  const product=(D.inscriptionBoutiqueProducts||[]).find(p=>String(p.id)===String(productId));
+  if(!product){
+    item.boutiqueProductId=productId||'';
+    item.source='boutique';
+    setInscriptionOrderProducts(items);
+    render();
+    return;
+  }
+  items[index]=normalizeInscriptionOrderProduct({
+    ...item,
+    source:'boutique',
+    boutiqueProductId:String(product.id),
+    name:product.name,
+    description:product.description,
+    price:Number(product.price||0),
+    requiresSize:Array.isArray(product.sizes) && product.sizes.length>0,
+  });
+  setInscriptionOrderProducts(items);
+  render();
+}
+
+async function refreshInscriptionBoutiqueProducts(){
+  await loadInscriptionBoutiqueProducts(true);
+  render();
+}
+
+async function saveInscriptionOrderProducts(){
+  if(!requireWritePerm('perm_administration')) return;
+  const items=getInscriptionOrderProducts().filter(item=>item.name);
+  const payload=JSON.stringify(items.map(normalizeInscriptionOrderProduct));
+  const {error}=await SB.from('club_info').upsert({cle:'inscription_order_products',valeur:payload},{onConflict:'cle'});
+  if(error) return notify('error','Erreur : '+error.message);
+  D.clubInfo.inscription_order_products=payload;
+  notify('success','Produits de commande publiés sur le site d\'inscription ✓');
   render();
 }
 

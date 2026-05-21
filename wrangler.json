@@ -14,10 +14,6 @@
     {
       "pattern": "gestion.americanfullfightingbons.fr/*",
       "zone_name": "americanfullfightingbons.fr"
-    },
-    {
-      "pattern": "gestion.americanfullfightingbons.fr",
-      "zone_name": "americanfullfightingbons.fr"
     }
   ],
   "vars": {

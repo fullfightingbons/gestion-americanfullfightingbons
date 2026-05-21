@@ -1,3 +1,15 @@
+import {
+  createSessionToken,
+  getCurrentUser,
+  hashPassword,
+  hasPermission,
+  hasStoragePermission,
+  isPublicStorageObject,
+  prepareUserWriteValues,
+  secureEquals,
+  verifyPassword,
+} from "./lib/security";
+
 // // ─────────────────────────────────────────────────────────────
 // Worker principal — AFFBC Gestion du club
 // ─────────────────────────────────────────────────────────────
@@ -94,6 +106,17 @@ const DEFAULT_ROLE_PERMS: Record<string, Record<string, string>> = {
   },
 };
 
+const PUBLIC_CLUB_INFO_KEYS = new Set([
+  "nom",
+  "logo",
+  "email",
+  "telephone",
+  "adresse",
+  "siret",
+  "diplome_signature_url",
+  "diplome_layouts",
+]);
+
 function json(data: unknown, init: ResponseInit = {}): Response {
   const headers = new Headers((init.headers as HeadersInit) || {});
   headers.set("Content-Type", "application/json; charset=utf-8");
@@ -161,252 +184,16 @@ function sanitizeData(table: string, data: unknown): unknown {
   return data;
 }
 
-function parseCookies(request: Request): Record<string, string> {
-  const raw = request.headers.get("Cookie") || "";
-  return Object.fromEntries(
-    raw
-      .split(";")
-      .map((chunk) => chunk.trim())
-      .filter(Boolean)
-      .map((chunk) => {
-        const index = chunk.indexOf("=");
-        if (index < 0) return [chunk, ""];
-        return [chunk.slice(0, index), decodeURIComponent(chunk.slice(index + 1))];
-      })
-  );
-}
-
-function toBase64Url(value: string): string {
-  return btoa(value).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-}
-
-function bytesToBase64Url(value: Uint8Array | ArrayBuffer): string {
-  const bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-}
-
-function fromBase64Url(value: string): string {
-  const padded =
-    value.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((value.length + 3) % 4);
-  return atob(padded);
-}
-
-function bytesFromBase64Url(value: string): Uint8Array {
-  const binary = fromBase64Url(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-}
-
-async function sha256Hex(value: string): Promise<string> {
-  const bytes = new TextEncoder().encode(value);
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-function secureEquals(left: string, right: string): boolean {
-  if (left.length !== right.length) return false;
-  let delta = 0;
-  for (let i = 0; i < left.length; i++) delta |= left.charCodeAt(i) ^ right.charCodeAt(i);
-  return delta === 0;
-}
-
-function getSessionSecret(env: Env): string {
-  const secret = String((env as any).SESSION_SECRET || "");
-  if (secret.length < 32) throw new Error("SESSION_SECRET missing or too short");
-  return secret;
-}
-
-async function hmacSha256Base64Url(secret: string, value: string): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(value));
-  return bytesToBase64Url(signature);
-}
-
-function getPasswordPepper(env: Env): string {
-  const pepper = String((env as any).PASSWORD_PEPPER || "");
-  if (!pepper) {
-    console.warn("[security] PASSWORD_PEPPER is not set — PBKDF2 pepper is empty. Set it as a Cloudflare Worker secret.");
-  }
-  return pepper;
-}
-
-async function derivePasswordHash(
-  password: string,
-  salt: Uint8Array,
-  iterations: number,
-  env: Env
-): Promise<Uint8Array> {
-  const keyMaterial = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(`${password}${getPasswordPepper(env)}`),
-    "PBKDF2",
-    false,
-    ["deriveBits"]
-  );
-  const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", hash: "SHA-256", salt, iterations },
-    keyMaterial,
-    256
-  );
-  return new Uint8Array(bits);
-}
-
-async function hashPassword(password: string, env: Env): Promise<string> {
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const hash = await derivePasswordHash(password, salt, PASSWORD_HASH_ITERATIONS, env);
-  return `${PASSWORD_HASH_PREFIX}$${PASSWORD_HASH_ITERATIONS}$${bytesToBase64Url(salt)}$${bytesToBase64Url(hash)}`;
-}
-
-async function verifyPassword(
-  password: string,
-  storedPassword: unknown,
-  env: Env
-): Promise<{ valid: boolean; upgradedHash: string | null }> {
-  const stored = String(storedPassword || "").trim();
-  if (!stored) return { valid: false, upgradedHash: null };
-
-  if (stored.startsWith(`${PASSWORD_HASH_PREFIX}$`)) {
-    const [, iterationsRaw, saltRaw, hashRaw] = stored.split("$");
-    const iterations = Number.parseInt(iterationsRaw || "", 10);
-    if (!iterations || !saltRaw || !hashRaw || iterations > MAX_PBKDF2_ITERATIONS) {
-      return { valid: false, upgradedHash: null };
+function filterClubInfoForPublic(clubInfo: Record<string, unknown>): Record<string, unknown> {
+  const filtered: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(clubInfo || {})) {
+    if (PUBLIC_CLUB_INFO_KEYS.has(key)) {
+      filtered[key] = value;
     }
-    const derived = await derivePasswordHash(
-      password,
-      bytesFromBase64Url(saltRaw),
-      iterations,
-      env
-    );
-    return { valid: secureEquals(bytesToBase64Url(derived), hashRaw), upgradedHash: null };
   }
-
-  if (LEGACY_SHA256_RE.test(stored)) {
-    const legacyHash = await sha256Hex(password);
-    if (!secureEquals(legacyHash, stored.toLowerCase()))
-      return { valid: false, upgradedHash: null };
-    return { valid: true, upgradedHash: await hashPassword(password, env) };
-  }
-
-  if (!secureEquals(password, stored)) return { valid: false, upgradedHash: null };
-  return { valid: true, upgradedHash: await hashPassword(password, env) };
+  return filtered;
 }
 
-async function prepareUserWriteValues(
-  values: Record<string, unknown>,
-  env: Env
-): Promise<Record<string, unknown>> {
-  const next = { ...values };
-  const hasPlainPassword = Object.prototype.hasOwnProperty.call(next, "mot_de_passe_plain");
-  if (Object.prototype.hasOwnProperty.call(next, "mot_de_passe") && !hasPlainPassword) {
-    throw new Error("Direct password writes are blocked; use mot_de_passe_plain");
-  }
-  if (!hasPlainPassword) {
-    delete next.mot_de_passe_plain;
-    return next;
-  }
-  const plainPassword = String(next.mot_de_passe_plain || "");
-  delete next.mot_de_passe_plain;
-  delete next.mot_de_passe;
-  if (!plainPassword) return next;
-  next.mot_de_passe = await hashPassword(plainPassword, env);
-  if (!next.password_changed_at) next.password_changed_at = new Date().toISOString();
-  return next;
-}
-
-async function createSessionToken(
-  session: Record<string, unknown>,
-  env: Env
-): Promise<string> {
-  const payload = toBase64Url(JSON.stringify(session));
-  const signature = await hmacSha256Base64Url(getSessionSecret(env), payload);
-  return `${payload}.${signature}`;
-}
-
-async function parseSessionToken(
-  token: string,
-  env: Env
-): Promise<Record<string, unknown> | null> {
-  const [payload, signature] = String(token || "").split(".");
-  if (!payload || !signature) return null;
-  const expected = await hmacSha256Base64Url(getSessionSecret(env), payload);
-  if (!secureEquals(expected, signature)) return null;
-  try {
-    return JSON.parse(fromBase64Url(payload));
-  } catch {
-    return null;
-  }
-}
-
-async function getCurrentUser(
-  request: Request,
-  env: Env
-): Promise<Record<string, unknown> | null> {
-  const token = parseCookies(request)[SESSION_COOKIE];
-  if (!token) return null;
-  const session = await parseSessionToken(token, env);
-  if (!session || !session.userId || (session.expiresAt as number) < Date.now()) return null;
-  return (env as any).DB.prepare(
-    `SELECT * FROM utilisateurs WHERE id = ? AND actif = 1`
-  )
-    .bind(session.userId)
-    .first();
-}
-
-function getPermissionLevel(user: Record<string, unknown>, key: string): string {
-  const direct = String(user[key] || "");
-  if (direct === "write" || direct === "read" || direct === "none") return direct;
-  const role = String(user.role || "");
-  return DEFAULT_ROLE_PERMS[role]?.[key] || "none";
-}
-
-function hasPermission(
-  user: Record<string, unknown>,
-  permKey: string,
-  mode: "read" | "write"
-): boolean {
-  if (String(user.role || "") === "admin") return true;
-  const level = getPermissionLevel(user, permKey);
-  if (mode === "read") return level === "read" || level === "write";
-  return level === "write";
-}
-
-function hasStoragePermission(
-  user: Record<string, unknown>,
-  bucketName: string,
-  keyOrPrefix: string,
-  mode: "read" | "write"
-): boolean {
-  const normalized = String(keyOrPrefix || "").replace(/^\/+/, "");
-  if (bucketName === "fullfighting-pdf") {
-    if (normalized.startsWith("achats/")) return hasPermission(user, "perm_achats", mode);
-    if (normalized.startsWith("adherents/")) return hasPermission(user, "perm_adherents", mode);
-    return hasPermission(user, "perm_administration", mode);
-  }
-  if (bucketName === "storage") {
-    if (normalized.startsWith("diplome/") || normalized === "diplome")
-      return hasPermission(user, "perm_adherents", mode);
-    if (normalized.startsWith("branding/") || normalized === "branding")
-      return hasPermission(user, "perm_administration", mode);
-    return hasPermission(user, "perm_administration", mode);
-  }
-  return false;
-}
-
-function isPublicStorageObject(bucketName: string, key: string): boolean {
-  const normalized = String(key || "").replace(/^\/+/, "");
-  return bucketName === "storage" && normalized.startsWith("branding/");
-}
 
 function withSecurityHeaders(response: Response): Response {
   const headers = new Headers(response.headers);
@@ -480,7 +267,7 @@ async function insertRows(
   for (const input of rows) {
     const row =
       table === "utilisateurs"
-        ? await prepareUserWriteValues(input, env)
+        ? await prepareUserWriteValues(input, env, PASSWORD_HASH_PREFIX, PASSWORD_HASH_ITERATIONS)
         : { ...input };
     if (primaryKey === "id" && !row.id) row.id = crypto.randomUUID();
     const columns = Object.keys(row);
@@ -516,7 +303,7 @@ async function updateRows(
   if (!filters.length) throw new Error("Unsafe update blocked: missing filters");
   const values =
     table === "utilisateurs"
-      ? await prepareUserWriteValues(body.values || {}, env)
+      ? await prepareUserWriteValues(body.values || {}, env, PASSWORD_HASH_PREFIX, PASSWORD_HASH_ITERATIONS)
       : body.values || {};
   const columns = Object.keys(values);
   if (!columns.length) return { data: body.single ? null : [], error: null };
@@ -550,7 +337,7 @@ async function deleteRows(
 
 async function handleDbApi(request: Request, env: Env, table: string): Promise<Response> {
   if (!TABLES.has(table)) return badRequest("Unknown table", 404);
-  const user = await getCurrentUser(request, env);
+  const user = await getCurrentUser(request, env, SESSION_COOKIE);
   if (!user) return badRequest("Unauthorized", 401);
   let body: any;
   try {
@@ -576,7 +363,7 @@ async function handleDbApi(request: Request, env: Env, table: string): Promise<R
   const permission = TABLE_PERMISSIONS[table];
   const mode = body.action === "query" ? "read" : "write";
   if (mode === "write") {
-    let allowed = hasPermission(user, permission.write, "write");
+    let allowed = hasPermission(user, permission.write, "write", DEFAULT_ROLE_PERMS);
     if (!allowed && table === "utilisateurs" && body.action === "update") {
       const filters = body.filters || [];
       const ownUserUpdate =
@@ -636,7 +423,7 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
     upgradedHash: null,
   };
   if (passwordPlain) {
-    passwordCheck = await verifyPassword(passwordPlain, stored, env);
+    passwordCheck = await verifyPassword(passwordPlain, stored, env, PASSWORD_HASH_PREFIX, MAX_PBKDF2_ITERATIONS, LEGACY_SHA256_RE);
   } else if (
     passwordHash &&
     LEGACY_SHA256_RE.test(stored) &&
@@ -668,7 +455,7 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
 }
 
 async function handleSession(request: Request, env: Env): Promise<Response> {
-  const user = await getCurrentUser(request, env);
+  const user = await getCurrentUser(request, env, SESSION_COOKIE);
   if (!user) return badRequest("Unauthorized", 401);
   return json({ data: { user: sanitizeRow("utilisateurs", user) }, error: null });
 }
@@ -683,7 +470,7 @@ async function handleLogout(_request: Request, _env: Env): Promise<Response> {
 }
 
 async function handleChangePassword(request: Request, env: Env): Promise<Response> {
-  const user = await getCurrentUser(request, env);
+  const user = await getCurrentUser(request, env, SESSION_COOKIE);
   if (!user) return badRequest("Unauthorized", 401);
   let payload: any;
   try {
@@ -698,9 +485,9 @@ async function handleChangePassword(request: Request, env: Env): Promise<Respons
   if (nextPassword.length < 6)
     return badRequest("Le nouveau mot de passe doit contenir au moins 6 caractères");
   const stored = String(user.mot_de_passe || "");
-  const passwordCheck = await verifyPassword(currentPassword, stored, env);
+  const passwordCheck = await verifyPassword(currentPassword, stored, env, PASSWORD_HASH_PREFIX, MAX_PBKDF2_ITERATIONS, LEGACY_SHA256_RE);
   if (!passwordCheck.valid) return badRequest("Mot de passe actuel incorrect", 401);
-  const nextPasswordHash = await hashPassword(nextPassword, env);
+  const nextPasswordHash = await hashPassword(nextPassword, env, PASSWORD_HASH_PREFIX, PASSWORD_HASH_ITERATIONS);
   await (env as any).DB.prepare(
     `UPDATE utilisateurs SET mot_de_passe = ?, updated_at = ?, password_changed_at = ?, must_change_password = 0 WHERE id = ?`
   )
@@ -714,14 +501,14 @@ async function handleStorageList(
   env: Env,
   bucketName: string
 ): Promise<Response> {
-  const user = await getCurrentUser(request, env);
+  const user = await getCurrentUser(request, env, SESSION_COOKIE);
   if (!user) return badRequest("Unauthorized", 401);
   const bucket = getBucket(env, bucketName);
   if (!bucket) return badRequest("Unknown bucket", 404);
   const url = new URL(request.url);
   let prefix = url.searchParams.get("prefix") || "";
   if (bucketName === "storage" && !prefix) prefix = "diplome/";
-  if (!hasStoragePermission(user, bucketName, prefix, "read"))
+  if (!hasStoragePermission(user, bucketName, prefix, "read", DEFAULT_ROLE_PERMS))
     return badRequest("Forbidden", 403);
   const result = await bucket.list({ prefix });
   const data = (result.objects || []).map((object) => ({
@@ -737,14 +524,14 @@ async function handleStorageUpload(
   env: Env,
   bucketName: string
 ): Promise<Response> {
-  const user = await getCurrentUser(request, env);
+  const user = await getCurrentUser(request, env, SESSION_COOKIE);
   if (!user) return badRequest("Unauthorized", 401);
   const bucket = getBucket(env, bucketName);
   if (!bucket) return badRequest("Unknown bucket", 404);
   const url = new URL(request.url);
   const path = url.searchParams.get("path") || "";
   if (!path) return badRequest("Storage path missing");
-  if (!hasStoragePermission(user, bucketName, path, "write"))
+  if (!hasStoragePermission(user, bucketName, path, "write", DEFAULT_ROLE_PERMS))
     return badRequest("Forbidden", 403);
   const formData = await request.formData();
   const file = formData.get("file");
@@ -765,9 +552,9 @@ async function handleStorageGet(
   key: string
 ): Promise<Response> {
   const isPublic = isPublicStorageObject(bucketName, key);
-  const user = isPublic ? null : await getCurrentUser(request, env);
+  const user = isPublic ? null : await getCurrentUser(request, env, SESSION_COOKIE);
   if (!isPublic && !user) return new Response("Unauthorized", { status: 401 });
-  if (!isPublic && user && !hasStoragePermission(user, bucketName, key, "read")) {
+  if (!isPublic && user && !hasStoragePermission(user, bucketName, key, "read", DEFAULT_ROLE_PERMS)) {
     return new Response("Forbidden", { status: 403 });
   }
   const bucket = getBucket(env, bucketName);
@@ -793,7 +580,7 @@ export default {
 
     if (path === "/api/bootstrap" && (method === "GET" || method === "HEAD")) {
       try {
-        const user = await getCurrentUser(request, env);
+        const user = await getCurrentUser(request, env, SESSION_COOKIE);
         const db = (env as any).DB as D1Database;
 
         const clubInfoRows = await db.prepare(`SELECT * FROM club_info`).all();
@@ -809,7 +596,7 @@ export default {
 
         return withSecurityHeaders(json({
           data: {
-            clubInfo,
+            clubInfo: user ? clubInfo : filterClubInfoForPublic(clubInfo),
             exercices,
             currentUser: user ? sanitizeRow("utilisateurs", user) : null,
           },
