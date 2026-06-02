@@ -590,12 +590,14 @@ export default {
     const path = url.pathname;
     const method = request.method.toUpperCase();
 
-    if (path === "/api/health") {
-      return withSecurityHeaders(json({ ok: true, data: { service: "gestion-americanfullfightingbons", date: new Date().toISOString(), bindings: { hasDb: !!(env as any).DB } } }));
+    if (path === "/api/health" && (method === "GET" || method === "HEAD")) {
+      const response = withSecurityHeaders(json({ ok: true, data: { service: "gestion-americanfullfightingbons", date: new Date().toISOString(), bindings: { hasDb: !!(env as any).DB } } }));
+      return method === "HEAD" ? new Response(null, response) : response;
     }
 
-    if (path === "/api/version") {
-      return withSecurityHeaders(json({ ok: true, data: { service: "gestion-americanfullfightingbons", version: "1.0.0" } }));
+    if (path === "/api/version" && (method === "GET" || method === "HEAD")) {
+      const response = withSecurityHeaders(json({ ok: true, data: { service: "gestion-americanfullfightingbons", version: "1.0.0" } }));
+      return method === "HEAD" ? new Response(null, response) : response;
     }
 
     if (path === "/api/bootstrap" && (method === "GET" || method === "HEAD")) {
