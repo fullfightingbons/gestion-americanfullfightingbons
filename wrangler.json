@@ -2,6 +2,7 @@
   "compatibility_date": "2025-10-08",
   "main": "src/index.ts",
   "name": "gestion-americanfullfightingbons",
+  "account_id": "a11cb0253f0870d57b54f6eaaedb439c",
   "upload_source_maps": true,
   "assets": {
     "directory": "./public",
