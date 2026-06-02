@@ -578,6 +578,10 @@ export default {
       return withSecurityHeaders(json({ ok: true, bindings: { hasDb: !!(env as any).DB } }));
     }
 
+    if (path === "/api/version") {
+      return withSecurityHeaders(json({ service: "gestion-americanfullfightingbons", version: "1.0.0" }));
+    }
+
     if (path === "/api/bootstrap" && (method === "GET" || method === "HEAD")) {
       try {
         const user = await getCurrentUser(request, env, SESSION_COOKIE);
