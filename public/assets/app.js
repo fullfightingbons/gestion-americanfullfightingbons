@@ -943,7 +943,7 @@ async function initCloudflareBackend(){
     const res=await fetch(apiUrl('/health'),{cache:'no-store'});
     if(!res.ok) return false;
     const payload=await res.json();
-    if(!payload?.ok || !payload?.bindings?.hasDb) return false;
+    if(!payload?.ok || !payload?.data?.bindings?.hasDb) return false;
     SB=createCloudflareClient();
     return true;
   }catch(e){
