@@ -200,6 +200,22 @@ function withSecurityHeaders(response: Response): Response {
   headers.set("X-Content-Type-Options", "nosniff");
   headers.set("Referrer-Policy", "same-origin");
   headers.set("X-Frame-Options", "DENY");
+  headers.set("X-Robots-Tag", "noindex, nofollow, noarchive, nosnippet");
+  headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()");
+  headers.set(
+    "Content-Security-Policy",
+    [
+      "default-src 'self'",
+      "base-uri 'self'",
+      "frame-ancestors 'none'",
+      "form-action 'self'",
+      "img-src 'self' data: blob: https:",
+      "style-src 'self' 'unsafe-inline'",
+      "font-src 'self' data:",
+      "script-src 'self' 'unsafe-inline'",
+      "connect-src 'self'",
+    ].join("; "),
+  );
   return new Response(response.body, { status: response.status, headers });
 }
 
