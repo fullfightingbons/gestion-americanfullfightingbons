@@ -213,7 +213,7 @@ function withSecurityHeaders(response: Response): Response {
       "style-src 'self' 'unsafe-inline'",
       "font-src 'self' data:",
       "script-src 'self' 'unsafe-inline'",
-      "connect-src 'self'",
+      "connect-src 'self' https://americanfullfightingbons.fr https://inscription.americanfullfightingbons.fr https://calendrier.americanfullfightingbons.fr https://boutique.americanfullfightingbons.fr",
     ].join("; "),
   );
   return new Response(response.body, { status: response.status, headers });
@@ -591,11 +591,11 @@ export default {
     const method = request.method.toUpperCase();
 
     if (path === "/api/health") {
-      return withSecurityHeaders(json({ ok: true, bindings: { hasDb: !!(env as any).DB } }));
+      return withSecurityHeaders(json({ ok: true, data: { service: "gestion-americanfullfightingbons", date: new Date().toISOString(), bindings: { hasDb: !!(env as any).DB } } }));
     }
 
     if (path === "/api/version") {
-      return withSecurityHeaders(json({ service: "gestion-americanfullfightingbons", version: "1.0.0" }));
+      return withSecurityHeaders(json({ ok: true, data: { service: "gestion-americanfullfightingbons", version: "1.0.0" } }));
     }
 
     if (path === "/api/bootstrap" && (method === "GET" || method === "HEAD")) {
