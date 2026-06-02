@@ -21,6 +21,7 @@
 	},
 	"scripts": {
 		"cf-typegen": "wrangler types",
+		"typecheck": "tsc --noEmit",
 		"check": "tsc && wrangler deploy --dry-run",
 		"deploy": "wrangler deploy",
 		"dev": "wrangler dev",
