@@ -293,9 +293,12 @@ async function insertRows(
     const placeholders = columns.map(() => "?").join(", ");
     let sql = `INSERT INTO ${quoteIdentifier(table)} (${quotedColumns}) VALUES (${placeholders})`;
     if (body.action === "upsert" && body.onConflict) {
-      const conflict = quoteIdentifier(body.onConflict);
+      const conflictCols: string[] = Array.isArray(body.onConflict)
+        ? body.onConflict
+        : [body.onConflict];
+      const conflict = conflictCols.map((c) => quoteIdentifier(c)).join(", ");
       const updateColumns = columns
-        .filter((c) => c !== body.onConflict)
+        .filter((c) => !conflictCols.includes(c))
         .map((c) => `${quoteIdentifier(c)} = excluded.${quoteIdentifier(c)}`)
         .join(", ");
       sql += updateColumns
