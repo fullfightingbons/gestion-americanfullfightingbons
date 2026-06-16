@@ -5254,10 +5254,13 @@ async function importBankCSV(e){
       rows.push(row);
     });
     if(!rows.length)return alert('Aucune ligne valide ou toutes les opérations existent déjà.');
-    const {data,error}=await SB.from('transactions').insert(rows).select();
+    const {data,error}=await SB.from('transactions').upsert(rows,{onConflict:['compte_id','date_op','libelle','debit','credit']}).select();
     if(error)return alert('Erreur : '+error.message);
-    c.transactions=[...(c.transactions||[]),...(data||[])];
-    alert(`${(data||[]).length} transaction(s) importée(s) !`);render();
+    // Fusionner sans doublons en mémoire (l'upsert peut retourner des lignes déjà existantes)
+    const existingIds=new Set((c.transactions||[]).map(t=>t.id));
+    const newTx=(data||[]).filter(t=>!existingIds.has(t.id));
+    c.transactions=[...(c.transactions||[]),...newTx];
+    alert(`${newTx.length} nouvelle(s) transaction(s) importée(s) !`);render();
   };
   r.readAsText(file,'ISO-8859-1');
   e.target.value='';
@@ -5560,11 +5563,14 @@ async function importBankPDF(e){
       return true;
     });
     if(!parsed.length) return alert('Aucune opération exploitable détectée dans ce PDF, ou toutes les opérations sont déjà importées.');
-    const {data,error}=await SB.from('transactions').insert(parsed).select();
+    const {data,error}=await SB.from('transactions').upsert(parsed,{onConflict:['compte_id','date_op','libelle','debit','credit']}).select();
     if(error) return alert('Erreur : '+error.message);
-    c.transactions=[...(c.transactions||[]),...(data||[])];
+    // Fusionner sans doublons en mémoire (l'upsert peut retourner des lignes déjà existantes)
+    const existingIds=new Set((c.transactions||[]).map(t=>t.id));
+    const newTx=(data||[]).filter(t=>!existingIds.has(t.id));
+    c.transactions=[...(c.transactions||[]),...newTx];
     render();
-    alert(`${(data||[]).length} transaction(s) importée(s) depuis le PDF.`);
+    alert(`${newTx.length} nouvelle(s) transaction(s) importée(s) depuis le PDF.`);
   }catch(err){
     alert('Import PDF impossible : '+err.message);
   }
