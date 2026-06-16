@@ -327,10 +327,20 @@ function normalizeAdherentFinance(row){
 
 function normalizeUserRow(row){
   const next={...(row||{})};
-  ['actif','must_change_password','perm_adherents','perm_banque','perm_comptabilite','perm_achats','perm_facturation','perm_administration'].forEach(key=>{
+  // Booléens stricts uniquement
+  ['actif','must_change_password'].forEach(key=>{
     next[key]=next[key]===true || next[key]===1 || next[key]==='1';
   });
-  return next;
+  // Permissions : conserver la valeur string "read"/"write"/"none" si présente
+  // Ne normaliser en booléen que si la valeur est 0/1/true/false
+  ['perm_adherents','perm_banque','perm_comptabilite','perm_achats','perm_facturation','perm_administration'].forEach(key=>{
+    const v=next[key];
+    if(typeof v==='string' && (v==='read'||v==='write'||v==='none')) return; // OK, laisser tel quel
+    if(v===true || v===1 || v==='1') next[key]='write';
+    else if(v===false || v===0 || v==='0') next[key]='none';
+    else next[key]=null; // null = pas de surcharge explicite, on utilisera le rôle
+  });
+    return next;
 }
 
 function normalizeFactureRow(row){
@@ -1064,6 +1074,7 @@ function permLevelRank(level){
 
 function getExplicitUserPermLevel(user, perm){
   const value=user?.[perm];
+  if(value===null || value===undefined) return null; // pas de surcharge → utiliser le rôle
   if(typeof value==='boolean') return value?'write':'none';
   if(typeof value==='number') return value?'write':'none';
   if(typeof value==='string' && PERM_LEVELS[value]) return value;
