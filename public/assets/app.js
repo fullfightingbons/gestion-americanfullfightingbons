@@ -551,8 +551,8 @@ function normalizeInscriptionOrderProduct(raw={}){
     description:(raw.description||'').toString(),
     price:Number.isFinite(Number(raw.price))?Number(raw.price):0,
     defaultQtyNew:Math.max(0,parseInt(raw.defaultQtyNew||0,10)||0),
-    requiresSize:Boolean(raw.requiresSize),
-    boutiqueProductId:raw.boutiqueProductId?String(raw.boutiqueProductId):'',
+      requiresSize:Boolean(raw.requiresSize),
+      boutiqueProductId:raw.boutiqueProductId?String(raw.boutiqueProductId):'',
   };
 }
 
@@ -569,11 +569,11 @@ async function loadInscriptionBoutiqueProducts(force=false){
     if(!res.ok || !Array.isArray(data)) throw new Error(`HTTP ${res.status}`);
     D.inscriptionBoutiqueProducts=data.map(p=>({
       id:String(p.id||''),
-      name:(p.name||'').toString(),
-      description:(p.description||'').toString(),
-      price:Number(p.price||0),
-      sizes:Array.isArray(p.sizes)?p.sizes:[],
-      stock:Number(p.stock||0),
+                                               name:(p.name||'').toString(),
+                                               description:(p.description||'').toString(),
+                                               price:Number(p.price||0),
+                                               sizes:Array.isArray(p.sizes)?p.sizes:[],
+                                               stock:Number(p.stock||0),
     })).filter(p=>p.id);
   }catch(e){
     D.inscriptionBoutiqueProducts=[];
@@ -592,39 +592,39 @@ function renderInscriptionOrderProductsRows(canWrite){
   const items=getInscriptionOrderProducts();
   if(!items.length) return `<div class="empty">Aucun produit additionnel configuré pour l'inscription.</div>`;
   return items.map((item,index)=>`
-    <div class="card" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-      <div class="fg"><label>Source</label>
-        <select ${canWrite?'':'disabled'} onchange="setInscriptionOrderProductField(${index},'source',this.value)">
-          <option value="gestion" ${item.source==='gestion'?'selected':''}>Gestion</option>
-          <option value="boutique" ${item.source==='boutique'?'selected':''}>Boutique</option>
-        </select>
-      </div>
-      <div class="fg"><label>Actif</label>
-        <select ${canWrite?'':'disabled'} onchange="setInscriptionOrderProductField(${index},'active',this.value==='true')">
-          <option value="true" ${item.active!==false?'selected':''}>Oui</option>
-          <option value="false" ${item.active===false?'selected':''}>Non</option>
-        </select>
-      </div>
-      <div class="fg" style="grid-column:1/-1"><label>ID interne</label><input value="${esc(item.id)}" ${canWrite?'':'readonly'} onchange="setInscriptionOrderProductField(${index},'id',this.value)"></div>
-      <div class="fg"><label>ID produit boutique</label><input value="${esc(item.boutiqueProductId||'')}" placeholder="ex: 12" ${canWrite?'':'readonly'} onchange="setInscriptionOrderProductField(${index},'boutiqueProductId',this.value)"></div>
-      <div class="fg"><label>Produit boutique</label>
-        <select ${canWrite?'':'disabled'} onchange="applyBoutiqueProductToInscriptionOrder(${index},this.value)">
-          <option value="">Sélectionner</option>
-          ${(D.inscriptionBoutiqueProducts||[]).map(p=>`<option value="${esc(p.id)}" ${String(item.boutiqueProductId||'')===String(p.id)?'selected':''}>${esc(p.name)} · ${Number(p.price||0).toFixed(2)} € · stock ${Number(p.stock||0)}</option>`).join('')}
-        </select>
-      </div>
-      <div class="fg"><label>Nom</label><input value="${esc(item.name)}" ${canWrite?'':'readonly'} onchange="setInscriptionOrderProductField(${index},'name',this.value)"></div>
-      <div class="fg"><label>Prix</label><input type="number" min="0" step="0.50" value="${Number(item.price||0)}" ${canWrite?'':'readonly'} onchange="setInscriptionOrderProductField(${index},'price',this.value)"></div>
-      <div class="fg" style="grid-column:1/-1"><label>Description</label><input value="${esc(item.description)}" ${canWrite?'':'readonly'} onchange="setInscriptionOrderProductField(${index},'description',this.value)"></div>
-      <div class="fg"><label>Qté par défaut nouvelle inscription</label><input type="number" min="0" step="1" value="${Number(item.defaultQtyNew||0)}" ${canWrite?'':'readonly'} onchange="setInscriptionOrderProductField(${index},'defaultQtyNew',this.value)"></div>
-      <div class="fg"><label>Taille obligatoire</label>
-        <select ${canWrite?'':'disabled'} onchange="setInscriptionOrderProductField(${index},'requiresSize',this.value==='true')">
-          <option value="false" ${!item.requiresSize?'selected':''}>Non</option>
-          <option value="true" ${item.requiresSize?'selected':''}>Oui</option>
-        </select>
-      </div>
-      ${canWrite?`<div style="grid-column:1/-1;display:flex;justify-content:flex-end"><button class="btn" onclick="removeInscriptionOrderProduct(${index})">Supprimer</button></div>`:''}
-    </div>
+  <div class="card" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+  <div class="fg"><label>Source</label>
+  <select ${canWrite?'':'disabled'} onchange="setInscriptionOrderProductField(${index},'source',this.value)">
+  <option value="gestion" ${item.source==='gestion'?'selected':''}>Gestion</option>
+  <option value="boutique" ${item.source==='boutique'?'selected':''}>Boutique</option>
+  </select>
+  </div>
+  <div class="fg"><label>Actif</label>
+  <select ${canWrite?'':'disabled'} onchange="setInscriptionOrderProductField(${index},'active',this.value==='true')">
+  <option value="true" ${item.active!==false?'selected':''}>Oui</option>
+  <option value="false" ${item.active===false?'selected':''}>Non</option>
+  </select>
+  </div>
+  <div class="fg" style="grid-column:1/-1"><label>ID interne</label><input value="${esc(item.id)}" ${canWrite?'':'readonly'} onchange="setInscriptionOrderProductField(${index},'id',this.value)"></div>
+  <div class="fg"><label>ID produit boutique</label><input value="${esc(item.boutiqueProductId||'')}" placeholder="ex: 12" ${canWrite?'':'readonly'} onchange="setInscriptionOrderProductField(${index},'boutiqueProductId',this.value)"></div>
+  <div class="fg"><label>Produit boutique</label>
+  <select ${canWrite?'':'disabled'} onchange="applyBoutiqueProductToInscriptionOrder(${index},this.value)">
+  <option value="">Sélectionner</option>
+  ${(D.inscriptionBoutiqueProducts||[]).map(p=>`<option value="${esc(p.id)}" ${String(item.boutiqueProductId||'')===String(p.id)?'selected':''}>${esc(p.name)} · ${Number(p.price||0).toFixed(2)} € · stock ${Number(p.stock||0)}</option>`).join('')}
+  </select>
+  </div>
+  <div class="fg"><label>Nom</label><input value="${esc(item.name)}" ${canWrite?'':'readonly'} onchange="setInscriptionOrderProductField(${index},'name',this.value)"></div>
+  <div class="fg"><label>Prix</label><input type="number" min="0" step="0.50" value="${Number(item.price||0)}" ${canWrite?'':'readonly'} onchange="setInscriptionOrderProductField(${index},'price',this.value)"></div>
+  <div class="fg" style="grid-column:1/-1"><label>Description</label><input value="${esc(item.description)}" ${canWrite?'':'readonly'} onchange="setInscriptionOrderProductField(${index},'description',this.value)"></div>
+  <div class="fg"><label>Qté par défaut nouvelle inscription</label><input type="number" min="0" step="1" value="${Number(item.defaultQtyNew||0)}" ${canWrite?'':'readonly'} onchange="setInscriptionOrderProductField(${index},'defaultQtyNew',this.value)"></div>
+  <div class="fg"><label>Taille obligatoire</label>
+  <select ${canWrite?'':'disabled'} onchange="setInscriptionOrderProductField(${index},'requiresSize',this.value==='true')">
+  <option value="false" ${!item.requiresSize?'selected':''}>Non</option>
+  <option value="true" ${item.requiresSize?'selected':''}>Oui</option>
+  </select>
+  </div>
+  ${canWrite?`<div style="grid-column:1/-1;display:flex;justify-content:flex-end"><button class="btn" onclick="removeInscriptionOrderProduct(${index})">Supprimer</button></div>`:''}
+  </div>
   `).join('');
 }
 
@@ -1184,31 +1184,31 @@ function updLogo(){
 
 const AFFBC_SERVICES = [
   {id:'site', label:'Site public', url:'https://americanfullfightingbons.fr', version:'https://americanfullfightingbons.fr/api/version'},
-  {id:'inscription', label:'Inscriptions', url:'https://inscription.americanfullfightingbons.fr', version:'https://inscription.americanfullfightingbons.fr/api/version'},
-  {id:'calendrier', label:'Calendrier', url:'https://calendrier.americanfullfightingbons.fr', version:'https://calendrier.americanfullfightingbons.fr/api/version'},
-  {id:'boutique', label:'Boutique', url:'https://boutique.americanfullfightingbons.fr', version:'https://boutique.americanfullfightingbons.fr/api/version'},
-  {id:'gestion', label:'Gestion', url:'https://gestion.americanfullfightingbons.fr', version:'https://gestion.americanfullfightingbons.fr/api/version'},
+{id:'inscription', label:'Inscriptions', url:'https://inscription.americanfullfightingbons.fr', version:'https://inscription.americanfullfightingbons.fr/api/version'},
+{id:'calendrier', label:'Calendrier', url:'https://calendrier.americanfullfightingbons.fr', version:'https://calendrier.americanfullfightingbons.fr/api/version'},
+{id:'boutique', label:'Boutique', url:'https://boutique.americanfullfightingbons.fr', version:'https://boutique.americanfullfightingbons.fr/api/version'},
+{id:'gestion', label:'Gestion', url:'https://gestion.americanfullfightingbons.fr', version:'https://gestion.americanfullfightingbons.fr/api/version'},
 ];
 
 function vServices(){
   return `<div class="view-head">
-    <div>
-      <div class="eyebrow">Supervision</div>
-      <h2>État des services AFFBC</h2>
-      <p>Contrôlez rapidement que chaque site répond et ouvrez les interfaces publiées.</p>
-    </div>
-    <button class="btn primary" onclick="checkServiceStatus()">Vérifier maintenant</button>
+  <div>
+  <div class="eyebrow">Supervision</div>
+  <h2>État des services AFFBC</h2>
+  <p>Contrôlez rapidement que chaque site répond et ouvrez les interfaces publiées.</p>
+  </div>
+  <button class="btn primary" onclick="checkServiceStatus()">Vérifier maintenant</button>
   </div>
   <div class="grid">
-    ${AFFBC_SERVICES.map(service=>`<div class="dash-card" id="service-${service.id}">
-      <h3>${esc(service.label)}</h3>
-      <div class="dash-stat-value" id="service-${service.id}-state">Non vérifié</div>
-      <p id="service-${service.id}-detail">${esc(service.url)}</p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
-        <a class="btn sm" href="${esc(service.url)}" target="_blank" rel="noopener noreferrer">Ouvrir</a>
-        <button class="btn sm" onclick="checkOneService('${service.id}')">Tester</button>
-      </div>
-    </div>`).join('')}
+  ${AFFBC_SERVICES.map(service=>`<div class="dash-card" id="service-${service.id}">
+  <h3>${esc(service.label)}</h3>
+  <div class="dash-stat-value" id="service-${service.id}-state">Non vérifié</div>
+  <p id="service-${service.id}-detail">${esc(service.url)}</p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+  <a class="btn sm" href="${esc(service.url)}" target="_blank" rel="noopener noreferrer">Ouvrir</a>
+  <button class="btn sm" onclick="checkOneService('${service.id}')">Tester</button>
+  </div>
+  </div>`).join('')}
   </div>`;
 }
 
@@ -2916,8 +2916,8 @@ function vRappr(){
   const suggestCount=nonR.filter(t=>{ const r=bestRapprochementEntry(t); return r && !r.auto; }).length;
   return`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
   <div>
-    <strong>${nonR.length} transaction(s) en attente</strong>
-    ${autoCount||suggestCount?`<div style="font-size:11px;color:var(--txt2);margin-top:3px">${autoCount?`<span style="color:#1e7e34">● ${autoCount} match(s) fiable(s)</span>`:''} ${suggestCount?`<span style="color:var(--gold-d)">● ${suggestCount} suggestion(s) à valider</span>`:''}</div>`:''}
+  <strong>${nonR.length} transaction(s) en attente</strong>
+  ${autoCount||suggestCount?`<div style="font-size:11px;color:var(--txt2);margin-top:3px">${autoCount?`<span style="color:#1e7e34">● ${autoCount} match(s) fiable(s)</span>`:''} ${suggestCount?`<span style="color:var(--gold-d)">● ${suggestCount} suggestion(s) à valider</span>`:''}</div>`:''}
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
   <button class="btn sm gold" onclick="preselectRapprochements()">⚡ Pré-sélection auto</button>
@@ -4238,10 +4238,10 @@ function vTarifs(){
     <p style="font-size:11px;font-weight:500;color:var(--txt2);letter-spacing:.06em;margin-bottom:4px">PRODUITS COMMANDE INSCRIPTION</p>
     <p style="font-size:12px;color:var(--txt2);margin-bottom:12px">Ajoutez ici les produits optionnels affichés dans l'onglet <strong>Commande</strong> du site d'inscription. Source <strong>Gestion</strong> pour un produit libre, source <strong>Boutique</strong> pour reprendre un article du catalogue.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-      ${canWrite?`<button class="btn" onclick="addInscriptionOrderProduct('gestion')">+ Produit gestion</button>`:''}
-      ${canWrite?`<button class="btn" onclick="addInscriptionOrderProduct('boutique')">+ Produit boutique</button>`:''}
-      ${canWrite?`<button class="btn" onclick="refreshInscriptionBoutiqueProducts()">Actualiser la boutique</button>`:''}
-      ${canWrite?`<button class="btn primary" onclick="saveInscriptionOrderProducts()">💾 Sauvegarder les produits</button>`:''}
+    ${canWrite?`<button class="btn" onclick="addInscriptionOrderProduct('gestion')">+ Produit gestion</button>`:''}
+    ${canWrite?`<button class="btn" onclick="addInscriptionOrderProduct('boutique')">+ Produit boutique</button>`:''}
+    ${canWrite?`<button class="btn" onclick="refreshInscriptionBoutiqueProducts()">Actualiser la boutique</button>`:''}
+    ${canWrite?`<button class="btn primary" onclick="saveInscriptionOrderProducts()">💾 Sauvegarder les produits</button>`:''}
     </div>
     <div style="display:flex;flex-direction:column;gap:10px">${renderInscriptionOrderProductsRows(canWrite)}</div>
     </div>
@@ -4297,7 +4297,7 @@ function addInscriptionOrderProduct(source='gestion'){
     description:'',
     price:0,
     defaultQtyNew:0,
-    requiresSize:false,
+      requiresSize:false,
   }));
   setInscriptionOrderProducts(items);
   render();
@@ -4328,10 +4328,10 @@ function applyBoutiqueProductToInscriptionOrder(index,productId){
     ...item,
     source:'boutique',
     boutiqueProductId:String(product.id),
-    name:product.name,
-    description:product.description,
-    price:Number(product.price||0),
-    requiresSize:Array.isArray(product.sizes) && product.sizes.length>0,
+                                                name:product.name,
+                                                description:product.description,
+                                                price:Number(product.price||0),
+                                                requiresSize:Array.isArray(product.sizes) && product.sizes.length>0,
   });
   setInscriptionOrderProducts(items);
   render();
@@ -5399,12 +5399,17 @@ function parseCreditMutuelPdfPages(pages){
   const stopMeta=/^HT\.|^QXBAN|^IBAN|^Vous disposez|^Alerte|^Attention|^Information sur la protection|^Sous réserve|^CAISSE DE CREDIT MUTUEL|^TVA intracommunautaire|^Médiateur du Crédit Mutuel|^Pour toute demande/i;
   let debitX=null,creditX=null;
 
+  function isAmountStr(s){
+    return /^-?\d{1,3}(?:[ .]\d{3})*,\d{2}$|^-?\d+,\d{2}$/.test(normalizeLine(s));
+  }
+
   function findAmountItems(items){
     return items
-    .filter(it=>/^-?\d{1,3}(?:[ .]\d{3})*,\d{2}$|^-?\d+,\d{2}$/.test(normalizeLine(it.str)))
+    .filter(it=>isAmountStr(it.str))
     .map(it=>({value:numFr(it.str),x:(it.x||0)+((it.width||0)/2),raw:it.str}));
   }
 
+  // Calibrage : chercher les colonnes Débit/Crédit sur toutes les pages
   for(const page of pages){
     for(const line of page.lines){
       const txt=normalizeLine(line.text);
@@ -5420,7 +5425,32 @@ function parseCreditMutuelPdfPages(pages){
     }
   }
 
+  // Construire un index Y→items pour retrouver les montants sur des lignes Y proches
+  // (pdf.js peut séparer le libellé et le montant si leurs Y diffèrent légèrement)
+  function buildPageItemIndex(page){
+    const index=new Map();
+    for(const line of page.lines){
+      for(const it of line.items){
+        if(!isAmountStr(it.str)) continue;
+        const y=line.y;
+        if(!index.has(y)) index.set(y,[]);
+        index.get(y).push({value:numFr(it.str),x:(it.x||0)+((it.width||0)/2),raw:it.str,y});
+      }
+    }
+    return index;
+  }
+
+  // Chercher des montants dans un rayon Y de ±4 unités autour d'un Y de référence
+  function findAmountItemsNearY(itemIndex,refY,tolerance=4){
+    const found=[];
+    for(const [y,items] of itemIndex.entries()){
+      if(Math.abs(y-refY)<=tolerance) found.push(...items);
+    }
+    return found;
+  }
+
   for(const page of pages){
+    const itemIndex=buildPageItemIndex(page);
     let current=null;
     for(const line of page.lines){
       const txt=normalizeLine(line.text);
@@ -5431,27 +5461,51 @@ function parseCreditMutuelPdfPages(pages){
       }
       const m=txt.match(/^(\d{2}\/\d{2}\/\d{4})\s+(\d{2}\/\d{2}\/\d{4})\s+(.+?)$/);
       if(m){
-        const amountItems=findAmountItems(line.items);
+        // Chercher d'abord dans les items de la ligne, puis dans le voisinage Y
+        let amountItems=findAmountItems(line.items);
+        if(!amountItems.length) amountItems=findAmountItemsNearY(itemIndex,line.y,4);
+
         let rest=m[3].trim();
+        // Nettoyer les montants qui auraient été inclus dans le libellé
+        rest=rest.replace(/\s*(?:-?\d{1,3}(?:[ .]\d{3})*,\d{2}|-?\d+,\d{2})(\s+(?:-?\d{1,3}(?:[ .]\d{3})*,\d{2}|-?\d+,\d{2}))*\s*$/,'').trim();
+
         let debit=0,credit=0;
+
         if(amountItems.length>=2){
+          // Trier par position X : le plus à gauche = débit, le plus à droite = crédit
           const sorted=amountItems.sort((a,b)=>a.x-b.x);
-          debit=sorted[0].value||0;
-          credit=sorted[1].value||0;
-          rest=rest.replace(/\s*(?:-?\d{1,3}(?:[ .]\d{3})*,\d{2}|-?\d+,\d{2})\s*(?:-?\d{1,3}(?:[ .]\d{3})*,\d{2}|-?\d+,\d{2})\s*$/,'').trim();
+          if(debitX!=null && creditX!=null){
+            // Assigner selon proximité aux colonnes calibrées
+            for(const ai of sorted){
+              const dx=Math.abs(ai.x-debitX);
+              const cx=Math.abs(ai.x-creditX);
+              if(dx<=cx) debit=ai.value; else credit=ai.value;
+            }
+          }else{
+            debit=sorted[0].value||0;
+            credit=sorted[sorted.length-1].value||0;
+          }
         }else if(amountItems.length===1){
           const amount=amountItems[0].value||0;
-          rest=rest.replace(/\s*(?:-?\d{1,3}(?:[ .]\d{3})*,\d{2}|-?\d+,\d{2})\s*$/,'').trim();
           if(debitX!=null && creditX!=null){
             const dx=Math.abs(amountItems[0].x-debitX);
             const cx=Math.abs(amountItems[0].x-creditX);
             if(dx<=cx) debit=amount; else credit=amount;
           }else{
-            const fallback=parseCreditMutuelPdfText(`${txt}\n`);
-            debit=fallback[0]?.debit||0;
-            credit=fallback[0]?.credit||0;
+            // Fallback : inférer débit/crédit par le libellé
+            const side=((t)=>{
+              const u=t.toUpperCase();
+              if(/PRLV|FACT|VIR SEPA|BOUYGUES|OVH|CHEQUE|FRAIS|CARTE|CB /.test(u)) return 'debit';
+              if(/SOUTIEN|VIR DE|VERSEMENT|REMISE|SUBVENTION|HELLOASSO/.test(u)) return 'credit';
+              return 'debit';
+            })(rest);
+            if(side==='debit') debit=amount; else credit=amount;
           }
         }else{
+          // Aucun montant trouvé même dans le voisinage : créer la transaction sans montant
+          // pour ne pas la perdre — le montant sera cherché dans les lignes suivantes
+          current={date_op:m[1],date_valeur:frDateToISO(m[2]),libelle:rest||'Opération importée depuis PDF Crédit Mutuel',debit:0,credit:0,_pendingAmount:true,rapproche:false,source_document:'credit_mutuel_pdf',source_format:'pdf'};
+          rows.push(current);
           continue;
         }
         current={date_op:m[1],date_valeur:frDateToISO(m[2]),libelle:rest||'Opération importée depuis PDF Crédit Mutuel',debit,credit,rapproche:false,source_document:'credit_mutuel_pdf',source_format:'pdf'};
@@ -5459,11 +5513,30 @@ function parseCreditMutuelPdfPages(pages){
         continue;
       }
       if(current && !stopMeta.test(txt) && !/solde crediteur|total des mouvements|iban|qxban|information sur la protection/i.test(txt)){
-        if(!/^-?\d[\d.\s]*,\d{2}$/.test(txt)) current.libelle += ` ${txt}`;
+        // Si montant isolé sur sa propre ligne et transaction en attente de montant
+        if(current._pendingAmount && isAmountStr(txt)){
+          const amount=numFr(txt);
+          // Trouver la position X de cet item pour savoir si débit ou crédit
+          const amtItem=line.items.find(it=>isAmountStr(it.str));
+          const amtX=amtItem?((amtItem.x||0)+((amtItem.width||0)/2)):null;
+          if(debitX!=null && creditX!=null && amtX!=null){
+            const dx=Math.abs(amtX-debitX);
+            const cx=Math.abs(amtX-creditX);
+            if(dx<=cx) current.debit=amount; else current.credit=amount;
+          }else{
+            const u=current.libelle.toUpperCase();
+            if(/PRLV|FACT|VIR SEPA|BOUYGUES|OVH|CHEQUE|FRAIS|CARTE|CB /.test(u)) current.debit=amount;
+            else current.credit=amount;
+          }
+          delete current._pendingAmount;
+        }else if(!/^-?\d[\d.\s]*,\d{2}$/.test(txt)){
+          current.libelle += ` ${txt}`;
+        }
       }
     }
   }
-  return rows;
+  // Retirer les transactions sans montant résolues ni résoluble (montant = 0 des deux côtés non intentionnel)
+  return rows.filter(r=>{ delete r._pendingAmount; return r.debit!==0||r.credit!==0; });
 }
 
 async function importBankPDF(e){
@@ -5600,9 +5673,9 @@ async function preselectRapprochements(){
         if(t){ t.rapproche=true; t.ecriture_piece=item.piece; }
       }
       notify('success',
-        `${nbAuto} rapprochement(s) automatique(s) effectué(s)` +
-        (nbSuggest ? ` · ${nbSuggest} suggestion(s) manuelle(s) en attente de validation` : '') + '.',
-        'Rapprochement'
+             `${nbAuto} rapprochement(s) automatique(s) effectué(s)` +
+             (nbSuggest ? ` · ${nbSuggest} suggestion(s) manuelle(s) en attente de validation` : '') + '.',
+             'Rapprochement'
       );
     }
   } else if(nbSuggest){
