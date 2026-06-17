@@ -5401,7 +5401,7 @@ function parseCreditMutuelPdfText(text){
 
   function inferBankSide(libelle){
     const t=(libelle||'').toUpperCase();
-    if(/VIR EPARGNE|PASSEPORT SPOR|FULL FIGHTING|VIR ACHAT|ACHAT | ACHAT|PRLV|FACT|CARTE|CB |COTIS\.|VIR SEPA|CHEQUE|CHQ|FRAIS|TEL(E|É)COM|BOUYGUES|ORANGE|SFR/.test(t)) return 'debit';
+    if(/VIR EPARGNE|PASSEPORT SPOR|FULL FIGHTING|VIR ACHAT|ACHAT | ACHAT|PRLV|FACT|MULTI ASSO|CARTE|CB |COTIS\.|VIR SEPA|CHEQUE|CHQ|FRAIS|TEL(E|É)COM|BOUYGUES|ORANGE|SFR/.test(t)) return 'debit';
     if(/VIR DE|VIR INST|VERSEMENT|REMISE|SOUTIEN|SUBVENTION|HELLOASSO|COTISATION|PASSAGE CEINTURE/.test(t)) return 'credit';
     return 'credit';
   }
@@ -5578,7 +5578,7 @@ function parseCreditMutuelPdfPages(pages){
             // Fallback : inférer débit/crédit par le libellé
             const side=((t)=>{
               const u=t.toUpperCase();
-              if(/PRLV|FACT|VIR SEPA|BOUYGUES|OVH|CHEQUE|FRAIS|CARTE|CB /.test(u)) return 'debit';
+              if(/PRLV|FACT|VIR SEPA|BOUYGUES|OVH|CHEQUE|FRAIS|CARTE|CB |MULTI ASSO/.test(u)) return 'debit';
               if(/SOUTIEN|VIR DE|VERSEMENT|REMISE|SUBVENTION|HELLOASSO/.test(u)) return 'credit';
               return 'debit';
             })(rest);
@@ -5608,7 +5608,7 @@ function parseCreditMutuelPdfPages(pages){
             if(dx<=cx) current.debit=amount; else current.credit=amount;
           }else{
             const u=current.libelle.toUpperCase();
-            if(/PRLV|FACT|VIR SEPA|BOUYGUES|OVH|CHEQUE|FRAIS|CARTE|CB /.test(u)) current.debit=amount;
+            if(/PRLV|FACT|VIR SEPA|BOUYGUES|OVH|CHEQUE|FRAIS|CARTE|CB |MULTI ASSO/.test(u)) current.debit=amount;
             else current.credit=amount;
           }
           delete current._pendingAmount;
