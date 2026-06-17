@@ -5754,6 +5754,24 @@ async function rapprocher(id,i){
 const RAPPR_AUTO_THRESHOLD   = 3.5;
 const RAPPR_SUGGEST_THRESHOLD = 1.5;
 
+// Mots-parasites fréquents dans les libellés bancaires qui n'apportent aucune
+// information de matching (codes opérateur, mentions génériques de virement...)
+// On les retire avant comparaison pour ne pas polluer le score de libellé.
+const RAPPR_STOPWORDS = new Set([
+  'virement','vir','carte','paiement','prelevement','prélèvement','cb',
+  'reference','référence','ref','operation','opération','date','valeur',
+  'compte','vers','depuis','recu','reçu','helloasso','sepa','achat','frais'
+]);
+
+function normalizeLibelleWords(libelle){
+  return (libelle||'')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // retire les accents pour un matching plus robuste
+    .replace(/\d{4,}/g,' ') // retire les longues suites de chiffres (références, n° d'opération)
+    .split(/\W+/)
+    .filter(w=>w.length>=4 && !RAPPR_STOPWORDS.has(w));
+}
+
 function scoreRapprochement(transaction, entry){
   let score = 0;
   const txAmount  = Math.max(+transaction.credit||0, +transaction.debit||0);
@@ -5777,9 +5795,9 @@ function scoreRapprochement(transaction, entry){
   const entIsDebit  = (+entry.debit||0) > 0;
   if(txIsDebit === entIsDebit) score += 0.5;
 
-  // Matching libellé — mots significatifs en commun
-  const txWords  = (transaction.libelle||'').toLowerCase().split(/\W+/).filter(w=>w.length>=4);
-  const entWords = (entry.libelle||'').toLowerCase().split(/\W+/).filter(w=>w.length>=4);
+  // Matching libellé — mots significatifs en commun, nettoyés des parasites bancaires
+  const txWords  = normalizeLibelleWords(transaction.libelle);
+  const entWords = normalizeLibelleWords(entry.libelle);
   const common   = txWords.filter(w=>entWords.includes(w));
   if(common.length >= 2)      score += 1;
   else if(common.length === 1) score += 0.5;
@@ -5787,16 +5805,30 @@ function scoreRapprochement(transaction, entry){
   return score;
 }
 
+// Pièces déjà associées à une transaction rapprochée : on les exclut des
+// suggestions pour éviter qu'une même écriture serve deux fois (montants
+// identiques récurrents type cotisations à tarif fixe, dons mensuels...).
+function consumedPieces(){
+  const consumed = new Set();
+  D.comptes.flatMap(c=>c.transactions||[]).forEach(t=>{
+    if(t.rapproche && t.ecriture_piece) consumed.add(t.ecriture_piece);
+  });
+  return consumed;
+}
+
 function suggestRapprochementPiece(transaction){
   const result = bestRapprochementEntry(transaction);
   return result?.entry?.piece || '';
 }
 
-function bestRapprochementEntry(transaction){
+function bestRapprochementEntry(transaction, excludePieces=null){
+  const excluded = excludePieces || consumedPieces();
   let best = null;
   let bestScore = 0;
   for(const entry of D.journal){
     if(!entry.piece && !entry.id) continue;
+    const pieceKey = entry.piece || entry.id.slice(0,8);
+    if(excluded.has(pieceKey)) continue; // déjà consommée par un autre rapprochement
     const score = scoreRapprochement(transaction, entry);
     if(score > bestScore){ bestScore = score; best = entry; }
   }
@@ -5804,19 +5836,55 @@ function bestRapprochementEntry(transaction){
   return { entry: best, score: bestScore, auto: bestScore >= RAPPR_AUTO_THRESHOLD };
 }
 
+// ─── Rapprochement groupé (plusieurs transactions ↔ une même pièce) ───────
+// Cas typique : HelloAsso reverse en un seul virement bancaire la somme de
+// plusieurs adhésions/dons enregistrés comme écritures distinctes au journal.
+// On regroupe les pièces du journal par préfixe normalisé et on teste si la
+// somme d'un sous-ensemble de transactions non rapprochées correspond.
+function findGroupedRapprochement(transactions){
+  const byPiece = {};
+  D.journal.forEach(j=>{
+    const key = j.piece || j.id.slice(0,8);
+    if(!byPiece[key]) byPiece[key] = { piece:key, rows:[], amount:0, date:j.date_op };
+    byPiece[key].rows.push(j);
+    byPiece[key].amount += (+j.credit||0) - (+j.debit||0);
+  });
+  const consumed = consumedPieces();
+  const candidates = Object.values(byPiece).filter(g=>!consumed.has(g.piece) && g.rows.length>1);
+
+  const results = [];
+  for(const group of candidates){
+    const groupAmount = Math.abs(group.amount);
+    if(groupAmount < 0.01) continue;
+    // cherche un sous-ensemble de transactions bancaires (même sens) dont la somme colle à ±0.02€
+    const pool = transactions.filter(t=>!t.rapproche);
+    for(let i=0;i<pool.length;i++){
+      for(let j=i+1;j<pool.length;j++){
+        const sum = (+pool[i].credit||0)+(+pool[i].debit||0)+(+pool[j].credit||0)+(+pool[j].debit||0);
+        if(Math.abs(sum-groupAmount)<0.02){
+          results.push({ piece:group.piece, transactionIds:[pool[i].id,pool[j].id], amount:groupAmount });
+        }
+      }
+    }
+  }
+  return results;
+}
+
 async function preselectRapprochements(){
   const transactions = D.comptes.flatMap(c=>c.transactions||[]);
   const toAutoRapproch = [];
+  const excluded = consumedPieces(); // mutée localement pour éviter d'attribuer deux fois la même pièce dans cette même passe
   let nbAuto = 0; let nbSuggest = 0;
 
   transactions.forEach((transaction, index)=>{
     if(transaction.rapproche) return;
-    const result = bestRapprochementEntry(transaction);
+    const result = bestRapprochementEntry(transaction, excluded);
     if(!result) return;
     const piece = result.entry.piece || result.entry.id.slice(0,8);
     if(result.auto){
       // Haute confiance → on marque pour rapprochement automatique
       toAutoRapproch.push({ id: transaction.id, piece, transaction, index });
+      excluded.add(piece); // ne plus la proposer aux transactions suivantes de cette passe
       nbAuto++;
     } else {
       // Confiance moyenne → pré-sélection manuelle uniquement
@@ -5825,12 +5893,16 @@ async function preselectRapprochements(){
     }
   });
 
+  const grouped = findGroupedRapprochement(transactions);
+  const nbGrouped = grouped.length;
+
   // Rapprochement automatique en base pour les matches haute confiance
   if(toAutoRapproch.length){
     const confirmed = confirm(
       `${nbAuto} transaction(s) ont un match fiable et seront rapprochées automatiquement.\n` +
-      `${nbSuggest} autre(s) ont été pré-sélectionnées pour validation manuelle.\n\n` +
-      `Confirmer le rapprochement automatique ?`
+      `${nbSuggest} autre(s) ont été pré-sélectionnées pour validation manuelle.\n` +
+      (nbGrouped?`${nbGrouped} regroupement(s) possible(s) détecté(s) (ex: virement groupé HelloAsso) — à valider manuellement dans l'onglet Rapprochement groupé.\n`:'') +
+      `\nConfirmer le rapprochement automatique ?`
     );
     if(confirmed){
       for(const item of toAutoRapproch){
@@ -5840,12 +5912,16 @@ async function preselectRapprochements(){
       }
       notify('success',
              `${nbAuto} rapprochement(s) automatique(s) effectué(s)` +
-             (nbSuggest ? ` · ${nbSuggest} suggestion(s) manuelle(s) en attente de validation` : '') + '.',
+             (nbSuggest ? ` · ${nbSuggest} suggestion(s) manuelle(s) en attente de validation` : '') +
+             (nbGrouped ? ` · ${nbGrouped} regroupement(s) possible(s) à examiner` : '') + '.',
              'Rapprochement'
       );
     }
-  } else if(nbSuggest){
-    notify('info', `${nbSuggest} suggestion(s) pré-sélectionnée(s) — vérifiez et validez chaque ligne.`, 'Rapprochement');
+  } else if(nbSuggest || nbGrouped){
+    notify('info',
+           `${nbSuggest} suggestion(s) pré-sélectionnée(s)` +
+           (nbGrouped?` · ${nbGrouped} regroupement(s) possible(s) détecté(s)`:'') +
+           ` — vérifiez et validez chaque ligne.`, 'Rapprochement');
   } else {
     notify('warn', 'Aucun rapprochement possible trouvé. Vérifiez que le journal comptable est bien renseigné.', 'Rapprochement');
   }
@@ -5859,6 +5935,16 @@ async function toutRappr(){
   await SB.from('transactions').update({rapproche:true}).in('id',ids);
   D.comptes.forEach(c=>(c.transactions||[]).forEach(t=>{t.rapproche=true}));
   notify('success', `${ids.length} transaction(s) rapprochées.`, 'Rapprochement');
+  render();
+}
+
+// Annule un rapprochement effectué par erreur (auto ou manuel).
+async function annulerRapprochement(id){
+  if(!confirm('Annuler le rapprochement de cette transaction ?')) return;
+  await SB.from('transactions').update({rapproche:false, ecriture_piece:null}).eq('id',id);
+  const t=D.comptes.flatMap(c=>c.transactions||[]).find(x=>x.id===id);
+  if(t){ t.rapproche=false; t.ecriture_piece=null; }
+  notify('info','Rapprochement annulé — la transaction repasse en attente.','Rapprochement');
   render();
 }
 
