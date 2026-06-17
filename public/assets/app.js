@@ -5456,7 +5456,10 @@ function parseCreditMutuelPdfPages(pages){
     const itemIndex=buildPageItemIndex(page);
     let current=null;
     for(const line of page.lines){
-      const txt=normalizeLine(line.text);
+      // Retire le filigrane vertical de fond (ex: "HT.20260601.051243.5001.0084.1000 X 0 2")
+      // qui se superpose parfois en tête de ligne avec le même Y qu'une ligne d'opération.
+      let txt=normalizeLine(line.text).replace(/^(?:HT\.[\d.]+\s+)?[A-Z0-9]{1,2}\s+(?=\d{2}\/\d{2}\/\d{4}\b)/,'');
+      txt=normalizeLine(txt);
       if(!txt) continue;
       if(/solde crediteur|solde débiteur|releve et informations bancaires|iban|page \d+|total des mouvements/i.test(txt) || stopMeta.test(txt)){
         if(stopMeta.test(txt)) current=null;
