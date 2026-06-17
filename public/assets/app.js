@@ -2808,7 +2808,7 @@ function vComptes(){
   }
   return`${canWrite?`<button class="btn primary" style="margin-bottom:14px" onclick="openModal('compte')">+ Ajouter un compte</button>`:''}
   ${D.comptes.map(c=>{
-    const tr=c.transactions||[];
+    const tr=[...(c.transactions||[])].sort((a,b)=>compareFrDates(b.date_op,a.date_op));
     const cr=tr.reduce((s,t)=>s+(+t.credit),0);
     const db=tr.reduce((s,t)=>s+(+t.debit),0);
     const sol=(+c.solde_initial)+cr-db;
@@ -5319,7 +5319,7 @@ async function importBankCSV(e){
     // Fusionner sans doublons en mémoire (l'upsert peut retourner des lignes déjà existantes)
     const existingIds=new Set((c.transactions||[]).map(t=>t.id));
     const newTx=(data||[]).filter(t=>!existingIds.has(t.id));
-    c.transactions=[...(c.transactions||[]),...newTx];
+    c.transactions=[...(c.transactions||[]),...newTx].sort((a,b)=>compareFrDates(b.date_op,a.date_op));
     alert(`${newTx.length} nouvelle(s) transaction(s) importée(s) !`);render();
   };
   r.readAsText(file,'ISO-8859-1');
@@ -5578,8 +5578,8 @@ function parseCreditMutuelPdfPages(pages){
             // Fallback : inférer débit/crédit par le libellé
             const side=((t)=>{
               const u=t.toUpperCase();
-              if(/PRLV|FACT|VIR SEPA|BOUYGUES|OVH|CHEQUE|FRAIS|CARTE|CB |MULTI ASSO/.test(u)) return 'debit';
-              if(/SOUTIEN|VIR DE|VERSEMENT|REMISE|SUBVENTION|HELLOASSO/.test(u)) return 'credit';
+              if(/VIR EPARGNE|PASSEPORT SPOR|VIR ACHAT|PRLV|FACT|VIR SEPA|BOUYGUES|OVH|CHEQUE|FRAIS|CARTE|CB |MULTI ASSO/.test(u)) return 'debit';
+              if(/SOUTIEN|VIR DE|VIR INST|VERSEMENT|REMISE|SUBVENTION|HELLOASSO/.test(u)) return 'credit';
               return 'debit';
             })(rest);
             if(side==='debit') debit=amount; else credit=amount;
@@ -5608,7 +5608,7 @@ function parseCreditMutuelPdfPages(pages){
             if(dx<=cx) current.debit=amount; else current.credit=amount;
           }else{
             const u=current.libelle.toUpperCase();
-            if(/PRLV|FACT|VIR SEPA|BOUYGUES|OVH|CHEQUE|FRAIS|CARTE|CB |MULTI ASSO/.test(u)) current.debit=amount;
+            if(/VIR EPARGNE|PASSEPORT SPOR|VIR ACHAT|PRLV|FACT|VIR SEPA|BOUYGUES|OVH|CHEQUE|FRAIS|CARTE|CB |MULTI ASSO/.test(u)) current.debit=amount;
             else current.credit=amount;
           }
           delete current._pendingAmount;
@@ -5685,7 +5685,7 @@ async function confirmBankImport(){
   if(error) return alert('Erreur : '+error.message);
   const existingIds=new Set((c.transactions||[]).map(t=>t.id));
   const newTx=(data||[]).filter(t=>!existingIds.has(t.id));
-  c.transactions=[...(c.transactions||[]),...newTx];
+  c.transactions=[...(c.transactions||[]),...newTx].sort((a,b)=>compareFrDates(b.date_op,a.date_op));
   UI.bankPreview=null;
   closeModal();
   render();
