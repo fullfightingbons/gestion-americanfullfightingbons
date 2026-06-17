@@ -201,6 +201,9 @@ const UI = {
   diplome:{adherentId:'',date:td(),templatePath:'',titre:'Diplôme de ceinture',selectedField:'nomComplet'},
   invState:{numero:'FAC-001',date:td(),destinataire:'',adresse:'',objet:'',lignes:[{desc:'',qte:1,pu:0}],notes:''},
   invKind:'facture',
+  glFilter:'',
+  glClassFilter:'',
+  rapprMultiSel:{},
 };
 let IMP = {
   adh:{raw:'',headers:[],rows:[],mapping:{},sep:';',importing:false},
@@ -2878,17 +2881,25 @@ function vCompteDetail(c){
   <div style="font-weight:600;margin-top:4px">${c.numero||'Non renseigné'}</div>
   </div>
   <div class="wrap"><table>
-  <thead><tr><th>Date</th><th>Valeur</th><th>Libellé</th><th>Débit</th><th>Crédit</th><th>Rapproché</th><th>Pièce</th></tr></thead>
-  <tbody>${tr.map(t=>`<tr>
+  <thead><tr><th>Date</th><th>Valeur</th><th>Libellé</th><th>Débit</th><th>Crédit</th><th>Rapproché</th><th>Pièce(s)</th><th></th></tr></thead>
+  <tbody>${tr.map(t=>{
+    let piecesLiees=[];
+    if(t.rapproche){
+      if(t.ecriture_pieces_json){try{piecesLiees=JSON.parse(t.ecriture_pieces_json);}catch(e){}}
+      if(!piecesLiees.length&&t.ecriture_piece)piecesLiees=[t.ecriture_piece];
+    }
+    return`<tr>
     <td>${fd(frDateToISO(t.date_op)||t.date_op)||''}</td>
     <td>${fd(t.date_valeur)||'—'}</td>
     <td>${t.libelle||''}</td>
     <td style="color:var(--red);text-align:right">${+t.debit>0?(+t.debit).toFixed(2)+' €':'-'}</td>
     <td style="color:#1e7e34;text-align:right">${+t.credit>0?(+t.credit).toFixed(2)+' €':'-'}</td>
     <td>${t.rapproche?`<span class="badge bok">✓</span>`:`<span class="badge bwarn">En attente</span>`}</td>
-    <td style="font-size:11px;color:var(--txt2)">${t.ecriture_piece||'—'}</td>
-    </tr>`).join('')}
-    ${tr.length===0?`<tr><td colspan="7" class="empty">Aucune opération sur ce compte</td></tr>`:''}
+    <td style="font-size:11px;color:var(--txt2)">${piecesLiees.length?piecesLiees.map(p=>`<span class="badge bok" style="margin-right:2px">${esc(p)}</span>`).join(''):'—'}</td>
+    <td>${t.rapproche?`<button class="btn sm bwarn" onclick="modifierRapprochement('${t.id}')" title="Corriger le rapprochement" style="font-size:10px;padding:2px 6px">✎</button>`:''}
+    </td>
+    </tr>`;}).join('')}
+    ${tr.length===0?`<tr><td colspan="8" class="empty">Aucune opération sur ce compte</td></tr>`:''}
     </tbody>
     </table></div>`;
 }
@@ -2970,38 +2981,96 @@ function vBankImport(){
 function vRappr(){
   const all=D.comptes.flatMap(c=>(c.transactions||[]).map(t=>({...t,cname:c.nom})));
   const nonR=all.filter(t=>!t.rapproche);
+  const doneR=all.filter(t=>t.rapproche);
   const autoCount=nonR.filter(t=>{ const r=bestRapprochementEntry(t); return r?.auto; }).length;
   const suggestCount=nonR.filter(t=>{ const r=bestRapprochementEntry(t); return r && !r.auto; }).length;
+  const grouped=findGroupedRapprochement(all);
+
+  const groupPanel=grouped.length?`
+  <div class="card" style="margin-bottom:14px;border-left:3px solid var(--gold-d)">
+  <div style="font-weight:600;margin-bottom:8px">🔗 ${grouped.length} regroupement(s) bancaire(s) détecté(s)</div>
+  <p style="font-size:12px;color:var(--txt2);margin-bottom:10px">Ces groupes de transactions correspondent ensemble à une même écriture comptable (remise de chèques, virement groupé HelloAsso).</p>
+  ${grouped.map(g=>`
+    <div style="background:var(--bg2);border-radius:6px;padding:10px;margin-bottom:8px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px">
+    <div>
+      <span class="badge bblue" style="margin-right:6px">Pièce : ${esc(g.piece)}</span>
+      <span class="badge bgray">${g.nbTx} transaction(s) → ${g.amount.toFixed(2)} €</span>
+    </div>
+    <button class="btn sm primary" onclick="validerGroupeRapprochement(${JSON.stringify(g.transactionIds)},'${esc(g.piece)}')">✓ Valider</button>
+    </div>
+    <div style="margin-top:8px;font-size:11px;color:var(--txt2)">
+    ${g.transactions.map(t=>`<div style="padding:2px 0">${fd(frDateToISO(t.date_op)||t.date_op)||''} — ${esc(t.libelle||'')} — ${((+t.credit||0)+(+t.debit||0)).toFixed(2)} €</div>`).join('')}
+    </div>
+    </div>`).join('')}
+  </div>`:'';
+
+  const rows=all.map((t,i)=>{
+    const result=!t.rapproche?bestRapprochementEntry(t):null;
+    const confidence=result?Math.round((result.score/5)*100):0;
+    const confBadge=result?(result.auto?`<span class="badge bok">Haute ${confidence}%</span>`:`<span class="badge bwarn">Moyenne ${confidence}%</span>`):`<span class="badge bgray">—</span>`;
+    let piecesLiees=[];
+    if(t.rapproche){
+      if(t.ecriture_pieces_json){try{piecesLiees=JSON.parse(t.ecriture_pieces_json);}catch(e){}}
+      if(!piecesLiees.length&&t.ecriture_piece)piecesLiees=[t.ecriture_piece];
+    }
+    const multiSel=UI.rapprMultiSel[t.id]||[];
+    const ecritureCell=t.rapproche
+      ?`<div>${piecesLiees.map(p=>`<span class="badge bok" style="margin-right:3px;margin-bottom:3px">${esc(p)}</span>`).join('')}${piecesLiees.length>1?`<div style="font-size:10px;color:var(--txt2);margin-top:2px">${piecesLiees.length} pièces liées</div>`:''}</div>`
+      :`<div style="font-size:11px">
+        <div style="margin-bottom:4px">
+        <select style="font-size:11px;padding:3px 6px;width:auto" id="ecr-${i}">
+          <option value="">-- Pièce unique --</option>
+          ${D.journal.map(j=>`<option value="${esc(j.piece||j.id.slice(0,8))}" ${suggestRapprochementPiece(t)===(j.piece||j.id.slice(0,8))?'selected':''}>${esc(j.piece||'')} ${esc((j.libelle||'').slice(0,20))}</option>`).join('')}
+        </select>
+        </div>
+        <details style="margin-top:4px">
+        <summary style="font-size:10px;cursor:pointer;color:var(--txt2)">🔗 Multi-rapprochement (remise chèques / virement groupé)</summary>
+        <div style="margin-top:6px;max-height:140px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;padding:4px">
+        ${D.journal.map(j=>{const pk=j.piece||j.id.slice(0,8);const checked=multiSel.includes(pk);return`<label style="display:flex;align-items:center;gap:6px;padding:2px 4px;font-size:11px;cursor:pointer;${checked?'background:rgba(30,126,52,.08);border-radius:3px':''}"><input type="checkbox" ${checked?'checked':''} onchange="toggleMultiSel('${t.id}','${esc(pk)}')">${esc(pk)} — ${esc((j.libelle||'').slice(0,22))} (${((+j.credit||0)-(+j.debit||0)).toFixed(2)} €)</label>`;}).join('')}
+        </div>
+        ${multiSel.length?`<div style="margin-top:6px;font-size:11px;color:#1e7e34">${multiSel.length} pièce(s) cochée(s)</div>`:''}
+        </details>
+      </div>`;
+    const actionCell=t.rapproche
+      ?`<div style="display:flex;gap:4px;flex-wrap:wrap">
+          <button class="btn sm bwarn" onclick="modifierRapprochement('${t.id}')" title="Choisir une autre écriture">✎ Corriger</button>
+          <button class="btn sm" style="background:var(--red);color:#fff" onclick="annulerRapprochement('${t.id}')" title="Annuler le rapprochement">✕</button>
+        </div>`
+      :`<div style="display:flex;gap:4px;flex-wrap:wrap">
+          <button class="btn sm" onclick="rapprocher('${t.id}',${i})">✓ Valider</button>
+          ${multiSel.length?`<button class="btn sm primary" onclick="rapprocherMulti('${t.id}')">🔗 Multi (${multiSel.length})</button>`:''}
+        </div>`;
+    return`<tr>
+    <td>${fd(frDateToISO(t.date_op)||t.date_op)||''}</td>
+    <td>${esc(t.libelle||'')}</td>
+    <td style="font-size:11px">${esc(t.cname||'')}</td>
+    <td style="color:var(--red);text-align:right">${+t.debit>0?(+t.debit).toFixed(2)+' €':'-'}</td>
+    <td style="color:#1e7e34;text-align:right">${+t.credit>0?(+t.credit).toFixed(2)+' €':'-'}</td>
+    <td>${ecritureCell}</td>
+    <td>${t.rapproche?'':confBadge}</td>
+    <td>${t.rapproche?`<span class="badge bok">✓ Rapprochée</span>`:`<span class="badge bwarn">En attente</span>`}</td>
+    <td>${actionCell}</td>
+    </tr>`;
+  }).join('');
+
   return`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
   <div>
-  <strong>${nonR.length} transaction(s) en attente</strong>
-  ${autoCount||suggestCount?`<div style="font-size:11px;color:var(--txt2);margin-top:3px">${autoCount?`<span style="color:#1e7e34">● ${autoCount} match(s) fiable(s)</span>`:''} ${suggestCount?`<span style="color:var(--gold-d)">● ${suggestCount} suggestion(s) à valider</span>`:''}</div>`:''}
+  <strong>${nonR.length} en attente · ${doneR.length} rapprochée(s)</strong>
+  ${autoCount||suggestCount?`<div style="font-size:11px;color:var(--txt2);margin-top:3px">${autoCount?`<span style="color:#1e7e34">● ${autoCount} fiable(s)</span>`:''} ${suggestCount?`<span style="color:var(--gold-d)">● ${suggestCount} à valider</span>`:''}</div>`:''}
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
   <button class="btn sm gold" onclick="preselectRapprochements()">⚡ Pré-sélection auto</button>
   <button class="btn sm primary" onclick="toutRappr()">Tout rapprocher</button>
   </div>
   </div>
+  ${groupPanel}
   ${all.length===0?`<div class="empty">Importez d'abord un relevé bancaire</div>`:`
-    <div class="wrap"><table>
-    <thead><tr><th>Date</th><th>Libellé</th><th>Compte</th><th>Débit</th><th>Crédit</th><th>Écriture suggérée</th><th>Confiance</th><th>Statut</th><th></th></tr></thead>
-    <tbody>${all.map((t,i)=>{
-      const result=!t.rapproche?bestRapprochementEntry(t):null;
-      const confidence=result?Math.round((result.score/5)*100):0;
-      const confBadge=result?(result.auto?`<span class="badge bok">Haute ${confidence}%</span>`:`<span class="badge bwarn">Moyenne ${confidence}%</span>`):`<span class="badge bgray">—</span>`;
-      return`<tr>
-      <td>${fd(frDateToISO(t.date_op)||t.date_op)||''}</td><td>${esc(t.libelle||'')}</td><td style="font-size:11px">${esc(t.cname||'')}</td>
-      <td style="color:var(--red);text-align:right">${+t.debit>0?(+t.debit).toFixed(2)+' €':'-'}</td>
-      <td style="color:#1e7e34;text-align:right">${+t.credit>0?(+t.credit).toFixed(2)+' €':'-'}</td>
-      <td>${t.rapproche?`<span class="badge bok">${esc(t.ecriture_piece||'✓')}</span>`:`<select style="font-size:11px;padding:3px 6px;width:auto" id="ecr-${i}"><option value="">--</option>${D.journal.map(j=>`<option value="${esc(j.piece||j.id.slice(0,8))}" ${suggestRapprochementPiece(t)===(j.piece||j.id.slice(0,8))?'selected':''}>${esc(j.piece||'')} ${esc((j.libelle||'').slice(0,22))}</option>`).join('')}</select>`}</td>
-      <td>${t.rapproche?'':confBadge}</td>
-      <td>${t.rapproche?`<span class="badge bok">✓ Rapprochée</span>`:`<span class="badge bwarn">En attente</span>`}</td>
-      <td>${!t.rapproche?`<button class="btn sm" onclick="rapprocher('${t.id}',${i})">✓</button>`:''}</td>
-      </tr>`;}).join('')}
-      </tbody>
-      </table></div>`}`;
+  <div class="wrap"><table>
+  <thead><tr><th>Date</th><th>Libellé</th><th>Compte</th><th>Débit</th><th>Crédit</th><th>Écriture(s)</th><th>Confiance</th><th>Statut</th><th>Actions</th></tr></thead>
+  <tbody>${rows}</tbody>
+  </table></div>`}`;
 }
-
 function vEcr512(){
   const e=D.journal.filter(j=>j.compte&&j.compte.startsWith('512'));
   const sol=e.reduce((s,j)=>s+(+j.credit)-(+j.debit),0);
@@ -3337,31 +3406,83 @@ function vJournal(){
 
 function vGL(){
   const jnl=jnlExo();
+  // Tri des écritures par date pour un solde progressif correct dans chaque compte
+  const sorted=[...jnl].sort((a,b)=>(a.date_op||'').localeCompare(b.date_op||''));
   const by={};
-  jnl.forEach(j=>{if(!by[j.compte])by[j.compte]=[];by[j.compte].push(j)});
-  return`${Object.keys(by).sort().map(acc=>{
+  sorted.forEach(j=>{if(!by[j.compte])by[j.compte]=[];by[j.compte].push(j);});
+  const filter=(UI.glFilter||'').toLowerCase().trim();
+  const classFilter=UI.glClassFilter||'';
+  const allAccs=Object.keys(by).sort();
+  const filteredAccs=allAccs.filter(acc=>{
+    if(filter&&!acc.toLowerCase().includes(filter)) return false;
+    if(classFilter&&!acc.startsWith(classFilter)) return false;
+    return true;
+  });
+
+  // Classes présentes
+  const classesPresentes=[...new Set(allAccs.map(a=>a[0]))].filter(c=>'1234567'.includes(c)).sort();
+  const classLabels={'1':'Cl.1 Fonds propres','2':'Cl.2 Immobilisations','3':'Cl.3 Stocks','4':'Cl.4 Tiers','5':'Cl.5 Trésorerie','6':'Cl.6 Charges','7':'Cl.7 Produits'};
+
+  // Totalisation globale sur les comptes filtrés
+  const totalD=filteredAccs.reduce((s,acc)=>s+by[acc].reduce((r,j)=>r+(+j.debit||0),0),0);
+  const totalC=filteredAccs.reduce((s,acc)=>s+by[acc].reduce((r,j)=>r+(+j.credit||0),0),0);
+
+  let lastClass='';
+  const rows=filteredAccs.map(acc=>{
     const en=by[acc];
-    const tD=en.reduce((s,j)=>s+(+j.debit),0),tC=en.reduce((s,j)=>s+(+j.credit),0),sol=tC-tD;
-    return`<div class="gl-acc">
+    const tD=en.reduce((s,j)=>s+(+j.debit||0),0);
+    const tC=en.reduce((s,j)=>s+(+j.credit||0),0);
+    const sol=tC-tD;
+    const cls=acc[0]||'';
+    let classBanner='';
+    if(cls!==lastClass&&'1234567'.includes(cls)){
+      lastClass=cls;
+      const clsTotal=allAccs.filter(a=>a.startsWith(cls)).reduce((s,a)=>{
+        const enC=by[a]||[];
+        return s+enC.reduce((r,j)=>r+(+j.credit||0)-(+j.debit||0),0);
+      },0);
+      classBanner=`<div style="margin-top:16px;margin-bottom:6px;padding:6px 10px;background:var(--bg3,#f0f0f0);border-radius:6px;font-weight:600;font-size:12px;display:flex;justify-content:space-between;align-items:center">
+        <span>${classLabels[cls]||('Classe '+cls)}</span>
+        <span style="font-size:11px;font-weight:400;color:${clsTotal>=0?'#1e7e34':'var(--red)'}">Solde net : ${clsTotal>=0?'+':''}${clsTotal.toFixed(2)} €</span>
+      </div>`;
+    }
+    return classBanner+`<div class="gl-acc">
     <div class="gl-hdr"><strong>${acc}</strong><span style="font-size:12px;color:${sol>=0?'#1e7e34':'var(--red)'}">Solde : ${sol>=0?'+':''}${sol.toFixed(2)} €</span></div>
-    <div class="gl-row gl-head"><span>Date</span><span>Libellé</span><span style="text-align:right">Débit</span><span style="text-align:right">Crédit</span><span style="text-align:right">Cumulé</span></div>
-    ${(()=>{let s=0;return en.map(j=>{s+=(+j.credit)-(+j.debit);return`<div class="gl-row">
-      <span>${fd(j.date_op)}</span><span>${j.libelle}<br><span style="font-size:10px;color:var(--txt2)">${j.piece||''}</span></span>
+    <div class="gl-row gl-head"><span>Date</span><span>Libellé / Pièce</span><span style="text-align:right">Débit</span><span style="text-align:right">Crédit</span><span style="text-align:right">Cumulé</span></div>
+    ${(()=>{let s=0;return en.map(j=>{s+=(+j.credit||0)-(+j.debit||0);return`<div class="gl-row">
+      <span style="font-size:11px">${fd(j.date_op)||'—'}</span>
+      <span>${esc(j.libelle||'')}<br><span style="font-size:10px;color:var(--txt2)">${esc(j.piece||'')}</span></span>
       <span style="color:var(--red);text-align:right">${+j.debit>0?(+j.debit).toFixed(2)+' €':''}</span>
       <span style="color:#1e7e34;text-align:right">${+j.credit>0?(+j.credit).toFixed(2)+' €':''}</span>
-      <span style="text-align:right;font-weight:500;color:${s>=0?'#1e7e34':'var(--red)'}">${s.toFixed(2)} €</span>
+      <span style="text-align:right;font-weight:500;color:${s>=0?'#1e7e34':'var(--red)'};">${s.toFixed(2)} €</span>
       </div>`;}).join('');})()}
-      <div class="gl-row" style="background:var(--bg2);font-weight:500">
+    <div class="gl-row" style="background:var(--bg2);font-weight:500">
       <span></span><span>Totaux</span>
       <span style="color:var(--red);text-align:right">${tD.toFixed(2)} €</span>
       <span style="color:#1e7e34;text-align:right">${tC.toFixed(2)} €</span>
       <span style="text-align:right;color:${sol>=0?'#1e7e34':'var(--red)'}">${sol.toFixed(2)} €</span>
-      </div>
-      </div>`;
-  }).join('')}
-  ${Object.keys(by).length===0?`<div class="empty">Aucune écriture</div>`:''}`;
-}
+    </div>
+    </div>`;
+  }).join('');
 
+  return`<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <input type="text" placeholder="🔍 Filtrer par compte..." value="${esc(UI.glFilter||'')}"
+      oninput="UI.glFilter=this.value;UI.glClassFilter='';render()"
+      style="padding:5px 10px;font-size:12px;border:1px solid var(--border);border-radius:6px;width:200px">
+    <div style="display:flex;gap:4px;flex-wrap:wrap">
+      <button class="btn sm ${!UI.glClassFilter?'primary':''}" onclick="UI.glClassFilter='';UI.glFilter='';render()">Tout</button>
+      ${classesPresentes.map(c=>`<button class="btn sm ${UI.glClassFilter===c?'primary':''}" onclick="UI.glClassFilter='${c}';UI.glFilter='';render()" title="${classLabels[c]||''}">Cl.${c}</button>`).join('')}
+    </div>
+  </div>
+  <button class="btn sm" onclick="exportGLCSV()">⬇ Export CSV</button>
+  </div>
+  <div style="font-size:11px;color:var(--txt2);margin-bottom:10px">
+    ${filteredAccs.length} compte(s) affiché(s) · Total débit : ${totalD.toFixed(2)} € · Total crédit : ${totalC.toFixed(2)} € · Écart : <span style="color:${Math.abs(totalD-totalC)<0.01?'#1e7e34':'var(--red)'}">${(totalC-totalD).toFixed(2)} €</span>
+  </div>
+  ${rows}
+  ${filteredAccs.length===0?`<div class="empty">Aucune écriture${filter||classFilter?' pour ce filtre':''}</div>`:''}`;
+}
 function sumJournal(regex,side){
   return jnlExo()
   .filter(j=>j.compte&&regex.test(j.compte))
@@ -4560,6 +4681,7 @@ function vBackup(){
   <button class="btn sm" onclick="exportCSV()">Adhérents</button>
   <button class="btn sm" onclick="exportAchatsCSV()">Achats</button>
   <button class="btn sm" onclick="exportJournalCSV()">Journal</button>
+  <button class="btn sm" onclick="exportGLCSV()">Grand livre</button>
   </div>
   </div>
   <p style="font-size:12px;color:var(--txt2);margin-top:12px">✓ Données sauvegardées automatiquement dans Supabase à chaque action.</p>
@@ -5738,9 +5860,57 @@ function cancelBankImport(){
 
 async function rapprocher(id,i){
   const ecr=document.getElementById(`ecr-${i}`);
-  await SB.from('transactions').update({rapproche:true,ecriture_piece:ecr?ecr.value:''}).eq('id',id);
+  const piece=ecr?ecr.value:'';
+  if(!piece){ notify('warn','Sélectionnez une écriture avant de rapprocher.','Rapprochement'); return; }
+  await SB.from('transactions').update({rapproche:true,ecriture_piece:piece,ecriture_pieces_json:JSON.stringify([piece])}).eq('id',id);
   const t=D.comptes.flatMap(c=>c.transactions||[]).find(x=>x.id===id);
-  if(t){t.rapproche=true;t.ecriture_piece=ecr?.value||'';}render();
+  if(t){t.rapproche=true;t.ecriture_piece=piece;t.ecriture_pieces_json=JSON.stringify([piece]);}
+  render();
+}
+
+// Rapprochement multi-pièces : une transaction bancaire ↔ N écritures comptables
+// Cas typiques : remise de chèques groupée, virement regroupant plusieurs cotisations
+async function rapprocherMulti(id){
+  const sel=UI.rapprMultiSel[id]||[];
+  if(!sel.length){ notify('warn','Sélectionnez au moins une écriture.','Multi-rapprochement'); return; }
+  const piecesJson=JSON.stringify(sel);
+  const firstPiece=sel[0];
+  await SB.from('transactions').update({rapproche:true,ecriture_piece:firstPiece,ecriture_pieces_json:piecesJson}).eq('id',id);
+  const t=D.comptes.flatMap(c=>c.transactions||[]).find(x=>x.id===id);
+  if(t){t.rapproche=true;t.ecriture_piece=firstPiece;t.ecriture_pieces_json=piecesJson;}
+  delete UI.rapprMultiSel[id];
+  notify('success',`Transaction rapprochée avec ${sel.length} écriture(s).`,'Multi-rapprochement');
+  render();
+}
+
+// Rapprochement groupé validé depuis le panneau de suggestion
+async function validerGroupeRapprochement(transactionIds, piece){
+  if(!confirm(`Rapprocher les ${transactionIds.length} transactions avec la pièce ${piece} ?`)) return;
+  const piecesJson=JSON.stringify([piece]);
+  for(const tid of transactionIds){
+    await SB.from('transactions').update({rapproche:true,ecriture_piece:piece,ecriture_pieces_json:piecesJson}).eq('id',tid);
+    const t=D.comptes.flatMap(c=>c.transactions||[]).find(x=>x.id===tid);
+    if(t){t.rapproche=true;t.ecriture_piece=piece;t.ecriture_pieces_json=piecesJson;}
+  }
+  notify('success',`${transactionIds.length} transaction(s) rapprochées avec la pièce ${piece}.`,'Rapprochement groupé');
+  render();
+}
+
+function toggleMultiSel(tid, piece){
+  if(!UI.rapprMultiSel[tid]) UI.rapprMultiSel[tid]=[];
+  const idx=UI.rapprMultiSel[tid].indexOf(piece);
+  if(idx>=0) UI.rapprMultiSel[tid].splice(idx,1);
+  else UI.rapprMultiSel[tid].push(piece);
+  render();
+}
+
+async function modifierRapprochement(id){
+  if(!confirm('Modifier le rapprochement de cette transaction ? Elle repassera en attente et vous pourrez choisir une nouvelle écriture.')) return;
+  await SB.from('transactions').update({rapproche:false,ecriture_piece:null,ecriture_pieces_json:null}).eq('id',id);
+  const t=D.comptes.flatMap(c=>c.transactions||[]).find(x=>x.id===id);
+  if(t){t.rapproche=false;t.ecriture_piece=null;t.ecriture_pieces_json=null;}
+  notify('info','Transaction repassée en attente — choisissez la bonne écriture.','Rapprochement');
+  render();
 }
 // ─── Rapprochement — scoring multi-critères ───────────────────────────────
 // Score max = 5 points
@@ -5811,7 +5981,11 @@ function scoreRapprochement(transaction, entry){
 function consumedPieces(){
   const consumed = new Set();
   D.comptes.flatMap(c=>c.transactions||[]).forEach(t=>{
-    if(t.rapproche && t.ecriture_piece) consumed.add(t.ecriture_piece);
+    if(!t.rapproche) return;
+    if(t.ecriture_piece) consumed.add(t.ecriture_piece);
+    if(t.ecriture_pieces_json){
+      try{ JSON.parse(t.ecriture_pieces_json).forEach(p=>consumed.add(p)); }catch(e){}
+    }
   });
   return consumed;
 }
@@ -5837,10 +6011,27 @@ function bestRapprochementEntry(transaction, excludePieces=null){
 }
 
 // ─── Rapprochement groupé (plusieurs transactions ↔ une même pièce) ───────
-// Cas typique : HelloAsso reverse en un seul virement bancaire la somme de
-// plusieurs adhésions/dons enregistrés comme écritures distinctes au journal.
-// On regroupe les pièces du journal par préfixe normalisé et on teste si la
-// somme d'un sous-ensemble de transactions non rapprochées correspond.
+// Cas typiques : remise de chèques groupée, virement HelloAsso groupant N adhésions,
+// tout virement bancaire unique correspondant à plusieurs écritures comptables.
+// Algorithme subset-sum généralisé (max 10 transactions par groupe pour rester performant).
+function findSubsetSum(pool, target, maxSize=10){
+  const results=[];
+  function recurse(start, current, sum){
+    if(Math.abs(sum-target)<0.02 && current.length>1){
+      results.push([...current]);
+    }
+    if(current.length>=maxSize||start>=pool.length) return;
+    for(let i=start;i<pool.length;i++){
+      const amount=(+pool[i].credit||0)+(+pool[i].debit||0);
+      if(sum+amount<=target+0.02){
+        recurse(i+1,[...current,pool[i]],sum+amount);
+      }
+    }
+  }
+  recurse(0,[],0);
+  return results;
+}
+
 function findGroupedRapprochement(transactions){
   const byPiece = {};
   D.journal.forEach(j=>{
@@ -5850,20 +6041,25 @@ function findGroupedRapprochement(transactions){
     byPiece[key].amount += (+j.credit||0) - (+j.debit||0);
   });
   const consumed = consumedPieces();
-  const candidates = Object.values(byPiece).filter(g=>!consumed.has(g.piece) && g.rows.length>1);
+  const candidates = Object.values(byPiece).filter(g=>!consumed.has(g.piece) && Math.abs(g.amount)>=0.01);
 
   const results = [];
+  const pool = transactions.filter(t=>!t.rapproche);
   for(const group of candidates){
     const groupAmount = Math.abs(group.amount);
-    if(groupAmount < 0.01) continue;
-    // cherche un sous-ensemble de transactions bancaires (même sens) dont la somme colle à ±0.02€
-    const pool = transactions.filter(t=>!t.rapproche);
-    for(let i=0;i<pool.length;i++){
-      for(let j=i+1;j<pool.length;j++){
-        const sum = (+pool[i].credit||0)+(+pool[i].debit||0)+(+pool[j].credit||0)+(+pool[j].debit||0);
-        if(Math.abs(sum-groupAmount)<0.02){
-          results.push({ piece:group.piece, transactionIds:[pool[i].id,pool[j].id], amount:groupAmount });
-        }
+    // Cherche tous les sous-ensembles de transactions non rapprochées dont la somme colle
+    const subsets = findSubsetSum(pool, groupAmount);
+    for(const subset of subsets){
+      // Évite les doublons (même ensemble de transactions, pièce différente)
+      const key = subset.map(t=>t.id).sort().join(',');
+      if(!results.find(r=>r.transactionIds.slice().sort().join(',')===key && r.piece===group.piece)){
+        results.push({
+          piece: group.piece,
+          transactionIds: subset.map(t=>t.id),
+          transactions: subset,
+          amount: groupAmount,
+          nbTx: subset.length
+        });
       }
     }
   }
@@ -5906,9 +6102,9 @@ async function preselectRapprochements(){
     );
     if(confirmed){
       for(const item of toAutoRapproch){
-        await SB.from('transactions').update({rapproche:true, ecriture_piece:item.piece}).eq('id',item.id);
+        await SB.from('transactions').update({rapproche:true, ecriture_piece:item.piece, ecriture_pieces_json:JSON.stringify([item.piece])}).eq('id',item.id);
         const t = D.comptes.flatMap(c=>c.transactions||[]).find(x=>x.id===item.id);
-        if(t){ t.rapproche=true; t.ecriture_piece=item.piece; }
+        if(t){ t.rapproche=true; t.ecriture_piece=item.piece; t.ecriture_pieces_json=JSON.stringify([item.piece]); }
       }
       notify('success',
              `${nbAuto} rapprochement(s) automatique(s) effectué(s)` +
@@ -5941,9 +6137,9 @@ async function toutRappr(){
 // Annule un rapprochement effectué par erreur (auto ou manuel).
 async function annulerRapprochement(id){
   if(!confirm('Annuler le rapprochement de cette transaction ?')) return;
-  await SB.from('transactions').update({rapproche:false, ecriture_piece:null}).eq('id',id);
+  await SB.from('transactions').update({rapproche:false, ecriture_piece:null, ecriture_pieces_json:null}).eq('id',id);
   const t=D.comptes.flatMap(c=>c.transactions||[]).find(x=>x.id===id);
-  if(t){ t.rapproche=false; t.ecriture_piece=null; }
+  if(t){ t.rapproche=false; t.ecriture_piece=null; t.ecriture_pieces_json=null; }
   notify('info','Rapprochement annulé — la transaction repasse en attente.','Rapprochement');
   render();
 }
@@ -6123,6 +6319,28 @@ function exportJournalCSV(){
   const rows=[['Date','Pièce','Compte','Libellé','Débit','Crédit']];
   D.journal.forEach(j=>rows.push([j.date_op,j.piece||'',j.compte,j.libelle,(+j.debit).toFixed(2),(+j.credit).toFixed(2)]));
   dl('\uFEFF'+rows.map(r=>r.join(';')).join('\n'),`journal_${td()}.csv`,'text/csv;charset=utf-8');
+}
+
+function exportGLCSV(){
+  const jnl=jnlExo();
+  const sorted=[...jnl].sort((a,b)=>(a.date_op||'').localeCompare(b.date_op||''));
+  const by={};
+  sorted.forEach(j=>{if(!by[j.compte])by[j.compte]=[];by[j.compte].push(j);});
+  const rows=[['Compte','Date','Pièce','Libellé','Débit','Crédit','Solde cumulé']];
+  Object.keys(by).sort().forEach(acc=>{
+    let s=0;
+    by[acc].forEach(j=>{
+      s+=(+j.credit||0)-(+j.debit||0);
+      rows.push([acc,j.date_op,j.piece||'',j.libelle,(+j.debit).toFixed(2),(+j.credit).toFixed(2),s.toFixed(2)]);
+    });
+    const tD=by[acc].reduce((r,j)=>r+(+j.debit||0),0);
+    const tC=by[acc].reduce((r,j)=>r+(+j.credit||0),0);
+    rows.push([acc,'---TOTAL---','','',tD.toFixed(2),tC.toFixed(2),(tC-tD).toFixed(2)]);
+    rows.push(['','','','','','','']); // ligne vide entre comptes
+  });
+  const exoLabel=D.currentExo?.libelle||'exercice';
+  dl('\uFEFF'+rows.map(r=>r.join(';')).join('\n'),`grand_livre_${exoLabel.replace(/\s/g,'_')}_${td()}.csv`,'text/csv;charset=utf-8');
+  notify('success','Grand livre exporté en CSV.','Export');
 }
 function backupJSON(){
   dl(JSON.stringify({version:'5.2',date:new Date().toISOString(),adherents:D.adherents,comptes:D.comptes,journal:D.journal,achats:D.achats,factures:D.factures,users:D.users,clubInfo:D.clubInfo,exercices:D.exercices},null,2),`affbc_backup_${td()}.json`,'application/json');
