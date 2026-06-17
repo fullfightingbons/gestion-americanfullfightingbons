@@ -5641,6 +5641,13 @@ function parseCreditMutuelPdfPages(pages){
   return cleaned;
 }
 
+
+function extractAccountNumber(text){
+  // C/C Connect Asso N° 00020806601  ou  LIVRET BLEU ASSOCIATION N° 00020806603
+  const m = text.match(/N[°º]\s*(\d{8,14})/i);
+  return m ? m[1].replace(/\s+/g,'') : null;
+}
+
 async function importBankPDF(e){
   const file=e.target.files[0];
   if(!file) return;
@@ -5648,6 +5655,38 @@ async function importBankPDF(e){
   const c=D.comptes.find(x=>x.id===cid);
   e.target.value='';
   if(!c) return alert('Compte cible obligatoire.');
+  try{
+    const pages=await readPdfPages(file);
+    const text=pagesToText(pages);
+    // ── Détection automatique du compte bancaire dans le PDF ──
+    const pdfAccountNum=extractAccountNumber(text);
+    if(pdfAccountNum){
+      // Chercher un compte dont le numéro contient le numéro détecté
+      const matched=D.comptes.find(x=>(x.numero||'').replace(/\s+/g,'').includes(pdfAccountNum)||pdfAccountNum.includes((x.numero||'').replace(/\s+/g,'')));
+      if(matched && matched.id!==cid){
+        const ok=confirm(`⚠️ Le PDF appartient au compte "${matched.nom}" (N° ${pdfAccountNum}), mais vous avez sélectionné "${c.nom}".\n\nCliquez OK pour basculer automatiquement sur le bon compte, ou Annuler pour conserver votre choix.`);
+        if(ok){
+          // Mettre à jour le select et la variable locale
+          const sel=document.getElementById('cible-cpt');
+          if(sel) sel.value=matched.id;
+          // Relancer avec le bon compte — on réaffecte cid/c
+          return importBankPDFWithAccount(file, matched.id);
+        }
+      } else if(!matched){
+        // Numéro détecté mais aucun compte enregistré ne correspond
+        const ok=confirm(`ℹ️ Le PDF mentionne le compte N° ${pdfAccountNum} qui ne correspond à aucun compte enregistré.\n\nImporter quand même dans "${c.nom}" ?`);
+        if(!ok) return;
+      }
+    }
+    return importBankPDFWithAccount(file, cid);
+  }catch(err){
+    alert('Import PDF impossible : '+err.message);
+  }
+}
+
+async function importBankPDFWithAccount(file, cid){
+  const c=D.comptes.find(x=>x.id===cid);
+  if(!c) return alert('Compte cible introuvable.');
   try{
     const pages=await readPdfPages(file);
     const text=pagesToText(pages);
