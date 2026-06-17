@@ -196,6 +196,7 @@ const UI = {
   factureFilterStatus:'',
   paging:{adherents:1,achats:1,factures:1,dons:1},
   bankAccountId:null,
+  bankPreview:null,
   pdfTarget:null,
   diplome:{adherentId:'',date:td(),templatePath:'',titre:'Diplôme de ceinture',selectedField:'nomComplet'},
   invState:{numero:'FAC-001',date:td(),destinataire:'',adresse:'',objet:'',lignes:[{desc:'',qte:1,pu:0}],notes:''},
@@ -2892,6 +2893,63 @@ function vCompteDetail(c){
     </table></div>`;
 }
 
+function vBankPreviewModal(){
+  const p=UI.bankPreview;
+  if(!p) return '';
+  const rows=p.rows;
+  const totalDebit=rows.reduce((s,r)=>s+(+r.debit||0),0);
+  const totalCredit=rows.reduce((s,r)=>s+(+r.credit||0),0);
+  const off=p.officialTotals;
+  const debitMatch=off && Math.abs(off.debit-totalDebit)<0.01;
+  const creditMatch=off && (off.credit==null || Math.abs(off.credit-totalCredit)<0.01);
+  const totalsOk=off ? (debitMatch && creditMatch) : null;
+  const toVerifyCount=rows.filter(r=>r.a_verifier).length;
+
+  return`<div class="modal" style="max-width:900px">
+  <h2>📄 Vérification avant import</h2>
+  <p style="font-size:12px;color:var(--txt2);margin-bottom:12px">Relisez les opérations détectées avant de les enregistrer. Comparez les totaux ci-dessous à ceux affichés sur le PDF (ligne « Total des mouvements »).</p>
+
+  <div class="g4" style="margin-bottom:12px">
+  <div class="sc"><div class="v">${rows.length}</div><div class="l">Opérations détectées</div></div>
+  <div class="sc"><div class="v vr">${totalDebit.toFixed(2)} €</div><div class="l">Total débit calculé</div></div>
+  <div class="sc"><div class="v vg">${totalCredit.toFixed(2)} €</div><div class="l">Total crédit calculé</div></div>
+  <div class="sc"><div class="v ${toVerifyCount?'vr':'vg'}">${toVerifyCount}</div><div class="l">À vérifier</div></div>
+  </div>
+
+  ${off?`<div class="card" style="margin-bottom:12px;background:${totalsOk?'rgba(30,126,52,.08)':'rgba(220,53,69,.08)'}">
+    <div style="font-weight:600;margin-bottom:4px">${totalsOk?'✓ Les totaux correspondent au relevé':'⚠ Écart avec le total annoncé sur le relevé'}</div>
+    <div style="font-size:12px;color:var(--txt2)">Relevé PDF — Débit : <strong>${off.debit.toFixed(2)} €</strong>${off.credit!=null?` · Crédit : <strong>${off.credit.toFixed(2)} €</strong>`:''}</div>
+    ${!totalsOk?`<div style="font-size:12px;color:var(--red);margin-top:4px">Vérifiez les lignes ci-dessous avant de valider : une opération a peut-être été fusionnée, mal découpée ou non reconnue.</div>`:''}
+    </div>`:`<div class="card" style="margin-bottom:12px"><div style="font-size:12px;color:var(--txt2)">⚠ Total officiel non détecté automatiquement dans le PDF — vérifiez manuellement la cohérence avec votre relevé.</div></div>`}
+
+  ${p.skippedDuplicates?`<p style="font-size:12px;color:var(--txt2);margin-bottom:8px">${p.skippedDuplicates} opération(s) déjà présente(s) dans le compte ont été ignorées.</p>`:''}
+  ${p.usedFallback?`<p style="font-size:12px;color:var(--gold-d);margin-bottom:8px">⚠ Lecture par positions indisponible : ce relevé a été interprété avec la méthode de repli (texte brut), moins précise. Vérifiez attentivement les lignes ci-dessous.</p>`:''}
+
+  <div class="wrap" style="max-height:360px;overflow-y:auto"><table>
+  <thead><tr><th>Date</th><th>Libellé</th><th>Débit</th><th>Crédit</th><th></th></tr></thead>
+  <tbody>${rows.map((r,i)=>`<tr style="${r.a_verifier?'background:rgba(220,53,69,.06)':''}">
+    <td>${fd(frDateToISO(r.date_op)||r.date_op)||''}</td>
+    <td>${esc(r.libelle||'')}${r.a_verifier?`<div style="font-size:11px;color:var(--red);margin-top:2px">⚠ ${esc(r.a_verifier_raison||'À vérifier')}</div>`:''}</td>
+    <td style="color:var(--red);text-align:right">${+r.debit>0?(+r.debit).toFixed(2)+' €':'-'}</td>
+    <td style="color:#1e7e34;text-align:right">${+r.credit>0?(+r.credit).toFixed(2)+' €':'-'}</td>
+    <td><button class="btn sm" onclick="removeBankPreviewRow(${i})" title="Retirer cette ligne de l'import">✕</button></td>
+    </tr>`).join('')}
+    </tbody></table></div>
+
+  <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
+  <button class="btn" onclick="cancelBankImport()">Annuler</button>
+  <button class="btn primary" onclick="confirmBankImport()">✓ Valider l'import (${rows.length})</button>
+  </div>
+  </div>`;
+}
+
+function removeBankPreviewRow(i){
+  if(!UI.bankPreview) return;
+  UI.bankPreview.rows.splice(i,1);
+  if(!UI.bankPreview.rows.length){ cancelBankImport(); return; }
+  renderModal();
+}
+
 function vBankImport(){
   const canWrite=hasPerm('perm_banque','write');
   return`<div style="margin-bottom:12px"><label>Compte cible</label>
@@ -2899,7 +2957,7 @@ function vBankImport(){
   </div>
   <div class="card" style="margin-bottom:12px">
   <p style="font-weight:600;margin-bottom:6px">PDF Crédit Mutuel</p>
-  <p style="font-size:12px;color:var(--txt2);margin-bottom:10px">Importe les lignes d'un extrait de compte PDF texte. Si le PDF est scanné comme image, l'import ne pourra pas lire les opérations.</p>
+  <p style="font-size:12px;color:var(--txt2);margin-bottom:10px">Importe les lignes d'un extrait de compte PDF texte. Un écran de vérification s'affiche avant l'enregistrement, avec comparaison des totaux au relevé. Si le PDF est scanné comme image, l'import ne pourra pas lire les opérations.</p>
   ${canWrite?`<button class="btn primary" onclick="document.getElementById('bank-pdf-input').click()">📄 Importer un PDF</button>`:''}
   </div>
   <div class="dz" onclick="document.getElementById('csv-bank').click()" style="margin-bottom:10px">
@@ -4516,7 +4574,9 @@ function renderModal(){
   if(!UI.modal) return;
   let html='';
 
-  if(UI.modal==='adh'){
+  if(UI.modal==='bank_preview'){
+    html=vBankPreviewModal();
+  }else if(UI.modal==='adh'){
     const a=UI.editObj||{nom:'',prenom:'',naissance:'',couleur_ceinture:'',numero_licence:'',email:'',telephone:'',adresse:'',code_postal:'',ville:'',discipline:'Club',droit_image:false,certificat:false,pass_region:false,montant_pass_region:0,reglement:false,cotisation:0,paiement:'Virement',statut:'Actif',date_inscription:td(),date_fin_adhesion:'',urgence_nom:'',urgence_telephone:'',urgence_lien:'',notes:'',pdf_public_url:'',pdf_nom_fichier:''};
     const signupDocs=getAdherentDocuments(a.id);
     html=`<div class="modal" style="max-width:720px"><h2>👥 ${UI.editObj?'Modifier':'Nouvel'} adhérent</h2>
@@ -5278,6 +5338,12 @@ async function readPdfPages(file){
     content.items.forEach(it=>{
       const x=it.transform?.[4]||0;
       const y=Math.round((it.transform?.[5]||0)*2)/2;
+      // Ignore le filigrane vertical de fond imprimé dans la marge gauche
+      // (ex: "HT.20260601.051243.5001.0084.1000 X 0 2"). Ces fragments tombent
+      // parfois sur le même Y qu'une ligne d'opération du tableau et, sans ce
+      // filtre, viennent polluer le début de la ligne reconstituée et empêcher
+      // la détection de la date d'opération.
+      if(x<30 && !/\d{2}\/\d{2}\/\d{4}/.test(it.str||'')) return;
       if(!lines.has(y)) lines.set(y,[]);
       lines.get(y).push({x,str:it.str||'',width:it.width||0});
     });
@@ -5313,11 +5379,25 @@ function normalizeLine(s){
   return s.replace(/\s+/g,' ').trim();
 }
 
+// Extrait le total officiel "Total des mouvements" annoncé par le relevé (débit, crédit),
+// pour permettre de vérifier après coup que le parseur n'a rien fusionné ni perdu.
+function extractStatementTotals(text){
+  const lines=text.split(/\r?\n/).map(normalizeLine).filter(Boolean);
+  for(const line of lines){
+    if(/total des mouvements/i.test(line)){
+      const amounts=line.match(/-?\d{1,3}(?:[ .]\d{3})*,\d{2}|-?\d+,\d{2}/g)||[];
+      if(amounts.length>=2) return {debit:numFr(amounts[0]),credit:numFr(amounts[1])};
+      if(amounts.length===1) return {debit:numFr(amounts[0]),credit:null};
+    }
+  }
+  return null;
+}
+
 function parseCreditMutuelPdfText(text){
   const lines=text.split(/\r?\n/).map(normalizeLine).filter(Boolean);
   const rows=[];
   let lastRow=null;
-  const stopMeta=/^HT\.|^QXBAN|^IBAN|^Vous disposez|^Alerte|^Attention|^Information sur la protection|^Sous réserve|^CAISSE DE CREDIT MUTUEL|^TVA intracommunautaire|^Médiateur du Crédit Mutuel|^Pour toute demande/i;
+  const stopMeta=/^HT\.|^QXBAN|^IBAN|^Vous disposez|^Alerte|^Attention|^Information sur la protection|^Sous réserve|^CAISSE DE CREDIT MUTUEL|^TVA intracommunautaire|^Médiateur du Crédit Mutuel|^Pour toute demande|^<<Suite|^Suite au verso|^Réf\s*:\s*\d+\s+SOLDE|^RELEVE ET INFORMATIONS BANCAIRES|^Caisse \d|^C\/C |^TITULAIRE/i;
 
   function inferBankSide(libelle){
     const t=(libelle||'').toUpperCase();
@@ -5399,7 +5479,7 @@ function parseCreditMutuelPdfText(text){
 
 function parseCreditMutuelPdfPages(pages){
   const rows=[];
-  const stopMeta=/^HT\.|^QXBAN|^IBAN|^Vous disposez|^Alerte|^Attention|^Information sur la protection|^Sous réserve|^CAISSE DE CREDIT MUTUEL|^TVA intracommunautaire|^Médiateur du Crédit Mutuel|^Pour toute demande/i;
+  const stopMeta=/^HT\.|^QXBAN|^IBAN|^Vous disposez|^Alerte|^Attention|^Information sur la protection|^Sous réserve|^CAISSE DE CREDIT MUTUEL|^TVA intracommunautaire|^Médiateur du Crédit Mutuel|^Pour toute demande|^<<Suite|^Suite au verso|^Réf\s*:\s*\d+\s+SOLDE|^RELEVE ET INFORMATIONS BANCAIRES|^Caisse \d|^C\/C |^TITULAIRE/i;
   let debitX=null,creditX=null;
 
   function isAmountStr(s){
@@ -5456,10 +5536,7 @@ function parseCreditMutuelPdfPages(pages){
     const itemIndex=buildPageItemIndex(page);
     let current=null;
     for(const line of page.lines){
-      // Retire le filigrane vertical de fond (ex: "HT.20260601.051243.5001.0084.1000 X 0 2")
-      // qui se superpose parfois en tête de ligne avec le même Y qu'une ligne d'opération.
-      let txt=normalizeLine(line.text).replace(/^(?:HT\.[\d.]+\s+)?[A-Z0-9]{1,2}\s+(?=\d{2}\/\d{2}\/\d{4}\b)/,'');
-      txt=normalizeLine(txt);
+      const txt=normalizeLine(line.text);
       if(!txt) continue;
       if(/solde crediteur|solde débiteur|releve et informations bancaires|iban|page \d+|total des mouvements/i.test(txt) || stopMeta.test(txt)){
         if(stopMeta.test(txt)) current=null;
@@ -5542,7 +5619,26 @@ function parseCreditMutuelPdfPages(pages){
     }
   }
   // Retirer les transactions sans montant résolues ni résoluble (montant = 0 des deux côtés non intentionnel)
-  return rows.filter(r=>{ delete r._pendingAmount; return r.debit!==0||r.credit!==0; });
+  const cleaned=rows.filter(r=>{ delete r._pendingAmount; return r.debit!==0||r.credit!==0; });
+
+  // Marque comme "à vérifier" les lignes présentant un signal de risque connu :
+  // - présence d'un second motif date+date ou d'un second bloc ICS/RUM dans le
+  //   libellé => signe quasi certain que deux opérations ont été fusionnées
+  //   (un libellé SEPA légitime ne contient jamais deux fois ces blocs)
+  // - mention d'un regroupement de paiements CB (le Crédit Mutuel regroupe les
+  //   paiements <10€ chez un même commerçant ; un seul montant peut alors
+  //   représenter plusieurs opérations distinctes, à ne pas rapprocher comme une seule)
+  const groupedCardPattern=/regroup|plusieurs paiements|paiements? cb \d|cumul.*carte|carte.*cumul/i;
+  function countOccurrences(str,re){ return ((str||'').match(re)||[]).length; }
+  cleaned.forEach(r=>{
+    const reasons=[];
+    if(/\d{2}\/\d{2}\/\d{4}\s+\d{2}\/\d{2}\/\d{4}/.test(r.libelle||'')) reasons.push('Le libellé contient une deuxième date d’opération : deux opérations ont probablement été fusionnées.');
+    if(countOccurrences(r.libelle,/\bICS\s*:/gi)>1 || countOccurrences(r.libelle,/\bRUM\s*:/gi)>1) reasons.push('Le libellé contient deux références SEPA (ICS/RUM) : deux opérations ont probablement été fusionnées.');
+    if(groupedCardPattern.test(r.libelle||'')) reasons.push('Possible paiements CB regroupés (< 10 €, même commerçant) : un seul montant peut représenter plusieurs opérations.');
+    if(reasons.length){ r.a_verifier=true; r.a_verifier_raison=reasons.join(' '); }
+  });
+
+  return cleaned;
 }
 
 async function importBankPDF(e){
@@ -5556,27 +5652,49 @@ async function importBankPDF(e){
     const pages=await readPdfPages(file);
     const text=pagesToText(pages);
     const parsedRows=parseCreditMutuelPdfPages(pages);
+    const usedFallback=!parsedRows.length;
     const existing=new Set((c.transactions||[]).map(transactionFingerprint));
     const parsed=(parsedRows.length?parsedRows:parseCreditMutuelPdfText(text))
-    .map(r=>({...r,compte_id:cid}))
-    .filter(r=>{
+    .map(r=>({...r,compte_id:cid}));
+    const seen=new Set();
+    const dedup=[];
+    let skippedDuplicates=0;
+    parsed.forEach(r=>{
       const fp=transactionFingerprint(r);
-      if(existing.has(fp)) return false;
-      existing.add(fp);
-      return true;
+      if(existing.has(fp)||seen.has(fp)){ skippedDuplicates++; return; }
+      seen.add(fp);
+      dedup.push(r);
     });
-    if(!parsed.length) return alert('Aucune opération exploitable détectée dans ce PDF, ou toutes les opérations sont déjà importées.');
-    const {data,error}=await SB.from('transactions').upsert(parsed,{onConflict:['compte_id','date_op','libelle','debit','credit']}).select();
-    if(error) return alert('Erreur : '+error.message);
-    // Fusionner sans doublons en mémoire (l'upsert peut retourner des lignes déjà existantes)
-    const existingIds=new Set((c.transactions||[]).map(t=>t.id));
-    const newTx=(data||[]).filter(t=>!existingIds.has(t.id));
-    c.transactions=[...(c.transactions||[]),...newTx];
-    render();
-    alert(`${newTx.length} nouvelle(s) transaction(s) importée(s) depuis le PDF.`);
+    if(!dedup.length) return alert('Aucune opération exploitable détectée dans ce PDF, ou toutes les opérations sont déjà importées.');
+    const officialTotals=extractStatementTotals(text);
+    UI.bankPreview={cid,rows:dedup,officialTotals,skippedDuplicates,usedFallback};
+    UI.modal='bank_preview';
+    renderModal();
   }catch(err){
     alert('Import PDF impossible : '+err.message);
   }
+}
+
+async function confirmBankImport(){
+  const preview=UI.bankPreview;
+  if(!preview) return;
+  const c=D.comptes.find(x=>x.id===preview.cid);
+  if(!c) return alert('Compte cible introuvable.');
+  const rows=preview.rows.map(r=>{ const {a_verifier,a_verifier_raison,...rest}=r; return rest; });
+  const {data,error}=await SB.from('transactions').upsert(rows,{onConflict:['compte_id','date_op','libelle','debit','credit']}).select();
+  if(error) return alert('Erreur : '+error.message);
+  const existingIds=new Set((c.transactions||[]).map(t=>t.id));
+  const newTx=(data||[]).filter(t=>!existingIds.has(t.id));
+  c.transactions=[...(c.transactions||[]),...newTx];
+  UI.bankPreview=null;
+  closeModal();
+  render();
+  alert(`${newTx.length} nouvelle(s) transaction(s) importée(s) depuis le PDF.`);
+}
+
+function cancelBankImport(){
+  UI.bankPreview=null;
+  closeModal();
 }
 
 async function rapprocher(id,i){
