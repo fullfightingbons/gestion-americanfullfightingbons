@@ -197,6 +197,10 @@ const UI = {
   paging:{adherents:1,achats:1,factures:1,dons:1},
   bankAccountId:null,
   bankPreview:null,
+  bankTxSearch:'',
+  bankTxRapprFilter:'',
+  bankTxDateFrom:'',
+  bankTxDateTo:'',
   pdfTarget:null,
   diplome:{adherentId:'',date:td(),templatePath:'',titre:'Diplôme de ceinture',selectedField:'nomComplet'},
   invState:{numero:'FAC-001',date:td(),destinataire:'',adresse:'',objet:'',lignes:[{desc:'',qte:1,pu:0}],notes:''},
@@ -1777,7 +1781,18 @@ function vDashboard(){
     ...(hasPerm('perm_facturation')?d.recentInvoices.map(f=>({title:`Vente ${f.numero||'sans numéro'}`,detail:`${fd(f.date_op)} · ${f.destinataire||'Destinataire non renseigné'} · ${euro((f.lignes||[]).reduce((sum,l)=>sum+(+l.qte||0)*(+l.pu||0),0))}`,tab:'facture',badge:'bblue',badgeText:f.statut||'Vente'})):[]),
     ...(hasPerm('perm_achats')?d.recentBuys.map(a=>({title:`Achat ${a.fournisseur||'sans fournisseur'}`,detail:`${fd(a.date_op)} · ${a.designation||a.categorie||'Sans désignation'} · ${euro(+a.montant||0)}`,tab:'achat',badge:'bgray',badgeText:a.statut||'Achat'})):[]),
     ...(hasPerm('perm_banque')?d.recentTransactions.map(t=>({title:`Banque ${t.compte_nom||'Compte'}`,detail:`${fd(t.date_op)} · ${t.libelle||'Opération'} · ${euro((+t.credit||0)-(+t.debit||0))}`,tab:'banque',badge:t.rapproche?'bok':'bwarn',badgeText:t.rapproche?'Rapprochée':'À rapprocher'})):[]),
-  ].sort((a,b)=>0).slice(0,8);
+  ].sort((a,b)=>{
+    // Tri par date décroissante extraite du champ detail (format dd/mm/yyyy)
+    const dateRe=/(\d{2})\/(\d{2})\/(\d{4})/;
+    const da=(a.detail||'').match(dateRe);
+    const db=(b.detail||'').match(dateRe);
+    if(da&&db){
+      const ia=`${da[3]}-${da[2]}-${da[1]}`;
+      const ib=`${db[3]}-${db[2]}-${db[1]}`;
+      return ib.localeCompare(ia);
+    }
+    return da?-1:db?1:0;
+  }).slice(0,8);
   const managementBlocks=[
     hasPerm('perm_adherents')?{
       title:'Adhérents',
@@ -1880,10 +1895,10 @@ function vDashboard(){
   </div>
   </div>
   <div class="dash-grid">
-  <div class="dash-card"><h3>Adhérents</h3><strong>${hasPerm('perm_adherents')?d.adherents.length:'—'}</strong><p>${hasPerm('perm_adherents')?`${d.adherentsSoon.length} échéances proches`:'Rubrique non accessible.'}</p></div>
-  <div class="dash-card"><h3>Trésorerie</h3><strong>${hasPerm('perm_banque')?euro(d.totalBank):'—'}</strong><p>${hasPerm('perm_banque')?`${d.unreconciledTransactions.length} non rapprochées`:'Rubrique non accessible.'}</p></div>
-  <div class="dash-card"><h3>Compta</h3><strong>${hasPerm('perm_comptabilite')?d.monthEntriesList.length:'—'}</strong><p>${hasPerm('perm_comptabilite')?`Écart ${euro(d.accountingGap)}`:'Rubrique non accessible.'}</p></div>
-  <div class="dash-card"><h3>Ventes</h3><strong>${hasPerm('perm_facturation')?d.invoicesOpen.length:'—'}</strong><p>${hasPerm('perm_facturation')?`${euro(d.openInvoiceAmount)} à encaisser`:'Rubrique non accessible.'}</p></div>
+  <div class="dash-card" style="cursor:pointer" onclick="showTab('adherents')" title="Voir les adhérents"><h3>Adhérents</h3><strong>${hasPerm('perm_adherents')?d.adherents.length:'—'}</strong><p>${hasPerm('perm_adherents')?`${d.adherentsSoon.length} échéances proches`:'Rubrique non accessible.'}</p></div>
+  <div class="dash-card" style="cursor:pointer" onclick="showTab('banque')" title="Ouvrir la banque"><h3>Trésorerie</h3><strong>${hasPerm('perm_banque')?euro(d.totalBank):'—'}</strong><p>${hasPerm('perm_banque')?`${d.unreconciledTransactions.length} non rapprochées`:'Rubrique non accessible.'}</p></div>
+  <div class="dash-card" style="cursor:pointer" onclick="showTab('comptabilite')" title="Ouvrir la comptabilité"><h3>Compta</h3><strong>${hasPerm('perm_comptabilite')?d.monthEntriesList.length:'—'}</strong><p>${hasPerm('perm_comptabilite')?`Écart ${euro(d.accountingGap)}`:'Rubrique non accessible.'}</p></div>
+  <div class="dash-card" style="cursor:pointer" onclick="showTab('facture')" title="Voir les ventes"><h3>Ventes</h3><strong>${hasPerm('perm_facturation')?d.invoicesOpen.length:'—'}</strong><p>${hasPerm('perm_facturation')?`${euro(d.openInvoiceAmount)} à encaisser`:'Rubrique non accessible.'}</p></div>
   </div>
   <div class="dash-viz-grid">
   <div class="dash-viz-card">
@@ -2075,6 +2090,7 @@ function vAdh(){
   ${canWrite?`<button class="btn primary" onclick="openModal('adh')">+ Nouvel adhérent</button>`:''}
   ${canWrite?`<button class="btn gold" onclick="openDiplomeForAdherent()">🎓 Nouveau diplôme</button>`:''}
   <button class="btn" onclick="exportCSV()">⬇ Export CSV</button>
+  <button class="btn" onclick="exportAdhEmailsCSV()" title="Exporter les emails des adhérents filtrés pour envoi groupé">📧 Export emails</button>
   <button class="btn" onclick="showTab('administration');showST('admin','imp_adh')">Import DoliAsso</button>
   <button class="btn" onclick="UI.search.adherents='';UI.adhFilters={statut:'',type:'',season:'current',special:''};render()">Réinitialiser</button>
   </div>
@@ -2146,10 +2162,14 @@ async function attachPDF(e){
 }
 async function delAdh(id){
   if(!requireWritePerm('perm_adherents')) return;
-  if(!confirm('Supprimer cet adhérent ?'))return;
-  await SB.from('adherents').delete().eq('id',id);
-  try{await deleteJournalAutoPrefix(autoPiecePrefix('ADH',id));}catch(e){return alert('Adhérent supprimé, mais écritures comptables non supprimées : '+e.message);}
-  D.adherents=D.adherents.filter(a=>a.id!==id);render();
+  const adh=D.adherents.find(a=>a.id===id);
+  const nomComplet=adh?`${adh.nom} ${adh.prenom}`:'cet adhérent';
+  if(!confirm(`Archiver ${nomComplet} ?\n\nL'adhérent sera retiré de la liste active mais son historique comptable sera conservé.\nPour une suppression définitive, contactez l'administrateur.`))return;
+  const {error}=await SB.from('adherents').update({statut:'Inactif',notes:(adh?.notes?adh.notes+'\n':'')+'[Archivé le '+td()+']',updated_at:new Date().toISOString()}).eq('id',id);
+  if(error)return alert('Erreur : '+error.message);
+  if(adh){adh.statut='Inactif';}
+  notify('success',`${nomComplet} archivé.`,'Adhérent');
+  render();
 }
 
 // ═══════════════════════════════════════════════════
@@ -2511,6 +2531,12 @@ async function printDiplome(){
   const tpl=selectedDiplomeTemplate();
   if(!adh) return alert('Sélectionnez un adhérent.');
   if(!tpl) return alert(`Aucun modèle de diplôme image trouvé dans le bucket "${DIPLOME_BUCKET}".`);
+  // Confirmation si la ceinture du modèle ne correspond pas à l'adhérent
+  const tplBelt=(tpl.name||'').toLowerCase();
+  const adhBelt=(adh.couleur_ceinture||'').toLowerCase();
+  if(adhBelt && tplBelt && !tplBelt.includes(adhBelt)){
+    if(!confirm(`⚠️ Le modèle sélectionné ("${tpl.label}") ne correspond pas à la ceinture de ${adh.prenom} ${adh.nom} ("${adh.couleur_ceinture}").\n\nContinuer quand même ?`)) return;
+  }
   try{
     const jsPDF=await ensureJsPDF();
     const diplomeData={
@@ -2534,8 +2560,51 @@ async function printDiplome(){
     .replace(/\s+/g,'_')
     .replace(/[^a-zA-Z0-9_.-]+/g,'');
     pdf.save(`${safeName||'diplome'}.pdf`);
+    // Log de l'émission du diplôme dans les notes de l'adhérent
+    const logLine=`[Diplôme émis le ${td()} - ${tpl.label}]`;
+    const newNotes=(adh.notes?adh.notes+'\n':'')+logLine;
+    await SB.from('adherents').update({notes:newNotes,updated_at:new Date().toISOString()}).eq('id',adh.id);
+    adh.notes=newNotes;
+    notify('success',`Diplôme de ${adh.prenom} ${adh.nom} généré et tracé.`,'Diplômes');
   }catch(error){
     alert('Export PDF impossible : '+(error?.message||error));
+  }
+}
+
+// Impression batch : génère un PDF multi-pages pour une liste d'adhérents
+async function printDiplomeBatch(adherentIds){
+  if(!adherentIds||!adherentIds.length) return alert('Sélectionnez au moins un adhérent.');
+  const tpl=selectedDiplomeTemplate();
+  if(!tpl) return alert(`Aucun modèle de diplôme image trouvé.`);
+  const adhs=adherentIds.map(id=>D.adherents.find(a=>a.id===id)).filter(Boolean);
+  if(!adhs.length) return alert('Aucun adhérent valide trouvé.');
+  try{
+    const jsPDF=await ensureJsPDF();
+    const pdf=new jsPDF({orientation:'landscape',unit:'pt',format:'a4',compress:true});
+    let first=true;
+    const date=UI.diplome.date||td();
+    for(const adh of adhs){
+      if(!first) pdf.addPage();
+      first=false;
+      // Deviner le modèle selon la ceinture de chaque adhérent
+      const bestTpl=D.diplomeTemplates.find(t=>t.name.toLowerCase().includes((adh.couleur_ceinture||'').toLowerCase()))||tpl;
+      const canvas=await buildDiplomeCanvas({
+        nomComplet:`${adh.nom||''} ${adh.prenom||''}`.trim(),
+        nom:adh.nom||'',prenom:adh.prenom||'',
+        licence:adh.numero_licence||'Non renseigné',
+        ceinture:adh.couleur_ceinture||'',
+        date,
+        templateUrl:bestTpl.url,
+        logoUrl:D.logoUrl||FORCED_LOGO_URL,
+        signatureUrl:D.clubInfo?.[DIPLOME_SIGNATURE_KEY]||'',
+        layout:selectedDiplomeLayout()
+      });
+      pdf.addImage(canvas.toDataURL('image/png'),'PNG',0,0,DIPLOME_PAGE.pdfWidthPt,DIPLOME_PAGE.pdfHeightPt,undefined,'FAST');
+    }
+    pdf.save(`diplomes_batch_${date}.pdf`);
+    notify('success',`${adhs.length} diplôme(s) générés.`,'Diplômes batch');
+  }catch(err){
+    alert('Génération batch impossible : '+(err?.message||err));
   }
 }
 
@@ -2634,6 +2703,7 @@ function vDiplomes(){
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
     <button class="btn primary" onclick="printDiplome()" ${!adh||!tpl?'disabled':''}>⬇ Télécharger le PDF</button>
+    <button class="btn" onclick="openDiplomeBatchModal()" ${!tpl||!adhList.length?'disabled':''} title="Générer un PDF multi-pages pour plusieurs adhérents">📋 Impression batch</button>
     <button class="btn gold" onclick="saveDiplomeLayouts()" ${!tpl?'disabled':''}>💾 Sauvegarder ce modèle</button>
     <button class="btn" onclick="resetCurrentDiplomeLayout()" ${!tpl?'disabled':''}>↺ Réinitialiser le modèle</button>
     <button class="btn" onclick="loadDiplomeTemplates().then(()=>render())">↻ Recharger les modèles</button>
@@ -2854,11 +2924,29 @@ function closeBankAccount(){
 }
 
 function vCompteDetail(c){
-  const tr=[...(c.transactions||[])].sort((a,b)=>{
+  const searchTx=(UI.bankTxSearch||'').toLowerCase().trim();
+  const filterRappr=UI.bankTxRapprFilter||'';
+  const filterDateFrom=UI.bankTxDateFrom||'';
+  const filterDateTo=UI.bankTxDateTo||'';
+  const allTr=[...(c.transactions||[])].sort((a,b)=>{
     return compareFrDates(b.date_op,a.date_op);
   });
-  const cr=tr.reduce((s,t)=>s+(+t.credit),0);
-  const db=tr.reduce((s,t)=>s+(+t.debit),0);
+  const tr=allTr.filter(t=>{
+    if(searchTx && !(t.libelle||'').toLowerCase().includes(searchTx)) return false;
+    if(filterRappr==='rapproche' && !t.rapproche) return false;
+    if(filterRappr==='attente' && t.rapproche) return false;
+    if(filterDateFrom){
+      const iso=frDateToISO(t.date_op)||t.date_op||'';
+      if(iso && iso<filterDateFrom) return false;
+    }
+    if(filterDateTo){
+      const iso=frDateToISO(t.date_op)||t.date_op||'';
+      if(iso && iso>filterDateTo) return false;
+    }
+    return true;
+  });
+  const cr=allTr.reduce((s,t)=>s+(+t.credit),0);
+  const db=allTr.reduce((s,t)=>s+(+t.debit),0);
   const sol=(+c.solde_initial)+cr-db;
   return`<div class="view-head">
   <div>
@@ -2871,10 +2959,22 @@ function vCompteDetail(c){
   </div>
   </div>
   <div class="g4" style="margin-bottom:14px">
-  <div class="sc"><div class="v">${tr.length}</div><div class="l">Opérations</div></div>
+  <div class="sc"><div class="v">${allTr.length}</div><div class="l">Opérations</div></div>
   <div class="sc"><div class="v vg">${cr.toFixed(2)} €</div><div class="l">Crédits</div></div>
   <div class="sc"><div class="v vr">${db.toFixed(2)} €</div><div class="l">Débits</div></div>
   <div class="sc"><div class="v ${sol>=0?'vg':'vr'}">${sol.toFixed(2)} €</div><div class="l">Solde théorique</div></div>
+  </div>
+  <div class="toolbar" style="margin-bottom:12px">
+  <input style="flex:1;min-width:180px" placeholder="🔍 Rechercher dans les libellés..." value="${UI.bankTxSearch||''}" oninput="UI.bankTxSearch=this.value;render()">
+  <select style="width:auto" onchange="UI.bankTxRapprFilter=this.value;render()">
+  <option value="" ${!filterRappr?'selected':''}>Toutes</option>
+  <option value="rapproche" ${filterRappr==='rapproche'?'selected':''}>Rapprochées</option>
+  <option value="attente" ${filterRappr==='attente'?'selected':''}>En attente</option>
+  </select>
+  <input type="date" title="Du" value="${filterDateFrom}" style="width:auto" onchange="UI.bankTxDateFrom=this.value;render()">
+  <input type="date" title="Au" value="${filterDateTo}" style="width:auto" onchange="UI.bankTxDateTo=this.value;render()">
+  <button class="btn" onclick="UI.bankTxSearch='';UI.bankTxRapprFilter='';UI.bankTxDateFrom='';UI.bankTxDateTo='';render()">Réinitialiser</button>
+  ${searchTx||filterRappr||filterDateFrom||filterDateTo?`<span style="font-size:12px;color:var(--txt2);align-self:center">${tr.length}/${allTr.length} ligne(s)</span>`:''}
   </div>
   <div class="card" style="margin-bottom:14px">
   <div style="font-size:12px;color:var(--txt2)">Numéro de compte</div>
@@ -2899,7 +2999,7 @@ function vCompteDetail(c){
     <td>${t.rapproche?`<button class="btn sm bwarn" onclick="modifierRapprochement('${t.id}')" title="Corriger le rapprochement" style="font-size:10px;padding:2px 6px">✎</button>`:''}
     </td>
     </tr>`;}).join('')}
-    ${tr.length===0?`<tr><td colspan="8" class="empty">Aucune opération sur ce compte</td></tr>`:''}
+    ${tr.length===0?`<tr><td colspan="8" class="empty">${searchTx||filterRappr||filterDateFrom||filterDateTo?'Aucune opération pour ce filtre':'Aucune opération sur ce compte'}</td></tr>`:''}
     </tbody>
     </table></div>`;
 }
@@ -3386,6 +3486,9 @@ function vJournal(){
   <div class="card" style="margin-bottom:12px;padding:12px 16px;font-size:12px;color:${ecart===0?'#1e7e34':'var(--red)'}">${ecart===0?'Journal équilibré sur l’exercice sélectionné.':'Le journal n’est pas équilibré. Vérifiez les anciennes écritures manuelles ou importées.'}${issues.length?`<div style="margin-top:8px;color:var(--txt)">Pièces déséquilibrées détectées : <strong>${issues.length}</strong>${issues.slice(0,3).map(i=>`<div style="margin-top:4px;font-size:11px;color:var(--txt2)">${i.piece} : ${i.ecart.toFixed(2)} €</div>`).join('')}</div>`:''}</div>
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
   ${canWrite?`<button class="btn primary" onclick="openModal('ecr')">+ Nouvelle écriture</button>`:''}
+  ${canWrite?`<button class="btn" onclick="openEcritureType('cotisation')" title="Écriture type encaissement cotisation">⚡ Cotisation</button>`:''}
+  ${canWrite?`<button class="btn" onclick="openEcritureType('achat_fournisseur')" title="Écriture type paiement fournisseur">⚡ Achat</button>`:''}
+  ${canWrite?`<button class="btn" onclick="openEcritureType('subvention')" title="Écriture type subvention/don">⚡ Subvention</button>`:''}
   <button class="btn" onclick="openEquilibreAssistant()">Assistant déséquilibres${issues.length?` (${issues.length})`:''}</button>
   ${canWrite&&issues.length?`<button class="btn gold" onclick="regulariserEquilibreExo()">Équilibrer l'exercice</button>`:''}
   </div>
@@ -3830,7 +3933,8 @@ function vAchat(){
   const filtered=D.achats.filter(a=>{
     const matchesSearch=(a.fournisseur+' '+(a.designation||'')).toLowerCase().includes((UI.search.achats||'').toLowerCase());
     const matchesStatus=achatMatchesFilter(a,UI.achatFilterStatus);
-    return matchesSearch && matchesStatus;
+    const matchesCat=!(UI.achatFilterCat||'') || a.categorie===UI.achatFilterCat;
+    return matchesSearch && matchesStatus && matchesCat;
   });
   const {rows:f,totalPages}=paginateList(filtered,'achats');
   const tP=D.achats.filter(a=>a.statut==='paye').reduce((s,a)=>s+(+a.montant),0);
@@ -3858,8 +3962,13 @@ function vAchat(){
   <option value="paye" ${UI.achatFilterStatus==='paye'?'selected':''}>Payés</option>
   <option value="refuse" ${UI.achatFilterStatus==='refuse'?'selected':''}>Refusés</option>
   </select>
+  <select style="width:auto;min-width:180px" onchange="UI.achatFilterCat=this.value;render()">
+  <option value="" ${!(UI.achatFilterCat||'')?'selected':''}>Toutes les catégories</option>
+  ${[...new Set(D.achats.map(a=>a.categorie).filter(Boolean))].sort().map(cat=>`<option value="${esc(cat)}" ${UI.achatFilterCat===cat?'selected':''}>${esc(cat)}</option>`).join('')}
+  </select>
   ${canWrite?`<button class="btn primary" onclick="openModal('achat')">+ Nouvel achat</button>`:''}
-  <button class="btn" onclick="UI.search.achats='';UI.achatFilterStatus='';render()">Réinitialiser</button>
+  <button class="btn" onclick="exportAchatsCSV()">⬇ Export CSV</button>
+  <button class="btn" onclick="UI.search.achats='';UI.achatFilterStatus='';UI.achatFilterCat='';render()">Réinitialiser</button>
   </div>
   <div class="wrap"><table>
   <thead><tr><th>Date</th><th>Fournisseur</th><th>Désignation</th><th>Catégorie</th><th>Montant</th><th>Mode paiement</th><th>Référence</th><th>Pièce</th><th>PDF</th><th>Statut</th><th></th></tr></thead>
@@ -3957,7 +4066,7 @@ function vFacListe(){
     <td><strong style="font-weight:500">${f.numero}</strong></td>
     <td>${fd(f.date_op)}</td><td>${f.destinataire||''}</td><td>${f.objet||''}</td>
     <td><strong>${tot.toFixed(2)} €</strong></td>
-    <td><span class="badge ${factureStatusBadge(f.statut)}">${f.statut}</span></td>
+    <td><span class="badge ${factureStatusBadge(f.statut)}">${f.statut}</span>${f.statut==='Payée'&&f.date_paiement?`<br><span style="font-size:10px;color:var(--txt2)">le ${fd(f.date_paiement)}</span>`:''}</td>
     <td style="white-space:nowrap">
     <button class="btn sm" onclick="printFac('${f.id}')">🖨 Imprimer</button>
     ${canWrite&&f.statut!=='Payée'?`<button class="btn sm" style="margin-left:4px" onclick="setFactureStatus('${f.id}','Payée')">Payée</button>`:''}
@@ -4196,10 +4305,21 @@ async function saveFac(){
 async function setFactureStatus(id,status){
   if(!requireWritePerm('perm_facturation')) return;
   const next=normalizeFactureStatus(status,td());
-  const {error}=await SB.from('factures').update({statut:next}).eq('id',id);
+  const patch={statut:next,updated_at:new Date().toISOString()};
+  // Si marqué Payée : demander la date et le mode de règlement
+  if(next==='Payée'){
+    const dateReg=window.prompt(`Date de paiement (laisser vide = aujourd'hui ${td()}) :`,td())||td();
+    const modeReg=window.prompt(`Mode de règlement :\n1 Virement\n2 Chèque\n3 Espèces\n4 CB\n5 HelloAsso\n6 Gratuit\n(saisir le numéro ou le nom)`)|| '';
+    const modemap={'1':'Virement','2':'Chèque','3':'Espèces','4':'CB','5':'HelloAsso','6':'Gratuit'};
+    const mode=modemap[modeReg.trim()]||modeReg.trim()||'';
+    if(mode) patch.notes_paiement=`Payée le ${dateReg}${mode?' — '+mode:''}`;
+    patch.date_paiement=dateReg;
+  }
+  const {error}=await SB.from('factures').update(patch).eq('id',id);
   if(error) return alert('Erreur : '+error.message);
   const idx=D.factures.findIndex(f=>f.id===id);
-  if(idx>=0) D.factures[idx]={...D.factures[idx],statut:next};
+  if(idx>=0) D.factures[idx]={...D.factures[idx],...patch};
+  notify('success',`Vente passée en "${next}".`,'Ventes');
   render();
 }
 async function delFac(id){
@@ -4315,15 +4435,30 @@ function vUsers(){
 
 function vAudit(){
   if(!hasPerm('perm_administration')) return`<div class="empty">Accès réservé à l'administrateur</div>`;
-  return `<div class="wrap"><table>
+  return `<div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+  <button class="btn sm" onclick="exportAuditCSV()">⬇ Export CSV</button>
+  </div>
+  <div class="wrap"><table>
   <thead><tr><th>Date</th><th>Action</th><th>Entité</th><th>Utilisateur</th><th>Détails</th></tr></thead>
-  <tbody>${(D.auditLogs||[]).map(log=>`<tr>
-    <td>${fd(log.created_at)}</td>
+  <tbody>${(D.auditLogs||[]).map((log,i)=>{
+    const det=esc(log.details||'');
+    const short=det.slice(0,160);
+    const hasMore=det.length>160;
+    return`<tr>
+    <td style="white-space:nowrap">${fd(log.created_at)}</td>
     <td><span class="badge bblue">${esc(log.action||'')}</span></td>
     <td>${esc(log.entity_type||'')}</td>
-    <td>${esc(D.users.find(u=>u.id===log.user_id)?.email || log.user_id || 'système')}</td>
-    <td style="font-size:11px;color:var(--txt2)">${esc(log.details||'').slice(0,160)}</td>
-    </tr>`).join('')}
+    <td style="font-size:11px">${esc(D.users.find(u=>u.id===log.user_id)?.email || log.user_id || 'système')}</td>
+    <td style="font-size:11px;color:var(--txt2)">
+    <span id="audit-det-${i}">${short}${hasMore?'…':''}</span>
+    ${hasMore?`<button class="btn sm" style="margin-left:4px;font-size:10px;padding:1px 6px" onclick="
+      const el=document.getElementById('audit-det-${i}');
+      const btn=this;
+      if(btn.textContent==='Voir tout'){el.textContent='${det.replace(/'/g,"\\'")}';btn.textContent='Réduire';}
+      else{el.textContent='${short.replace(/'/g,"\\'")}…';btn.textContent='Voir tout';}
+    ">Voir tout</button>`:''}
+    </td>
+    </tr>`;}).join('')}
     ${(D.auditLogs||[]).length===0?`<tr><td colspan="5" class="empty">Aucun événement</td></tr>`:''}
     </tbody>
     </table></div>`;
@@ -4682,6 +4817,8 @@ function vBackup(){
   <button class="btn sm" onclick="exportAchatsCSV()">Achats</button>
   <button class="btn sm" onclick="exportJournalCSV()">Journal</button>
   <button class="btn sm" onclick="exportGLCSV()">Grand livre</button>
+  <button class="btn sm" onclick="exportFEC()" title="Format légal Dgfip — Fichier des Écritures Comptables">📋 FEC comptable</button>
+  <button class="btn sm" onclick="exportAuditCSV()" title="Journal d'audit complet en CSV">🔍 Journal d'audit</button>
   </div>
   </div>
   <p style="font-size:12px;color:var(--txt2);margin-top:12px">✓ Données sauvegardées automatiquement dans Supabase à chaque action.</p>
@@ -4781,7 +4918,9 @@ function renderModal(){
 
   }else if(UI.modal==='ecr'){
     const e=UI.editObj||{date_op:td(),piece:'',compte:'471 - Comptes d attente',contrepartie:'512 - Banque',libelle:'',debit:0,credit:0};
+    const typeBanner=e._isType?`<div id="ecr-type-hint" style="margin-bottom:14px;padding:10px 14px;background:#e8f4ea;border-radius:10px;border:1px solid #b2d8b5;font-size:12px;color:#1e7e34;display:flex;gap:8px;align-items:center"><span>⚡</span><span><strong>${esc(e._typeLabel||'Écriture type')}</strong> — vérifiez les montants et le libellé avant d'enregistrer.</span></div>`:'';
     html=`<div class="modal" style="max-width:540px"><h2>📊 Nouvelle écriture</h2>
+    ${typeBanner}
     <div class="g2">
     <div class="fg"><label>Date</label><input id="e-dat" type="date" value="${e.date_op||td()}"></div>
     <div class="fg"><label>N° pièce</label><input id="e-pie" value="${esc(e.piece||'')}" placeholder="FAC-2025-001"></div>
@@ -4918,6 +5057,29 @@ function renderModal(){
     <div style="background:var(--gold-l);border-radius:var(--r);padding:10px;margin-top:12px;font-size:12px;color:var(--gold-d)">⚠ Pensez à archiver l'exercice courant avant d'en créer un nouveau.</div>
     <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="saveExo()">Créer</button></div>
     </div>`;
+  }else if(UI.modal==='diplome_batch'){
+    const adhList=sortAdherentsList([...D.adherents]);
+    const sel=UI._diplomeBatchSel||{};
+    const selCount=Object.values(sel).filter(Boolean).length;
+    html=`<div class="modal" style="max-width:560px"><h2>📋 Impression batch de diplômes</h2>
+    <p style="font-size:12px;color:var(--txt2);margin-bottom:12px">Sélectionnez les adhérents à inclure dans le PDF multi-pages. Le modèle de ceinture sera deviné automatiquement pour chacun.</p>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+    <button class="btn sm" onclick="D.adherents.forEach(a=>{UI._diplomeBatchSel[a.id]=true});renderModal()">Tout sélectionner</button>
+    <button class="btn sm" onclick="UI._diplomeBatchSel={};renderModal()">Tout désélectionner</button>
+    <span style="margin-left:auto;font-size:12px;color:var(--txt2);align-self:center">${selCount} sélectionné(s)</span>
+    </div>
+    <div style="max-height:340px;overflow-y:auto;border:1px solid var(--brd);border-radius:var(--r);padding:4px 0">
+    ${adhList.map(a=>`<label style="display:flex;align-items:center;gap:10px;padding:8px 14px;cursor:pointer;border-bottom:1px solid var(--brd)">
+      <input type="checkbox" style="width:auto" ${sel[a.id]?'checked':''} onchange="toggleDiplomeBatchAdh('${a.id}')">
+      <span style="flex:1">${esc(a.nom)} ${esc(a.prenom)}</span>
+      ${a.couleur_ceinture?`<span class="badge bgray">${esc(a.couleur_ceinture)}</span>`:''}
+      </label>`).join('')}
+    </div>
+    <div class="modal-act">
+    <button class="btn" onclick="closeModal()">Annuler</button>
+    <button class="btn primary" onclick="confirmDiplomeBatch()" ${!selCount?'disabled':''}>⬇ Générer ${selCount} diplôme(s)</button>
+    </div>
+    </div>`;
   }else if(UI.modal==='exo_close'){
     const exo=UI.editObj||D.currentExo;
     const diag=exerciceDiagnostics(exo?.id);
@@ -4963,6 +5125,56 @@ function renderModal(){
   document.getElementById('app').appendChild(div);
 }
 
+// Écritures types — préremplir la modal écriture selon un modèle
+const ECRITURE_TYPES={
+  cotisation:{
+    label:'Encaissement cotisation',
+    lignes:[
+      {compte:'5121 - Banque',libelle:'Cotisation membre',debit:0,credit:320},
+      {compte:'7561 - Cotisations membres actifs',libelle:'Cotisation membre',debit:320,credit:0},
+    ]
+  },
+  achat_fournisseur:{
+    label:'Achat fournisseur',
+    lignes:[
+      {compte:'6061 - Fournitures non stockées',libelle:'Achat fournisseur',debit:0,credit:0},
+      {compte:'5121 - Banque',libelle:'Achat fournisseur',debit:0,credit:0},
+    ]
+  },
+  subvention:{
+    label:'Subvention / Don',
+    lignes:[
+      {compte:'5121 - Banque',libelle:'Subvention reçue',debit:0,credit:0},
+      {compte:'7411 - Subventions de fonctionnement',libelle:'Subvention reçue',debit:0,credit:0},
+    ]
+  }
+};
+
+function openEcritureType(type){
+  if(!requireWritePerm('perm_comptabilite')) return;
+  const tpl=ECRITURE_TYPES[type];
+  if(!tpl) return openModal('ecr');
+  // Pré-remplir l'état de la modal avec le modèle
+  UI.modal='ecr';
+  UI.editObj={
+    _isType:true,
+    _typeLabel:tpl.label,
+    _lignesType:tpl.lignes,
+    date_op:td(),
+    exercice_id:D.currentExo?.id||null,
+    piece:'',
+    compte:tpl.lignes[0]?.compte||'',
+    libelle:tpl.label,
+    debit:(+tpl.lignes[0]?.debit||0).toFixed(2),
+    credit:(+tpl.lignes[0]?.credit||0).toFixed(2),
+  };
+  renderModal();
+  setTimeout(()=>{
+    const hint=document.getElementById('ecr-type-hint');
+    if(hint) hint.scrollIntoView({behavior:'smooth',block:'nearest'});
+  },80);
+}
+
 function openModal(t,id){
   const permMap={adh:'perm_adherents',compte:'perm_banque',ecr:'perm_comptabilite',achat:'perm_achats',user:'perm_administration',exo:'perm_comptabilite',exo_close:'perm_comptabilite'};
   if(permMap[t] && !requireWritePerm(permMap[t])) return;
@@ -4986,6 +5198,26 @@ function forcePasswordRotation(){
   openPasswordModal();
   alert('Votre mot de passe doit être renouvelé avant de continuer.');
 }
+function openDiplomeBatchModal(){
+  UI.modal='diplome_batch';
+  UI._diplomeBatchSel=UI._diplomeBatchSel||{};
+  renderModal();
+}
+
+function toggleDiplomeBatchAdh(id){
+  if(!UI._diplomeBatchSel) UI._diplomeBatchSel={};
+  UI._diplomeBatchSel[id]=!UI._diplomeBatchSel[id];
+  renderModal();
+}
+
+async function confirmDiplomeBatch(){
+  const sel=Object.entries(UI._diplomeBatchSel||{}).filter(([,v])=>v).map(([id])=>id);
+  if(!sel.length){notify('warn','Sélectionnez au moins un adhérent.','Batch');return;}
+  closeModal();
+  await printDiplomeBatch(sel);
+  UI._diplomeBatchSel={};
+}
+
 function closeModal(){UI.modal=null;UI.editObj=null;renderModal()}
 
 function achatCompteAuto(categorie){
@@ -5286,13 +5518,19 @@ async function delAchat(id){
   D.achats=D.achats.filter(a=>a.id!==id);render()
 }
 async function validerAchat(id){
-  await SB.from('achats').update({statut:'valide'}).eq('id',id);
   const achat=D.achats.find(a=>a.id===id);
+  const nom=achat?`${achat.fournisseur} — ${achat.designation||achat.categorie||''}`.trim():'cet achat';
+  const commentaire=window.prompt(`Valider ${nom} ?\n\nCommentaire de validation (facultatif) :`);
+  if(commentaire===null) return; // annulé
+  const notes=(achat?.notes?achat.notes+'\n':'')+(commentaire?`[Validé le ${td()} par ${UI.currentUser?.prenom||'?'} : ${commentaire}]`:`[Validé le ${td()} par ${UI.currentUser?.prenom||'?'}]`);
+  await SB.from('achats').update({statut:'valide',notes,updated_at:new Date().toISOString()}).eq('id',id);
   if(achat){
     achat.statut='valide';
+    achat.notes=notes;
     try{await syncAchatJournal(achat);}catch(e){return alert('Achat validé, mais écriture comptable non synchronisée : '+e.message);}
   }
-  render()
+  notify('success',`Achat validé.`,'Achats');
+  render();
 }
 
 async function saveUser(id){
@@ -6310,11 +6548,77 @@ function exportCSV(){
   D.adherents.forEach(a=>rows.push([a.nom,a.prenom,a.couleur_ceinture||'',a.numero_licence||'',a.discipline||'Club',a.certificat?'Oui':'Non',a.droit_image?'Oui':'Non',a.pass_region?'Oui':'Non',(+a.montant_pass_region||0).toFixed(2),a.reglement?'Oui':'Non',(+a.cotisation).toFixed(2),a.paiement,a.statut,seasonFromDate(a.date_fin_adhesion||a.date_inscription)||'',a.date_fin_adhesion||'',a.adresse||'',a.code_postal||'',a.ville||'',a.urgence_nom||'',a.urgence_telephone||'']));
   dl('\uFEFF'+rows.map(r=>r.join(';')).join('\n'),`adherents_${td()}.csv`,'text/csv;charset=utf-8');
 }
+
+function exportAdhEmailsCSV(){
+  // Exporte les emails des adhérents actuellement filtrés (même filtre que la vue)
+  const season=currentSeasonLabel();
+  const filtered=D.adherents.filter(a=>{
+    const txt=(a.nom+' '+a.prenom+' '+(a.ville||'')).toLowerCase();
+    const matchesSearch=txt.includes((UI.search.adherents||'').toLowerCase());
+    const matchesStatut=!UI.adhFilters.statut || a.statut===UI.adhFilters.statut;
+    const matchesType=!UI.adhFilters.type || (a.discipline||'Club')===UI.adhFilters.type;
+    const adhSeason=seasonFromDate(a.date_fin_adhesion||a.date_inscription);
+    const matchesSeason=UI.adhFilters.season==='all' || !UI.adhFilters.season || adhSeason===season;
+    const matchesSpecial=adherentMatchesSpecialFilter(a,UI.adhFilters.special);
+    return matchesSearch&&matchesStatut&&matchesType&&matchesSeason&&matchesSpecial&&a.email;
+  });
+  if(!filtered.length){notify('warn','Aucun adhérent avec email dans la sélection courante.','Export emails');return;}
+  const rows=[['Nom','Prénom','Email','Statut','Type adhésion']];
+  filtered.forEach(a=>rows.push([a.nom,a.prenom,a.email||'',a.statut,a.discipline||'Club']));
+  dl('\uFEFF'+rows.map(r=>r.join(';')).join('\n'),`emails_adherents_${td()}.csv`,'text/csv;charset=utf-8');
+  notify('success',`${filtered.length} email(s) exporté(s).`,'Export emails');
+}
 function exportAchatsCSV(){
   const rows=[['Date','Fournisseur','Désignation','Catégorie','Montant','Mode paiement','Référence','Statut','Pièce']];
   D.achats.forEach(a=>rows.push([a.date_op,a.fournisseur,a.designation,a.categorie,(+a.montant).toFixed(2),a.mode_paiement||'',a.reference_paiement||'',a.statut,a.piece||'']));
   dl('\uFEFF'+rows.map(r=>r.join(';')).join('\n'),`achats_${td()}.csv`,'text/csv;charset=utf-8');
 }
+
+function exportAuditCSV(){
+  if(!hasPerm('perm_administration')) return;
+  const rows=[['Date','Action','Entité','Utilisateur','Détails']];
+  (D.auditLogs||[]).forEach(log=>{
+    const user=D.users.find(u=>u.id===log.user_id)?.email||log.user_id||'système';
+    rows.push([log.created_at||'',log.action||'',log.entity_type||'',user,(log.details||'').replace(/;/g,',')]);
+  });
+  dl('\uFEFF'+rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(';')).join('\n'),`audit_${td()}.csv`,'text/csv;charset=utf-8');
+  notify('success',`${(D.auditLogs||[]).length} événement(s) exportés.`,'Audit');
+}
+
+// Export FEC (Fichier des Écritures Comptables) — format Dgfip
+function exportFEC(){
+  if(!hasPerm('perm_comptabilite')) return;
+  const ci=D.clubInfo||{};
+  const siren=(ci.siret||'').replace(/\s/g,'').slice(0,9)||'000000000';
+  const exo=D.currentExo;
+  const exoLib=(exo?.libelle||'').replace(/\s/g,'_')||'exercice';
+  // En-tête FEC
+  const headers=['JournalCode','JournalLib','EcritureNum','EcritureDate','CompteNum','CompteLib','CompAuxNum','CompAuxLib','PieceRef','PieceDate','EcritureLib','Debit','Credit','EcritureLet','DateLet','ValidDate','Montantdevise','Idevise'];
+  const toFECDate=d=>{
+    if(!d)return'';
+    // accepte ISO yyyy-mm-dd ou FR jj/mm/yyyy
+    const iso=d.includes('-')?d:(d.split('/').length===3?`${d.split('/')[2]}-${d.split('/')[1]}-${d.split('/')[0]}`:d);
+    return iso.replace(/-/g,'');
+  };
+  const rows=(D.journal||[]).map((j,i)=>[
+    'GEN','Journal général',
+    j.piece||`ECR${String(i+1).padStart(6,'0')}`,
+    toFECDate(j.date_op),
+    (j.compte||'').split(' ')[0],
+    (j.compte||'').split(' ').slice(1).join(' ')||j.compte||'',
+    '','',
+    j.piece||'',
+    toFECDate(j.date_op),
+    (j.libelle||'').replace(/\|/g,' '),
+    Number(j.debit||0).toFixed(2).replace('.',','),
+    Number(j.credit||0).toFixed(2).replace('.',','),
+    '','','','',''
+  ]);
+  const content=[headers,...rows].map(r=>r.join('|')).join('\n');
+  dl('\uFEFF'+content,`FEC_${siren}_${exoLib}_${td()}.txt`,'text/plain;charset=utf-8');
+  notify('success','Export FEC généré.','Comptabilité');
+}
+
 function exportJournalCSV(){
   const rows=[['Date','Pièce','Compte','Libellé','Débit','Crédit']];
   D.journal.forEach(j=>rows.push([j.date_op,j.piece||'',j.compte,j.libelle,(+j.debit).toFixed(2),(+j.credit).toFixed(2)]));
@@ -6357,6 +6661,20 @@ function onBackupJSONFile(e){
   reader.onload=async ev=>{
     try{
       const payload=JSON.parse(ev.target.result);
+      // Vérification d'intégrité : au moins 3 tables attendues doivent être présentes
+      const EXPECTED_TABLES=['adherents','journal','factures'];
+      const missing=EXPECTED_TABLES.filter(t=>!(t in payload));
+      if(missing.length){
+        throw new Error(`Fichier de sauvegarde incomplet ou invalide.\nTables manquantes : ${missing.join(', ')}.\nVérifiez que vous avez sélectionné le bon fichier.`);
+      }
+      // Afficher un résumé avant de confirmer
+      const summary=Object.entries(payload)
+        .filter(([k,v])=>Array.isArray(v))
+        .map(([k,v])=>`${k} : ${v.length} ligne(s)`)
+        .join('\n');
+      if(!confirm(`📋 Résumé du fichier de sauvegarde :\n\n${summary}\n\nContinuer la restauration ?`)){
+        throw new Error('Import annulé par l\'utilisateur.');
+      }
       await restoreBackupJSON(payload);
       IMP.backup.lastMessage='Import JSON terminé avec succès.';
     }catch(err){
