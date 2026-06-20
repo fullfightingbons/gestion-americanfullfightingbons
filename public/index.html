@@ -7,32 +7,19 @@
 <meta name="robots" content="noindex,nofollow,noarchive,nosnippet">
 <title>AMERICAN FULL FIGHTING BONS EN CHABLAIS — Gestion du club</title>
 <script>
-
-
-// Charge d'abord un asset local, puis bascule sur un CDN si nécessaire.
+// pdf.js est vendorisé localement (public/vendor/pdfjs) — la CSP du Worker
+// n'autorise que 'self' pour script-src, donc un éventuel fallback CDN
+// serait de toute façon bloqué par le navigateur.
 (function(){
-  function loadScript(urls,onLoad){
-    var i=0;
-    function next(){
-      if(i>=urls.length) return;
-      var s=document.createElement('script');
-      s.src=urls[i++];
-      s.defer=true;
-      s.onload=function(){ if(onLoad) onLoad(); };
-      s.onerror=next;
-      document.head.appendChild(s);
+  var s = document.createElement('script');
+  s.src = '/vendor/pdfjs/pdf.min.js';
+  s.defer = true;
+  s.onload = function(){
+    if (window.pdfjsLib) {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.js';
     }
-    next();
-  }
-  loadScript([
-    '/vendor/pdfjs/pdf.min.js',
-    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
-    'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js'
-  ],function(){
-    if(window.pdfjsLib){
-      window.pdfjsLib.GlobalWorkerOptions.workerSrc='/vendor/pdfjs/pdf.worker.min.js';
-    }
-  });
+  };
+  document.head.appendChild(s);
 })();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
