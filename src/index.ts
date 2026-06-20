@@ -21,6 +21,16 @@ const PASSWORD_HASH_ITERATIONS = 1e5;
 const MAX_PBKDF2_ITERATIONS = 1e5;
 const LEGACY_SHA256_RE = /^[a-f0-9]{64}$/i;
 
+// Anti brute-force sur /api/auth/login (s'appuie sur la table auth_rate_limits)
+const LOGIN_MAX_FAILURES = 8;
+const LOGIN_BLOCK_MS = 15 * 60 * 1000; // 15 minutes
+const LOGIN_FAILURE_WINDOW_MS = 60 * 60 * 1000; // au-delà d'1h sans échec, on repart de zéro
+
+// Plafond de sécurité sur toute requête SELECT générique (anti dérapage mémoire/CPU
+// si un écran oublie de paginer ses résultats). Très large pour ne rien casser
+// côté frontend actuel, qui ne pagine pas encore.
+const MAX_QUERY_LIMIT = 5000;
+
 const TABLES = new Set([
   "adherents",
   "achats",
@@ -259,7 +269,8 @@ async function queryRows(
       body.order.ascending === false ? "DESC" : "ASC"
     }`;
   }
-  if (body.limit && body.limit > 0) sql += ` LIMIT ${Math.floor(body.limit)}`;
+  const requestedLimit = body.limit && body.limit > 0 ? Math.floor(body.limit) : MAX_QUERY_LIMIT;
+  sql += ` LIMIT ${Math.min(requestedLimit, MAX_QUERY_LIMIT)}`;
   const result = await db.prepare(sql).bind(...bindings).all();
   const rows = result.results || [];
   if (body.single) {
@@ -418,7 +429,72 @@ async function handleDbApi(request: Request, env: Env, table: string): Promise<R
   }
 }
 
+function getClientIp(request: Request): string {
+  return (
+    request.headers.get("CF-Connecting-IP") ||
+    request.headers.get("X-Forwarded-For")?.split(",")[0]?.trim() ||
+    "unknown"
+  );
+}
+
+async function getLoginBlock(db: D1Database, ip: string): Promise<number> {
+  const row = (await db
+    .prepare(`SELECT blocked_until FROM auth_rate_limits WHERE ip = ?`)
+    .bind(ip)
+    .first()) as { blocked_until: string | null } | null;
+  if (!row?.blocked_until) return 0;
+  const blockedUntil = Date.parse(row.blocked_until);
+  return Number.isFinite(blockedUntil) ? blockedUntil : 0;
+}
+
+async function registerLoginFailure(db: D1Database, ip: string): Promise<void> {
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const row = (await db
+    .prepare(`SELECT failures, last_failure_at FROM auth_rate_limits WHERE ip = ?`)
+    .bind(ip)
+    .first()) as { failures: number; last_failure_at: string | null } | null;
+
+  const lastFailureAt = row?.last_failure_at ? Date.parse(row.last_failure_at) : 0;
+  const withinWindow =
+    Number.isFinite(lastFailureAt) && now.getTime() - lastFailureAt < LOGIN_FAILURE_WINDOW_MS;
+  const failures = (row && withinWindow ? row.failures : 0) + 1;
+  const blockedUntil =
+    failures >= LOGIN_MAX_FAILURES ? new Date(now.getTime() + LOGIN_BLOCK_MS).toISOString() : null;
+
+  await db
+    .prepare(
+      `INSERT INTO auth_rate_limits (ip, failures, last_failure_at, blocked_until, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(ip) DO UPDATE SET
+         failures = excluded.failures,
+         last_failure_at = excluded.last_failure_at,
+         blocked_until = excluded.blocked_until,
+         updated_at = excluded.updated_at`
+    )
+    .bind(ip, failures, nowIso, blockedUntil, nowIso, nowIso)
+    .run();
+}
+
+async function clearLoginFailures(db: D1Database, ip: string): Promise<void> {
+  await db.prepare(`DELETE FROM auth_rate_limits WHERE ip = ?`).bind(ip).run();
+}
+
 async function handleLogin(request: Request, env: Env): Promise<Response> {
+  const db = (env as any).DB as D1Database;
+  const ip = getClientIp(request);
+
+  const blockedUntil = await getLoginBlock(db, ip);
+  if (blockedUntil > Date.now()) {
+    const retryAfterSec = Math.ceil((blockedUntil - Date.now()) / 1000);
+    const response = badRequest(
+      "Trop de tentatives de connexion. Réessayez dans quelques minutes.",
+      429
+    );
+    response.headers.set("Retry-After", String(retryAfterSec));
+    return response;
+  }
+
   let payload: any;
   try {
     payload = await request.json();
@@ -430,12 +506,14 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
   const passwordPlain = String(payload.passwordPlain || payload.password || "");
   const passwordHash = String(payload.passwordHash || "").trim().toLowerCase();
   if (!passwordPlain && !passwordHash) return badRequest("Mot de passe requis");
-  const user = (await (env as any).DB.prepare(
-    `SELECT * FROM utilisateurs WHERE email = ? AND actif = 1 LIMIT 1`
-  )
+  const user = (await db
+    .prepare(`SELECT * FROM utilisateurs WHERE email = ? AND actif = 1 LIMIT 1`)
     .bind(email)
     .first()) as Record<string, unknown> | null;
-  if (!user) return badRequest("Email ou mot de passe incorrect", 401);
+  if (!user) {
+    await registerLoginFailure(db, ip);
+    return badRequest("Email ou mot de passe incorrect", 401);
+  }
   const stored = String(user.mot_de_passe || "");
   let passwordCheck: { valid: boolean; upgradedHash: string | null } = {
     valid: false,
@@ -450,11 +528,14 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
   ) {
     passwordCheck = { valid: true, upgradedHash: null };
   }
-  if (!passwordCheck.valid) return badRequest("Email ou mot de passe incorrect", 401);
+  if (!passwordCheck.valid) {
+    await registerLoginFailure(db, ip);
+    return badRequest("Email ou mot de passe incorrect", 401);
+  }
+  await clearLoginFailures(db, ip);
   if (passwordCheck.upgradedHash) {
-    await (env as any).DB.prepare(
-      `UPDATE utilisateurs SET mot_de_passe = ?, updated_at = ? WHERE id = ?`
-    )
+    await db
+      .prepare(`UPDATE utilisateurs SET mot_de_passe = ?, updated_at = ? WHERE id = ?`)
       .bind(passwordCheck.upgradedHash, new Date().toISOString(), user.id)
       .run();
     user.mot_de_passe = passwordCheck.upgradedHash;
