@@ -287,9 +287,10 @@ async function insertRows(
   env: Env,
   table: string,
   body: any
-): Promise<{ data: unknown; error: unknown }> {
+): Promise<{ data: unknown; error: unknown; ids: string[] }> {
   const rows = Array.isArray(body.values) ? body.values : [body.values];
   const inserted: Record<string, unknown>[] = [];
+  const ids: string[] = [];
   const primaryKey = PRIMARY_KEYS[table];
   for (const input of rows) {
     const row =
@@ -318,9 +319,10 @@ async function insertRows(
     }
     await db.prepare(sql).bind(...values).run();
     inserted.push(row);
+    if (primaryKey && row[primaryKey] !== undefined) ids.push(String(row[primaryKey]));
   }
   const payload = sanitizeData(table, body.single ? inserted[0] || null : inserted);
-  return { data: body.select ? payload : null, error: null };
+  return { data: body.select ? payload : null, error: null, ids };
 }
 
 async function updateRows(
@@ -363,6 +365,42 @@ async function deleteRows(
   sql += buildWhereClause(filters, bindings);
   await db.prepare(sql).bind(...bindings).run();
   return { data: null, error: null };
+}
+
+function extractFilterId(filters: Array<{ column: string; op: string; value: unknown }> = []): string | null {
+  const idFilter = filters.find((f) => f.column === "id" && f.op === "eq");
+  return idFilter ? String(idFilter.value ?? "") : null;
+}
+
+async function logAudit(
+  db: D1Database,
+  user: Record<string, unknown> | null,
+  ip: string,
+  action: string,
+  table: string,
+  entityId: string | null,
+  details: unknown
+): Promise<void> {
+  try {
+    await db
+      .prepare(
+        `INSERT INTO audit_logs (id, user_id, action, entity_type, entity_id, details, ip, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        crypto.randomUUID(),
+        user ? String(user.id || "") : null,
+        action,
+        table,
+        entityId,
+        JSON.stringify(details ?? {}),
+        ip,
+        new Date().toISOString()
+      )
+      .run();
+  } catch {
+    // L'audit ne doit jamais faire échouer l'opération métier elle-même.
+  }
 }
 
 async function handleDbApi(request: Request, env: Env, table: string): Promise<Response> {
@@ -418,10 +456,55 @@ async function handleDbApi(request: Request, env: Env, table: string): Promise<R
   try {
     const db = (env as any).DB as D1Database;
     if (body.action === "query") return json(await queryRows(db, table, body));
-    if (body.action === "insert" || body.action === "upsert")
-      return json(await insertRows(db, env, table, body));
-    if (body.action === "update") return json(await updateRows(db, env, table, body));
-    if (body.action === "delete") return json(await deleteRows(db, table, body));
+
+    if (body.action === "insert" || body.action === "upsert") {
+      const result = await insertRows(db, env, table, body);
+      if (table !== "audit_logs") {
+        await logAudit(
+          db,
+          user,
+          getClientIp(request),
+          body.action,
+          table,
+          result.ids.length === 1 ? result.ids[0] : null,
+          { ids: result.ids }
+        );
+      }
+      return json({ data: result.data, error: result.error });
+    }
+
+    if (body.action === "update") {
+      const result = await updateRows(db, env, table, body);
+      if (table !== "audit_logs") {
+        await logAudit(
+          db,
+          user,
+          getClientIp(request),
+          "update",
+          table,
+          extractFilterId(body.filters),
+          { filters: body.filters, columns: Object.keys(body.values || {}) }
+        );
+      }
+      return json(result);
+    }
+
+    if (body.action === "delete") {
+      const result = await deleteRows(db, table, body);
+      if (table !== "audit_logs") {
+        await logAudit(
+          db,
+          user,
+          getClientIp(request),
+          "delete",
+          table,
+          extractFilterId(body.filters),
+          { filters: body.filters }
+        );
+      }
+      return json(result);
+    }
+
     return badRequest("Unsupported action");
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected database error";
