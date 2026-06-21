@@ -49,6 +49,8 @@ const MODES_PAIE = ['Virement','Chèque','Espèces','CB','Prélèvement','HelloA
 const ADH_TYPES = ['Club','CSE Thalès','Membre du Bureau'];
 const ADH_STATUTS = ['Actif','Renouvellement','Inactif','Adhésion annulée'];
 const CEINTURE_COLORS = ['Blanche','Jaune','Orange','Verte','Bleue','Marron','Noire'];
+// Sous-ensemble accepté par la contrainte CHECK de la table diplomes (migration 0004).
+const DIPLOME_CEINTURES_VALIDES = CEINTURE_COLORS;
 
 const ALL_TABS = [
   {id:'dashboard',    icon:'🏁',label:'Pilotage'},
@@ -2560,11 +2562,26 @@ async function printDiplome(){
     .replace(/\s+/g,'_')
     .replace(/[^a-zA-Z0-9_.-]+/g,'');
     pdf.save(`${safeName||'diplome'}.pdf`);
-    // Log de l'émission du diplôme dans les notes de l'adhérent
+    // Log de l'émission du diplôme dans les notes de l'adhérent (historique lisible)
     const logLine=`[Diplôme émis le ${td()} - ${tpl.label}]`;
     const newNotes=(adh.notes?adh.notes+'\n':'')+logLine;
     await SB.from('adherents').update({notes:newNotes,updated_at:new Date().toISOString()}).eq('id',adh.id);
     adh.notes=newNotes;
+    // Traçabilité structurée dans la table diplomes (pour requêtage/export ultérieur)
+    if(DIPLOME_CEINTURES_VALIDES.includes(adh.couleur_ceinture)){
+      try{
+        await SB.from('diplomes').insert({
+          adherent_id:adh.id,
+          nom:adh.nom||'',
+          prenom:adh.prenom||'',
+          ceinture:adh.couleur_ceinture,
+          date_obtention:UI.diplome.date||td(),
+          r2_modele:tpl.path||tpl.url||''
+        });
+      }catch(diplomeLogError){
+        console.error('Traçabilité diplôme (table diplomes) impossible',diplomeLogError);
+      }
+    }
     notify('success',`Diplôme de ${adh.prenom} ${adh.nom} généré et tracé.`,'Diplômes');
   }catch(error){
     alert('Export PDF impossible : '+(error?.message||error));
@@ -2583,6 +2600,7 @@ async function printDiplomeBatch(adherentIds){
     const pdf=new jsPDF({orientation:'landscape',unit:'pt',format:'a4',compress:true});
     let first=true;
     const date=UI.diplome.date||td();
+    const diplomeRows=[];
     for(const adh of adhs){
       if(!first) pdf.addPage();
       first=false;
@@ -2600,8 +2618,25 @@ async function printDiplomeBatch(adherentIds){
         layout:selectedDiplomeLayout()
       });
       pdf.addImage(canvas.toDataURL('image/png'),'PNG',0,0,DIPLOME_PAGE.pdfWidthPt,DIPLOME_PAGE.pdfHeightPt,undefined,'FAST');
+      if(DIPLOME_CEINTURES_VALIDES.includes(adh.couleur_ceinture)){
+        diplomeRows.push({
+          adherent_id:adh.id,
+          nom:adh.nom||'',
+          prenom:adh.prenom||'',
+          ceinture:adh.couleur_ceinture,
+          date_obtention:date,
+          r2_modele:bestTpl.path||bestTpl.url||''
+        });
+      }
     }
     pdf.save(`diplomes_batch_${date}.pdf`);
+    if(diplomeRows.length){
+      try{
+        await SB.from('diplomes').insert(diplomeRows);
+      }catch(diplomeLogError){
+        console.error('Traçabilité diplômes (batch) impossible',diplomeLogError);
+      }
+    }
     notify('success',`${adhs.length} diplôme(s) générés.`,'Diplômes batch');
   }catch(err){
     alert('Génération batch impossible : '+(err?.message||err));
