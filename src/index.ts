@@ -31,6 +31,32 @@ const LOGIN_FAILURE_WINDOW_MS = 60 * 60 * 1000; // au-delà d'1h sans échec, on
 // côté frontend actuel, qui ne pagine pas encore.
 const MAX_QUERY_LIMIT = 5000;
 
+type DbFilterOp = "eq" | "in";
+
+interface DbFilter {
+  column: string;
+  op: DbFilterOp;
+  value: unknown;
+}
+
+interface DbOrder {
+  column: string;
+  ascending?: boolean;
+}
+
+interface DbRequestBody {
+  action?: "query" | "insert" | "update" | "delete" | "upsert";
+  op?: string;
+  payload?: unknown;
+  filters?: DbFilter[];
+  order?: DbOrder;
+  limit?: number;
+  single?: boolean;
+  values?: unknown;
+  select?: boolean;
+  onConflict?: string | string[];
+}
+
 const TABLES = new Set([
   "adherents",
   "achats",
@@ -148,8 +174,8 @@ function quoteIdentifier(value: string): string {
 }
 
 function getBucket(env: Env, bucketName: string): R2Bucket | null {
-  if (bucketName === "storage") return (env as any).R2_STORAGE ?? null;
-  if (bucketName === "fullfighting-pdf") return (env as any).R2_PDF ?? null;
+  if (bucketName === "storage") return env.R2_STORAGE ?? null;
+  if (bucketName === "fullfighting-pdf") return env.R2_PDF ?? null;
   return null;
 }
 
@@ -232,7 +258,7 @@ function withSecurityHeaders(response: Response): Response {
 }
 
 function buildWhereClause(
-  filters: Array<{ column: string; op: string; value: unknown }> = [],
+  filters: DbFilter[] = [],
   bindings: unknown[]
 ): string {
   const parts: string[] = [];
@@ -244,7 +270,12 @@ function buildWhereClause(
       continue;
     }
     if (filter.op === "in") {
-      const values = Array.isArray(filter.value) ? filter.value : [];
+      if (!Array.isArray(filter.value)) {
+        // Erreur explicite plutôt qu'un silencieux "0 résultat" si le client
+        // envoie une valeur mal formée (ex: une string au lieu d'un tableau).
+        throw new Error(`Filter op "in" on column "${filter.column}" requires an array value`);
+      }
+      const values = filter.value;
       if (!values.length) {
         parts.push("1 = 0");
         continue;
@@ -261,7 +292,7 @@ function buildWhereClause(
 async function queryRows(
   db: D1Database,
   table: string,
-  body: any
+  body: DbRequestBody
 ): Promise<{ data: unknown; error: unknown }> {
   const bindings: unknown[] = [];
   let sql = `SELECT * FROM ${quoteIdentifier(table)}`;
@@ -288,13 +319,15 @@ async function insertRows(
   db: D1Database,
   env: Env,
   table: string,
-  body: any
+  body: DbRequestBody
 ): Promise<{ data: unknown; error: unknown; ids: string[] }> {
   const rows = Array.isArray(body.values) ? body.values : [body.values];
   const inserted: Record<string, unknown>[] = [];
   const ids: string[] = [];
   const primaryKey = PRIMARY_KEYS[table];
-  for (const input of rows) {
+  const statements: D1PreparedStatement[] = [];
+
+  for (const input of rows as Record<string, unknown>[]) {
     const row =
       table === "utilisateurs"
         ? await prepareUserWriteValues(input, env, PASSWORD_HASH_PREFIX, PASSWORD_HASH_ITERATIONS)
@@ -319,10 +352,21 @@ async function insertRows(
         ? ` ON CONFLICT(${conflict}) DO UPDATE SET ${updateColumns}`
         : ` ON CONFLICT(${conflict}) DO NOTHING`;
     }
-    await db.prepare(sql).bind(...values).run();
+    statements.push(db.prepare(sql).bind(...values));
     inserted.push(row);
     if (primaryKey && row[primaryKey] !== undefined) ids.push(String(row[primaryKey]));
   }
+
+  // db.batch() exécute toutes les requêtes en une seule transaction/round-trip D1
+  // au lieu d'un await séquentiel par ligne — plus rapide pour les imports
+  // multi-lignes (ex: import CSV de 50 adhérents). L'ordre des statements
+  // correspond exactement à l'ordre de inserted[]/ids[] construit ci-dessus.
+  if (statements.length === 1) {
+    await statements[0].run();
+  } else if (statements.length > 1) {
+    await db.batch(statements);
+  }
+
   const payload = sanitizeData(table, body.single ? inserted[0] || null : inserted);
   return { data: body.select ? payload : null, error: null, ids };
 }
@@ -331,14 +375,14 @@ async function updateRows(
   db: D1Database,
   env: Env,
   table: string,
-  body: any
+  body: DbRequestBody
 ): Promise<{ data: unknown; error: unknown }> {
   const filters = body.filters || [];
   if (!filters.length) throw new Error("Unsafe update blocked: missing filters");
-  const values =
+  const values: Record<string, unknown> =
     table === "utilisateurs"
-      ? await prepareUserWriteValues(body.values || {}, env, PASSWORD_HASH_PREFIX, PASSWORD_HASH_ITERATIONS)
-      : body.values || {};
+      ? await prepareUserWriteValues((body.values as Record<string, unknown>) || {}, env, PASSWORD_HASH_PREFIX, PASSWORD_HASH_ITERATIONS)
+      : (body.values as Record<string, unknown>) || {};
   const columns = Object.keys(values);
   if (!columns.length) return { data: body.single ? null : [], error: null };
   const bindings = columns.map((c) => normalizeDbValue(values[c]));
@@ -351,14 +395,14 @@ async function updateRows(
     action: "query",
     filters,
     single: body.single,
-    limit: body.single ? 1 : null,
+    limit: body.single ? 1 : undefined,
   });
 }
 
 async function deleteRows(
   db: D1Database,
   table: string,
-  body: any
+  body: DbRequestBody
 ): Promise<{ data: unknown; error: unknown }> {
   const filters = body.filters || [];
   if (!filters.length) throw new Error("Unsafe delete blocked: missing filters");
@@ -369,7 +413,7 @@ async function deleteRows(
   return { data: null, error: null };
 }
 
-function extractFilterId(filters: Array<{ column: string; op: string; value: unknown }> = []): string | null {
+function extractFilterId(filters: DbFilter[] = []): string | null {
   const idFilter = filters.find((f) => f.column === "id" && f.op === "eq");
   return idFilter ? String(idFilter.value ?? "") : null;
 }
@@ -405,11 +449,29 @@ async function logAudit(
   }
 }
 
+// Erreurs "métier" volontairement levées par nos propres fonctions (filtres
+// manquants, action non supportée, etc.) — sûres à renvoyer telles quelles.
+// Tout le reste (erreurs D1/SQLite brutes) est loggé côté Worker et remplacé
+// par un message générique pour ne pas exposer le schéma de la base au client.
+const SAFE_ERROR_PREFIXES = [
+  "Unsafe update blocked",
+  "Unsafe delete blocked",
+  "Unsupported filter op",
+  "Unsupported action",
+  "Filter op \"in\"",
+  "Invalid identifier",
+  "Direct password writes are blocked",
+];
+
+function isSafeErrorMessage(message: string): boolean {
+  return SAFE_ERROR_PREFIXES.some((prefix) => message.startsWith(prefix));
+}
+
 async function handleDbApi(request: Request, env: Env, table: string): Promise<Response> {
   if (!TABLES.has(table)) return badRequest("Unknown table", 404);
   const user = await getCurrentUser(request, env, SESSION_COOKIE);
   if (!user) return badRequest("Unauthorized", 401);
-  let body: any;
+  let body: DbRequestBody;
   try {
     body = await request.json();
   } catch {
@@ -418,14 +480,14 @@ async function handleDbApi(request: Request, env: Env, table: string): Promise<R
 
   // Traduire le format frontend (op/payload) vers le format interne (action/values)
   if (body.op && !body.action) {
-    const opMap: Record<string, string> = {
+    const opMap: Record<string, DbRequestBody["action"]> = {
       select: "query",
       insert: "insert",
       update: "update",
       delete: "delete",
       upsert: "upsert",
     };
-    body.action = opMap[body.op] || body.op;
+    body.action = opMap[body.op] || (body.op as DbRequestBody["action"]);
     if (body.payload !== undefined && body.values === undefined) {
       body.values = body.payload;
     }
@@ -441,7 +503,8 @@ async function handleDbApi(request: Request, env: Env, table: string): Promise<R
         filters[0].op === "eq" &&
         filters[0].column === "id" &&
         String(filters[0].value || "") === String(user.id || "");
-      const columns = Object.keys(body.values || {});
+      const values = (body.values as Record<string, unknown>) || {};
+      const columns = Object.keys(values);
       const allowedColumns = [
         "mot_de_passe_plain",
         "updated_at",
@@ -456,7 +519,7 @@ async function handleDbApi(request: Request, env: Env, table: string): Promise<R
     if (!allowed) return badRequest("Forbidden", 403);
   }
   try {
-    const db = (env as any).DB as D1Database;
+    const db = env.DB;
     if (body.action === "query") return json(await queryRows(db, table, body));
 
     if (body.action === "insert" || body.action === "upsert") {
@@ -485,7 +548,7 @@ async function handleDbApi(request: Request, env: Env, table: string): Promise<R
           "update",
           table,
           extractFilterId(body.filters),
-          { filters: body.filters, columns: Object.keys(body.values || {}) }
+          { filters: body.filters, columns: Object.keys((body.values as Record<string, unknown>) || {}) }
         );
       }
       return json(result);
@@ -509,8 +572,11 @@ async function handleDbApi(request: Request, env: Env, table: string): Promise<R
 
     return badRequest("Unsupported action");
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unexpected database error";
-    return badRequest(message, 500);
+    const rawMessage = error instanceof Error ? error.message : "Unexpected database error";
+    // Toujours logger le détail réel côté Worker pour pouvoir investiguer.
+    console.error(`[handleDbApi] table=${table} action=${body.action}:`, rawMessage);
+    const safeMessage = isSafeErrorMessage(rawMessage) ? rawMessage : "Erreur serveur lors de l'accès aux données";
+    return badRequest(safeMessage, 500);
   }
 }
 
@@ -566,7 +632,7 @@ async function clearLoginFailures(db: D1Database, ip: string): Promise<void> {
 }
 
 async function handleLogin(request: Request, env: Env): Promise<Response> {
-  const db = (env as any).DB as D1Database;
+  const db = env.DB;
   const ip = getClientIp(request);
 
   const blockedUntil = await getLoginBlock(db, ip);
@@ -626,7 +692,14 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
     user.mot_de_passe = passwordCheck.upgradedHash;
   }
   const token = await createSessionToken(
-    { userId: String(user.id || ""), expiresAt: Date.now() + SESSION_TTL_MS },
+    {
+      userId: String(user.id || ""),
+      expiresAt: Date.now() + SESSION_TTL_MS,
+      // Capturé au moment du login : si le mot de passe change ensuite,
+      // password_changed_at en base ne correspondra plus à cette valeur
+      // et getCurrentUser() invalidera automatiquement ce token.
+      pwdStamp: String(user.password_changed_at || ""),
+    },
     env
   );
   const response = json({ data: { user: sanitizeRow("utilisateurs", user) }, error: null });
@@ -673,12 +746,27 @@ async function handleChangePassword(request: Request, env: Env): Promise<Respons
   const passwordCheck = await verifyPassword(currentPassword, stored, env, PASSWORD_HASH_PREFIX, MAX_PBKDF2_ITERATIONS, LEGACY_SHA256_RE);
   if (!passwordCheck.valid) return badRequest("Mot de passe actuel incorrect", 401);
   const nextPasswordHash = await hashPassword(nextPassword, env, PASSWORD_HASH_PREFIX, PASSWORD_HASH_ITERATIONS);
-  await (env as any).DB.prepare(
+  const newPwdStamp = new Date().toISOString();
+  await env.DB.prepare(
     `UPDATE utilisateurs SET mot_de_passe = ?, updated_at = ?, password_changed_at = ?, must_change_password = 0 WHERE id = ?`
   )
-    .bind(nextPasswordHash, new Date().toISOString(), new Date().toISOString(), user.id)
+    .bind(nextPasswordHash, newPwdStamp, newPwdStamp, user.id)
     .run();
-  return json({ data: { ok: true }, error: null });
+  // Toutes les AUTRES sessions actives (sur d'autres appareils) portent l'ancien
+  // pwdStamp et seront rejetées par getCurrentUser() dès leur prochaine requête.
+  // On réémet ici un cookie frais pour que la session courante reste valide.
+  const token = await createSessionToken(
+    { userId: String(user.id || ""), expiresAt: Date.now() + SESSION_TTL_MS, pwdStamp: newPwdStamp },
+    env
+  );
+  const response = json({ data: { ok: true }, error: null });
+  response.headers.append(
+    "Set-Cookie",
+    `${SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly; Path=/; Max-Age=${Math.floor(
+      SESSION_TTL_MS / 1000
+    )}; SameSite=Lax; Secure`
+  );
+  return response;
 }
 
 async function handleStorageList(
@@ -760,7 +848,7 @@ export default {
     const method = request.method.toUpperCase();
 
     if (path === "/api/health" && (method === "GET" || method === "HEAD")) {
-      const response = withSecurityHeaders(json({ ok: true, data: { service: "gestion-americanfullfightingbons", date: new Date().toISOString(), bindings: { hasDb: !!(env as any).DB } } }));
+      const response = withSecurityHeaders(json({ ok: true, data: { service: "gestion-americanfullfightingbons", date: new Date().toISOString(), bindings: { hasDb: !!env.DB } } }));
       return method === "HEAD" ? new Response(null, { status: response.status, headers: response.headers }) : response;
     }
 
@@ -770,9 +858,14 @@ export default {
     }
 
     if (path === "/api/bootstrap" && (method === "GET" || method === "HEAD")) {
+      if (method === "HEAD") {
+        // Pas besoin d'interroger D1 juste pour répondre à un HEAD : on renvoie
+        // un 200 vide immédiatement plutôt que de calculer tout le payload bootstrap.
+        return withSecurityHeaders(new Response(null, { status: 200 }));
+      }
       try {
         const user = await getCurrentUser(request, env, SESSION_COOKIE);
-        const db = (env as any).DB as D1Database;
+        const db = env.DB;
 
         const clubInfoRows = await db.prepare(`SELECT * FROM club_info`).all();
         const clubInfo: Record<string, unknown> = {};
@@ -794,8 +887,9 @@ export default {
           error: null,
         }));
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Database unavailable";
-        return withSecurityHeaders(json({ data: null, error: { message } }, { status: 503 }));
+        const rawMessage = error instanceof Error ? error.message : "Database unavailable";
+        console.error("[bootstrap]", rawMessage);
+        return withSecurityHeaders(json({ data: null, error: { message: "Database unavailable" } }, { status: 503 }));
       }
     }
 
@@ -836,8 +930,8 @@ export default {
       );
     }
 
-    if ((env as any).ASSETS) {
-      return await (env as any).ASSETS.fetch(request);
+    if (env.ASSETS) {
+      return await env.ASSETS.fetch(request);
     }
 
     return withSecurityHeaders(new Response("Not Found", { status: 404 }));
