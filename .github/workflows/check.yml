@@ -24,5 +24,8 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Build (minification frontend)
+        run: npm run build
+
       - name: Tests
         run: npm test --if-present
