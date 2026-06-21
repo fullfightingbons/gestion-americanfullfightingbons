@@ -219,11 +219,22 @@ async function getCurrentUser(
   if (!token) return null;
   const session = await parseSessionToken(token, env);
   if (!session || !session.userId || Number(session.expiresAt) < Date.now()) return null;
-  return (env.DB as D1Database).prepare(
+  const user = await (env.DB as D1Database).prepare(
     `SELECT * FROM utilisateurs WHERE id = ? AND actif = 1`,
   )
     .bind(session.userId)
     .first<UserRow>();
+  if (!user) return null;
+  // Si le token contient un horodatage de mot de passe (sessions émises après
+  // ce correctif) et qu'il ne correspond plus à password_changed_at en base,
+  // la session est révoquée : un changement de mot de passe invalide donc
+  // immédiatement toutes les anciennes sessions actives.
+  const sessionPwdStamp = session.pwdStamp;
+  if (sessionPwdStamp !== undefined) {
+    const currentPwdStamp = String(user.password_changed_at || "");
+    if (String(sessionPwdStamp) !== currentPwdStamp) return null;
+  }
+  return user;
 }
 
 function getPermissionLevel(user: UserRow, key: string, defaultRolePerms: PermissionMatrix): string {
