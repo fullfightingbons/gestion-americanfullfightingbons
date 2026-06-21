@@ -2099,7 +2099,7 @@ function vAdh(){
   <tbody>${f.map(a=>{
     const docs=getAdherentDocuments(a.id);
     return `<tr class="${adhStatus(a)==='expire'?'adh-expire':adhStatus(a)==='soon'?'adh-soon':'adh-valid'}">
-    <td><strong style="font-weight:500">${a.nom} ${a.prenom}</strong>${a.ville?`<br><span style="font-size:10px;color:var(--txt2)">${a.ville}</span>`:''}</td>
+    <td><strong style="font-weight:500">${esc(a.nom)} ${esc(a.prenom)}</strong>${a.ville?`<br><span style="font-size:10px;color:var(--txt2)">${esc(a.ville)}</span>`:''}</td>
     <td><span class="badge bgray">${a.discipline||'Club'}</span></td>
     <td>${bdg(a.certificat)}</td><td>${bdg(a.droit_image)}</td>
     <td>${bdg(a.pass_region)}${+a.montant_pass_region>0?` <span style="font-size:11px;color:var(--gold-d)">+${(+a.montant_pass_region).toFixed(0)}€</span>`:''}</td>
@@ -2664,7 +2664,7 @@ function vDiplomes(){
   <div class="fg" style="margin-bottom:12px">
   <label>Adhérent</label>
   <select onchange="UI.diplome.adherentId=this.value;render()">
-  ${adhList.map(a=>`<option value="${a.id}" ${UI.diplome.adherentId===a.id?'selected':''}>${a.nom} ${a.prenom}${a.couleur_ceinture?` — ${a.couleur_ceinture}`:''}</option>`).join('')}
+  ${adhList.map(a=>`<option value="${a.id}" ${UI.diplome.adherentId===a.id?'selected':''}>${esc(a.nom)} ${esc(a.prenom)}${a.couleur_ceinture?` — ${esc(a.couleur_ceinture)}`:''}</option>`).join('')}
   </select>
   </div>
   <div class="g2">
@@ -2679,7 +2679,7 @@ function vDiplomes(){
   </div>
   ${adh?`<div class="card" style="margin-top:14px;padding:12px 14px;background:rgba(255,255,255,.58)">
     <div style="font-size:11px;color:var(--txt2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Données adhérent utilisées</div>
-    <div style="font-size:13px;line-height:1.8"><strong>${adh.nom} ${adh.prenom}</strong><br>Nom : ${adh.nom||'—'}<br>Prénom : ${adh.prenom||'—'}<br>Licence : ${adh.numero_licence||'Non renseigné'}<br>Date imprimée : ${fd(UI.diplome.date||td())}</div>
+    <div style="font-size:13px;line-height:1.8"><strong>${esc(adh.nom)} ${esc(adh.prenom)}</strong><br>Nom : ${esc(adh.nom||'—')}<br>Prénom : ${esc(adh.prenom||'—')}<br>Licence : ${esc(adh.numero_licence||'Non renseigné')}<br>Date imprimée : ${fd(UI.diplome.date||td())}</div>
     </div>`:`<div class="empty">Aucun adhérent disponible.</div>`}
     <div class="card" style="margin-top:14px;padding:12px 14px;background:rgba(255,255,255,.58)">
     <div style="font-size:11px;color:var(--txt2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Fichier de notation</div>
@@ -2887,7 +2887,7 @@ function vComptes(){
     const sol=(+c.solde_initial)+cr-db;
     return`<div class="card" style="margin-bottom:10px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-    <div><div style="font-weight:500">${c.nom}</div><div style="font-size:11px;color:var(--txt2)">${c.numero||''}</div></div>
+    <div><div style="font-weight:500">${esc(c.nom)}</div><div style="font-size:11px;color:var(--txt2)">${esc(c.numero||'')}</div></div>
     <div style="font-size:18px;font-weight:500;color:${sol>=0?'#1e7e34':'var(--red)'}">${sol.toLocaleString('fr-FR',{minimumFractionDigits:2})} €</div>
     </div>
     <div class="g3">
@@ -2902,7 +2902,7 @@ function vComptes(){
       <thead><tr><th>Date</th><th>Valeur</th><th>Libellé</th><th>Débit</th><th>Crédit</th><th>Rapproché</th></tr></thead>
       <tbody>${tr.slice(0,5).map(t=>`<tr><td>${fd(frDateToISO(t.date_op)||t.date_op)||''}</td>
       <td style="font-size:11px;color:var(--txt2)">${fd(t.date_valeur)||'—'}</td>
-      <td>${t.libelle}</td>
+      <td>${esc(t.libelle)}</td>
       <td style="color:var(--red);text-align:right">${+t.debit>0?(+t.debit).toFixed(2)+' €':''}</td>
       <td style="color:#1e7e34;text-align:right">${+t.credit>0?(+t.credit).toFixed(2)+' €':''}</td>
       <td>${t.rapproche?`<span class="badge bok">✓</span>`:`<span class="badge bwarn">En attente</span>`}</td>
@@ -2951,7 +2951,7 @@ function vCompteDetail(c){
   return`<div class="view-head">
   <div>
   <div class="eyebrow">Consultation bancaire</div>
-  <h2>${c.nom}</h2>
+  <h2>${esc(c.nom)}</h2>
   <p>Consultez l'ensemble des opérations importées pour ce compte, avec le statut de rapprochement et les montants débit/crédit.</p>
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -3064,7 +3064,7 @@ function removeBankPreviewRow(i){
 function vBankImport(){
   const canWrite=hasPerm('perm_banque','write');
   return`<div style="margin-bottom:12px"><label>Compte cible</label>
-  <select id="cible-cpt" style="max-width:280px">${D.comptes.map(c=>`<option value="${c.id}">${c.nom}</option>`).join('')}</select>
+  <select id="cible-cpt" style="max-width:280px">${D.comptes.map(c=>`<option value="${c.id}">${esc(c.nom)}</option>`).join('')}</select>
   </div>
   <div class="card" style="margin-bottom:12px">
   <p style="font-weight:600;margin-bottom:6px">PDF Crédit Mutuel</p>
@@ -3181,7 +3181,7 @@ function vEcr512(){
   <div class="gl-hdr"><strong>512 — Banque</strong><span style="font-size:12px;color:var(--txt2)">${e.length} écriture(s)</span></div>
   <div class="gl-row gl-head"><span>Date</span><span>Libellé</span><span style="text-align:right">Débit</span><span style="text-align:right">Crédit</span><span style="text-align:right">Solde</span></div>
   ${(()=>{let s=0;return e.map(j=>{s+=(+j.credit)-(+j.debit);return`<div class="gl-row">
-    <span>${fd(j.date_op)}</span><span>${j.libelle}<br><span style="font-size:10px;color:var(--txt2)">${j.piece||''}</span></span>
+    <span>${fd(j.date_op)}</span><span>${esc(j.libelle)}<br><span style="font-size:10px;color:var(--txt2)">${esc(j.piece||'')}</span></span>
     <span style="color:var(--red);text-align:right">${+j.debit>0?(+j.debit).toFixed(2)+' €':''}</span>
     <span style="color:#1e7e34;text-align:right">${+j.credit>0?(+j.credit).toFixed(2)+' €':''}</span>
     <span style="text-align:right;font-weight:500;color:${s>=0?'#1e7e34':'var(--red)'}">${s.toFixed(2)} €</span>
@@ -3483,7 +3483,7 @@ function vJournal(){
   <div class="sc"><div class="v ${ecart===0?'vg':'vr'}">${ecart.toFixed(2)} €</div><div class="l">Écart débit/crédit</div></div>
   </div>
   ${orphanDiag.rows.length?`<div class="card" style="margin-bottom:12px;padding:12px 16px;font-size:12px;color:${orphanDiag.withinCurrent.length?'var(--red)':'var(--gold-d)'}">${orphanDiag.withinCurrent.length?`Écritures sans exercice détectées dans l’exercice actif : <strong>${orphanDiag.withinCurrent.length}</strong>.`:`Écritures non rattachées détectées hors de la période de l’exercice actif : <strong>${orphanDiag.rows.length}</strong>.`}<div style="margin-top:6px;color:var(--txt2)">Débit : ${orphanDiag.totalDebit.toFixed(2)} € · Crédit : ${orphanDiag.totalCredit.toFixed(2)} € · Écart : ${orphanDiag.ecart.toFixed(2)} €</div><div style="margin-top:6px;color:var(--txt2)">${D.currentExo?.date_debut&&D.currentExo?.date_fin?`Exercice actif : ${fd(D.currentExo.date_debut)} → ${fd(D.currentExo.date_fin)}.`:''}${orphanDiag.beforeCurrent.length?` Avant période : ${orphanDiag.beforeCurrent.length}.`:''}${orphanDiag.afterCurrent.length?` Après période : ${orphanDiag.afterCurrent.length}.`:''}${orphanDiag.withinCurrent.length?` À corriger dans la période active : ${orphanDiag.withinCurrent.length}.`:' Aucune écriture sans exercice dans la période active.'}</div></div>`:''}
-  <div class="card" style="margin-bottom:12px;padding:12px 16px;font-size:12px;color:${ecart===0?'#1e7e34':'var(--red)'}">${ecart===0?'Journal équilibré sur l’exercice sélectionné.':'Le journal n’est pas équilibré. Vérifiez les anciennes écritures manuelles ou importées.'}${issues.length?`<div style="margin-top:8px;color:var(--txt)">Pièces déséquilibrées détectées : <strong>${issues.length}</strong>${issues.slice(0,3).map(i=>`<div style="margin-top:4px;font-size:11px;color:var(--txt2)">${i.piece} : ${i.ecart.toFixed(2)} €</div>`).join('')}</div>`:''}</div>
+  <div class="card" style="margin-bottom:12px;padding:12px 16px;font-size:12px;color:${ecart===0?'#1e7e34':'var(--red)'}">${ecart===0?'Journal équilibré sur l’exercice sélectionné.':'Le journal n’est pas équilibré. Vérifiez les anciennes écritures manuelles ou importées.'}${issues.length?`<div style="margin-top:8px;color:var(--txt)">Pièces déséquilibrées détectées : <strong>${issues.length}</strong>${issues.slice(0,3).map(i=>`<div style="margin-top:4px;font-size:11px;color:var(--txt2)">${esc(i.piece)} : ${i.ecart.toFixed(2)} €</div>`).join('')}</div>`:''}</div>
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
   ${canWrite?`<button class="btn primary" onclick="openModal('ecr')">+ Nouvelle écriture</button>`:''}
   ${canWrite?`<button class="btn" onclick="openEcritureType('cotisation')" title="Écriture type encaissement cotisation">⚡ Cotisation</button>`:''}
@@ -3499,7 +3499,7 @@ function vJournal(){
   ${jnl.map(j=>`<div style="display:grid;grid-template-columns:90px 70px 1fr 90px 90px;gap:8px;padding:7px 0;border-bottom:.5px solid var(--brd);font-size:12px;align-items:center">
     <span>${fd(j.date_op)}</span>
     <span style="font-size:11px;color:var(--txt2)">${j.piece||''}</span>
-    <span><strong style="font-weight:500">${j.compte}</strong><br><span style="font-size:11px;color:var(--txt2)">${j.libelle}</span></span>
+    <span><strong style="font-weight:500">${esc(j.compte)}</strong><br><span style="font-size:11px;color:var(--txt2)">${esc(j.libelle)}</span></span>
     <span style="color:var(--red);text-align:right;font-weight:500">${+j.debit>0?(+j.debit).toFixed(2)+' €':''}</span>
     <span style="color:#1e7e34;text-align:right;font-weight:500">${+j.credit>0?(+j.credit).toFixed(2)+' €':''}</span>
     </div>`).join('')}
@@ -3802,8 +3802,8 @@ function printBilan(){
   <div class="hdr">
   ${logo}
   <div class="club">
-  <h1>${ci.nom||'AFFBC'}</h1>
-  <p>${ci.adresse||''}</p>
+  <h1>${esc(ci.nom||'AFFBC')}</h1>
+  <p>${esc(ci.adresse||'')}</p>
   </div>
   <div class="doc">
   <div class="k">Document officiel</div>
@@ -3867,11 +3867,11 @@ function vResultat(){
   const tP=prod.reduce((s,j)=>s+(+j.credit),0),tC=charg.reduce((s,j)=>s+(+j.debit),0);
   return`<div class="g2">
   <div><p class="stit">Produits (classe 7)</p>
-  ${prod.map(j=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:.5px solid var(--brd);font-size:12.5px"><span>${j.libelle}</span><span style="color:#1e7e34">${(+j.credit).toFixed(2)} €</span></div>`).join('')}
+  ${prod.map(j=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:.5px solid var(--brd);font-size:12.5px"><span>${esc(j.libelle)}</span><span style="color:#1e7e34">${(+j.credit).toFixed(2)} €</span></div>`).join('')}
   <div style="display:flex;justify-content:space-between;padding:7px 0;font-weight:500"><span>Total</span><span style="color:#1e7e34">${tP.toFixed(2)} €</span></div>
   </div>
   <div><p class="stit">Charges (classe 6)</p>
-  ${charg.map(j=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:.5px solid var(--brd);font-size:12.5px"><span>${j.libelle}</span><span style="color:var(--red)">${(+j.debit).toFixed(2)} €</span></div>`).join('')}
+  ${charg.map(j=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:.5px solid var(--brd);font-size:12.5px"><span>${esc(j.libelle)}</span><span style="color:var(--red)">${(+j.debit).toFixed(2)} €</span></div>`).join('')}
   <div style="display:flex;justify-content:space-between;padding:7px 0;font-weight:500"><span>Total</span><span style="color:var(--red)">${tC.toFixed(2)} €</span></div>
   </div>
   </div>
@@ -3892,7 +3892,7 @@ function vExercices(){
   <tbody>${D.exercices.map(e=>{
     const nb=D.journal.filter(j=>j.exercice_id===e.id).length;
     return`<tr>
-    <td><strong style="font-weight:500">${e.libelle}</strong></td>
+    <td><strong style="font-weight:500">${esc(e.libelle)}</strong></td>
     <td>${fd(e.date_debut)}</td><td>${fd(e.date_fin)}</td>
     <td>${nb}</td>
     <td><span class="badge ${e.statut==='actif'?'bok':e.statut==='cloture'?'bwarn':'barch'}">${e.statut==='actif'?'Actif':e.statut==='cloture'?'Clôturé':'Archivé'}</span></td>
@@ -4124,17 +4124,17 @@ function vFacEditor(){
   <div class="fg"><label>${meta.numberLabel}</label><input id="inv-num" value="${inv.numero}" oninput="UI.invState.numero=this.value;updPrev()"></div>
   <div class="fg"><label>Date</label><input id="inv-date" type="date" value="${inv.date}" oninput="UI.invState.date=this.value;updPrev()"></div>
   <div class="fg"><label>${meta.partyLabel}</label>
-  <input id="inv-dest" value="${inv.destinataire}" list="adh-dl" oninput="UI.invState.destinataire=this.value;updPrev()">
-  <datalist id="adh-dl">${D.adherents.map(a=>`<option value="${a.nom} ${a.prenom}">`).join('')}</datalist>
+  <input id="inv-dest" value="${esc(inv.destinataire)}" list="adh-dl" oninput="UI.invState.destinataire=this.value;updPrev()">
+  <datalist id="adh-dl">${D.adherents.map(a=>`<option value="${esc(a.nom)} ${esc(a.prenom)}">`).join('')}</datalist>
   </div>
-  <div class="fg"><label>${meta.addressLabel}</label><textarea id="inv-addr" rows="2" style="resize:vertical" oninput="UI.invState.adresse=this.value;updPrev()">${inv.adresse}</textarea></div>
-  <div class="fg"><label>Objet</label><input id="inv-objet" value="${inv.objet}" oninput="UI.invState.objet=this.value;updPrev()"></div>
+  <div class="fg"><label>${meta.addressLabel}</label><textarea id="inv-addr" rows="2" style="resize:vertical" oninput="UI.invState.adresse=this.value;updPrev()">${esc(inv.adresse)}</textarea></div>
+  <div class="fg"><label>Objet</label><input id="inv-objet" value="${esc(inv.objet)}" oninput="UI.invState.objet=this.value;updPrev()"></div>
   </div>
   <p class="stit">Lignes</p>
   <div id="lgwrap">${renderLignes()}</div>
   <button class="btn sm" onclick="addL()">+ Ligne</button>
   <p class="stit">Notes</p>
-  <textarea id="inv-notes" rows="2" style="resize:vertical;margin-bottom:12px" oninput="UI.invState.notes=this.value;updPrev()">${inv.notes}</textarea>
+  <textarea id="inv-notes" rows="2" style="resize:vertical;margin-bottom:12px" oninput="UI.invState.notes=this.value;updPrev()">${esc(inv.notes)}</textarea>
   <div style="display:flex;gap:8px">
   <button class="btn primary" onclick="saveFac()">${meta.saveLabel}</button>
   <button class="btn gold" onclick="printFacEditor()">🖨 Imprimer</button>
@@ -4149,7 +4149,7 @@ function vFacEditor(){
 
 function renderLignes(){
   return UI.invState.lignes.map((l,i)=>`<div style="display:grid;grid-template-columns:1fr 55px 80px 24px;gap:6px;margin-bottom:6px;align-items:center">
-  <input placeholder="Description" value="${l.desc}" oninput="updL(${i},'desc',this.value)">
+  <input placeholder="Description" value="${esc(l.desc)}" oninput="updL(${i},'desc',this.value)">
   <input type="number" placeholder="Qté" value="${l.qte}" min="1" oninput="updL(${i},'qte',+this.value)">
   <input type="number" placeholder="P.U." value="${l.pu}" min="0" step="0.01" oninput="updL(${i},'pu',+this.value)">
   <button class="btn sm danger" onclick="rmL(${i})" style="padding:4px 6px">✕</button>
@@ -4195,7 +4195,7 @@ function buildFacHTML(f){
   <div style="background:#111;padding:16px 20px;display:flex;justify-content:space-between;align-items:center">
   <div style="display:flex;align-items:center;gap:10px">
   <div style="width:44px;height:44px;border-radius:50%;overflow:hidden;border:2px solid #D4AC0D;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0">${logo}</div>
-  <div><div style="color:#fff;font-size:12px;font-weight:500">${clubName}</div><div style="color:#aaa;font-size:10px;line-height:1.6">${ci.adresse||''}<br>${ci.email||''}</div></div>
+  <div><div style="color:#fff;font-size:12px;font-weight:500">${esc(clubName)}</div><div style="color:#aaa;font-size:10px;line-height:1.6">${esc(ci.adresse||'')}<br>${esc(ci.email||'')}</div></div>
   </div>
   <div style="text-align:right">
   <div style="color:#D4AC0D;font-size:15px;font-weight:500">${meta.docTitle}</div>
@@ -4206,11 +4206,11 @@ function buildFacHTML(f){
   <div style="padding:16px 20px">
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
   <div><div style="font-size:9px;font-weight:500;color:#888;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Émetteur</div>
-  <p style="font-size:11px;line-height:1.6">${clubName}<br>${ci.adresse||''}<br>SIRET : ${clubSiret}</p></div>
+  <p style="font-size:11px;line-height:1.6">${esc(clubName)}<br>${esc(ci.adresse||'')}<br>SIRET : ${esc(clubSiret)}</p></div>
   <div><div style="font-size:9px;font-weight:500;color:#888;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">${meta.partyLabel}</div>
-  <p style="font-size:11px;line-height:1.6">${f.destinataire||'—'}<br>${(f.adresse||'').replace(/\n/g,'<br>')}</p></div>
+  <p style="font-size:11px;line-height:1.6">${esc(f.destinataire||'—')}<br>${esc(f.adresse||'').replace(/\n/g,'<br>')}</p></div>
   </div>
-  ${f.objet?`<p style="font-size:10px;color:#888;margin-bottom:10px;padding:5px 8px;background:#f5f5f5;border-radius:4px;border-left:3px solid #111">Objet : ${f.objet}</p>`:''}
+  ${f.objet?`<p style="font-size:10px;color:#888;margin-bottom:10px;padding:5px 8px;background:#f5f5f5;border-radius:4px;border-left:3px solid #111">Objet : ${esc(f.objet)}</p>`:''}
   <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:10px">
   <thead><tr style="background:#111;color:#fff">
   <th style="padding:5px 8px;text-align:left;font-weight:500">Désignation</th>
@@ -4219,7 +4219,7 @@ function buildFacHTML(f){
   <th style="padding:5px 8px;text-align:right;font-weight:500">Total</th>
   </tr></thead>
   <tbody>${(f.lignes||[]).map((l,i)=>`<tr style="background:${i%2===0?'#fff':'#fafafa'}">
-  <td style="padding:5px 8px;border-bottom:.5px solid #eee">${l.desc||'—'}</td>
+  <td style="padding:5px 8px;border-bottom:.5px solid #eee">${esc(l.desc||'—')}</td>
   <td style="padding:5px 8px;border-bottom:.5px solid #eee;text-align:right">${l.qte}</td>
   <td style="padding:5px 8px;border-bottom:.5px solid #eee;text-align:right">${(+l.pu).toFixed(2)} €</td>
   <td style="padding:5px 8px;border-bottom:.5px solid #eee;text-align:right;font-weight:500">${((+l.qte)*(+l.pu)).toFixed(2)} €</td>
@@ -4240,9 +4240,9 @@ function buildFacHTML(f){
     </div>
     </div>
     ${isDon?`<p style="font-size:10px;color:#666;margin-top:10px;padding:8px 10px;background:#f8f6f1;border-left:3px solid #D4AC0D;border-radius:4px">Réduction d'impôt indicative pour un particulier : <strong>${deductible.toFixed(2)} €</strong>, soit 66 % du montant versé.</p>`:''}
-    ${f.notes?`<p style="font-size:10px;color:#888;margin-top:10px;padding-top:8px;border-top:.5px solid #eee">${f.notes}</p>`:''}
+    ${f.notes?`<p style="font-size:10px;color:#888;margin-top:10px;padding-top:8px;border-top:.5px solid #eee">${esc(f.notes)}</p>`:''}
     </div>
-    <div style="background:#111;padding:7px 20px;font-size:9px;color:#888;text-align:center">${clubName} — SIRET ${clubSiret} — Association loi 1901 — TVA non applicable, art. 261-7-1°b CGI</div>
+    <div style="background:#111;padding:7px 20px;font-size:9px;color:#888;text-align:center">${esc(clubName)} — SIRET ${esc(clubSiret)} — Association loi 1901 — TVA non applicable, art. 261-7-1°b CGI</div>
     </div>`;
 }
 
@@ -4413,8 +4413,8 @@ function vUsers(){
     const perms=getRolePerms(u.role);
     return`<div class="card" style="margin-bottom:10px">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:${UI.currentUser?.role==='admin'?'12':'0'}px">
-    <div style="width:40px;height:40px;border-radius:50%;background:${col}22;color:${col};display:flex;align-items:center;justify-content:center;font-weight:500;flex-shrink:0">${(u.prenom[0]||'')+(u.nom[0]||'')}</div>
-    <div style="flex:1"><div style="font-weight:500">${u.prenom} ${u.nom} ${isMe?'<span class="badge bok">Vous</span>':''}</div><div style="font-size:11px;color:var(--txt2)">${u.email}</div></div>
+    <div style="width:40px;height:40px;border-radius:50%;background:${col}22;color:${col};display:flex;align-items:center;justify-content:center;font-weight:500;flex-shrink:0">${esc((u.prenom[0]||'')+(u.nom[0]||''))}</div>
+    <div style="flex:1"><div style="font-weight:500">${esc(u.prenom)} ${esc(u.nom)} ${isMe?'<span class="badge bok">Vous</span>':''}</div><div style="font-size:11px;color:var(--txt2)">${esc(u.email)}</div></div>
     <span style="font-size:11px;padding:3px 8px;border-radius:99px;font-weight:500;background:${u.role==='admin'?'#dfe6fd':'var(--bg3)'};color:${u.role==='admin'?'#1a3a9e':'var(--txt2)'}">${ROLES[u.role]||u.role}</span>
     <span class="badge ${u.actif?'bok':'bno'}" style="margin-left:6px">${u.actif?'Actif':'Inactif'}</span>
     <button class="btn sm" style="margin-left:8px" onclick="openModal('user','${u.id}')">Modifier</button>
@@ -4482,12 +4482,12 @@ function vClub(){
   const canWrite=hasPerm('perm_administration','write');
   const ci=D.clubInfo||{};
   return`<div style="max-width:460px;display:flex;flex-direction:column;gap:12px">
-  <div class="fg"><label>Nom du club</label><input id="ci-nom" value="${ci.nom||''}"></div>
-  <div class="fg"><label>Adresse</label><input id="ci-adr" value="${ci.adresse||''}"></div>
-  <div class="fg"><label>Téléphone</label><input id="ci-tel" value="${ci.telephone||''}"></div>
-  <div class="fg"><label>Email</label><input id="ci-email" value="${ci.email||''}"></div>
-  <div class="fg"><label>SIRET</label><input id="ci-siret" value="${ci.siret||''}"></div>
-  <div class="fg"><label>Code APE</label><input id="ci-ape" value="${ci.ape||''}"></div>
+  <div class="fg"><label>Nom du club</label><input id="ci-nom" value="${esc(ci.nom||'')}"></div>
+  <div class="fg"><label>Adresse</label><input id="ci-adr" value="${esc(ci.adresse||'')}"></div>
+  <div class="fg"><label>Téléphone</label><input id="ci-tel" value="${esc(ci.telephone||'')}"></div>
+  <div class="fg"><label>Email</label><input id="ci-email" value="${esc(ci.email||'')}"></div>
+  <div class="fg"><label>SIRET</label><input id="ci-siret" value="${esc(ci.siret||'')}"></div>
+  <div class="fg"><label>Code APE</label><input id="ci-ape" value="${esc(ci.ape||'')}"></div>
   ${canWrite?`<button class="btn primary" style="align-self:flex-start" onclick="saveClub()">💾 Sauvegarder</button>`:''}
   </div>`;
 }
@@ -4840,17 +4840,17 @@ function renderModal(){
     const signupDocs=getAdherentDocuments(a.id);
     html=`<div class="modal" style="max-width:720px"><h2>👥 ${UI.editObj?'Modifier':'Nouvel'} adhérent</h2>
     <div class="g2">
-    <div class="fg"><label>Nom</label><input id="f-nom" value="${a.nom}"></div>
-    <div class="fg"><label>Prénom</label><input id="f-prn" value="${a.prenom}"></div>
+    <div class="fg"><label>Nom</label><input id="f-nom" value="${esc(a.nom)}"></div>
+    <div class="fg"><label>Prénom</label><input id="f-prn" value="${esc(a.prenom)}"></div>
     <div class="fg"><label>Date de naissance</label><input id="f-nai" type="date" value="${a.naissance||''}"></div>
     <div class="fg"><label>Type adhésion</label><select id="f-dis" onchange="onAdhTypeChange(this.value)">${ADH_TYPES.map(d=>`<option ${a.discipline===d?'selected':''}>${d}</option>`).join('')}</select></div>
-    <div class="fg"><label>Couleur de ceinture</label><select id="f-cei"><option value="">—</option>${CEINTURE_COLORS.map(c=>`<option value="${c}" ${a.couleur_ceinture===c?'selected':''}>${c}</option>`).join('')}${a.couleur_ceinture&&!CEINTURE_COLORS.includes(a.couleur_ceinture)?`<option value="${a.couleur_ceinture}" selected>${a.couleur_ceinture}</option>`:''}</select></div>
-    <div class="fg"><label>Numéro de licence</label><input id="f-lic" value="${a.numero_licence||''}" placeholder="Ex. 12345678"></div>
-    <div class="fg"><label>Email</label><input id="f-eml" value="${a.email||''}"></div>
-    <div class="fg"><label>Téléphone</label><input id="f-tel" value="${a.telephone||''}"></div>
-    <div class="fg full"><label>Adresse</label><input id="f-adr" value="${a.adresse||''}"></div>
-    <div class="fg"><label>Code postal</label><input id="f-cp" value="${a.code_postal||''}"></div>
-    <div class="fg"><label>Ville</label><input id="f-vil" value="${a.ville||''}"></div>
+    <div class="fg"><label>Couleur de ceinture</label><select id="f-cei"><option value="">—</option>${CEINTURE_COLORS.map(c=>`<option value="${c}" ${a.couleur_ceinture===c?'selected':''}>${c}</option>`).join('')}${a.couleur_ceinture&&!CEINTURE_COLORS.includes(a.couleur_ceinture)?`<option value="${esc(a.couleur_ceinture)}" selected>${esc(a.couleur_ceinture)}</option>`:''}</select></div>
+    <div class="fg"><label>Numéro de licence</label><input id="f-lic" value="${esc(a.numero_licence||'')}" placeholder="Ex. 12345678"></div>
+    <div class="fg"><label>Email</label><input id="f-eml" value="${esc(a.email||'')}"></div>
+    <div class="fg"><label>Téléphone</label><input id="f-tel" value="${esc(a.telephone||'')}"></div>
+    <div class="fg full"><label>Adresse</label><input id="f-adr" value="${esc(a.adresse||'')}"></div>
+    <div class="fg"><label>Code postal</label><input id="f-cp" value="${esc(a.code_postal||'')}"></div>
+    <div class="fg"><label>Ville</label><input id="f-vil" value="${esc(a.ville||'')}"></div>
     <div class="fg full" style="background:var(--bg2);padding:10px;border-radius:var(--r)">
     <p style="font-size:12px;font-weight:500;margin-bottom:8px">Documents administratifs</p>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
@@ -5026,9 +5026,9 @@ function renderModal(){
     const u=UI.editObj||{prenom:'',nom:'',email:'',mot_de_passe:'',role:'membre',actif:true};
     html=`<div class="modal" style="max-width:440px"><h2>⚙️ ${UI.editObj?'Modifier':'Nouvel'} utilisateur</h2>
     <div class="g2">
-    <div class="fg"><label>Prénom</label><input id="u-pre" value="${u.prenom}"></div>
-    <div class="fg"><label>Nom</label><input id="u-nom" value="${u.nom}"></div>
-    <div class="fg full"><label>Email (identifiant de connexion)</label><input id="u-eml" type="email" value="${u.email||''}"></div>
+    <div class="fg"><label>Prénom</label><input id="u-pre" value="${esc(u.prenom)}"></div>
+    <div class="fg"><label>Nom</label><input id="u-nom" value="${esc(u.nom)}"></div>
+    <div class="fg full"><label>Email (identifiant de connexion)</label><input id="u-eml" type="email" value="${esc(u.email||'')}"></div>
     <div class="fg full"><label>Mot de passe${UI.editObj?' (vide = inchangé)':''}</label><input id="u-pwd" type="password" placeholder="••••••••"></div>
     <div class="fg"><label>Rôle</label><select id="u-rol">${Object.entries(ROLES).map(([k,v])=>`<option value="${k}" ${u.role===k?'selected':''}>${v}</option>`).join('')}</select></div>
     <div class="fg"><label>Statut</label><select id="u-act"><option value="1" ${u.actif?'selected':''}>Actif</option><option value="0" ${!u.actif?'selected':''}>Inactif</option></select></div>
@@ -5097,14 +5097,14 @@ function renderModal(){
     <div class="sc"><div class="v ${diag.resultat>=0?'vg':'vr'}">${diag.resultat>=0?'+':''}${diag.resultat.toFixed(2)} €</div><div class="l">Résultat</div></div>
     <div class="sc"><div class="v ${diag.ecartJournal===0?'vg':'vr'}">${diag.ecartJournal.toFixed(2)} €</div><div class="l">Écart</div></div>
     </div>
-    ${diag.issues.length?`<div class="imp-err" style="margin-top:12px">Des pièces sont déséquilibrées. Corrigez-les avant la clôture ou utilisez la régularisation automatique.<div style="margin-top:6px;font-size:11px">${diag.issues.slice(0,4).map(i=>`${i.piece} : ${i.ecart.toFixed(2)} €`).join('<br>')}</div></div>`:`<div class="imp-ok" style="margin-top:12px">Le journal de l'exercice est prêt pour la clôture.</div>`}
+    ${diag.issues.length?`<div class="imp-err" style="margin-top:12px">Des pièces sont déséquilibrées. Corrigez-les avant la clôture ou utilisez la régularisation automatique.<div style="margin-top:6px;font-size:11px">${diag.issues.slice(0,4).map(i=>`${esc(i.piece)} : ${i.ecart.toFixed(2)} €`).join('<br>')}</div></div>`:`<div class="imp-ok" style="margin-top:12px">Le journal de l'exercice est prêt pour la clôture.</div>`}
     </div>
     <div class="card" style="padding:14px">
     <p style="font-weight:600;margin-bottom:10px">Étapes de clôture</p>
     <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:10px;cursor:pointer"><input id="exo-close-report" type="checkbox" checked style="width:auto;accent-color:var(--red)"> Reporter automatiquement le résultat sur le compte 1060 - Réserves</label>
     <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px;cursor:pointer"><input id="exo-close-next" type="checkbox" checked style="width:auto;accent-color:var(--red)" onchange="document.getElementById('exo-next-fields').style.display=this.checked?'grid':'none'"> Créer automatiquement le nouvel exercice actif</label>
     <div id="exo-next-fields" class="g3" style="display:grid">
-    <div class="fg full"><label>Libellé du nouvel exercice</label><input id="exo-next-lib" value="${next.libelle}"></div>
+    <div class="fg full"><label>Libellé du nouvel exercice</label><input id="exo-next-lib" value="${esc(next.libelle)}"></div>
     <div class="fg"><label>Date de début</label><input id="exo-next-deb" type="date" value="${next.date_debut}"></div>
     <div class="fg"><label>Date de fin</label><input id="exo-next-fin" type="date" value="${next.date_fin}"></div>
     </div>
@@ -6517,7 +6517,7 @@ async function doImportEcr(){
   }catch(error){
     IMP.ecr.importing=false;
     render();
-    document.getElementById('ecr-imp-res').innerHTML=`<div class="imp-err">✕ ${error.message}</div>`;
+    document.getElementById('ecr-imp-res').innerHTML=`<div class="imp-err">✕ ${esc(error.message)}</div>`;
     return;
   }
   const issues=pieceBalanceDiagnostics(rows);
