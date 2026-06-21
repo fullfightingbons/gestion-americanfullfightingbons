@@ -1,0 +1,11 @@
+{
+  "_comment": "Copie ce fichier en wrangler.local.json (gitignored) et renseigne les vraies valeurs. Ne JAMAIS committer wrangler.local.json.",
+  "account_id": "a11cb0253f0870d57b54f6eaaedb439c",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_id": "678b90d9-5d87-4011-b077-af5a4d0358ee",
+      "database_name": "affbc-production"
+    }
+  ]
+}

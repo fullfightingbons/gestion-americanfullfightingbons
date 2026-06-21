@@ -2,7 +2,6 @@
   "compatibility_date": "2025-10-08",
   "main": "src/index.ts",
   "name": "gestion-americanfullfightingbons",
-  "account_id": "a11cb0253f0870d57b54f6eaaedb439c",
   "upload_source_maps": true,
   "assets": {
     "directory": "./public",
@@ -23,7 +22,7 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_id": "678b90d9-5d87-4011-b077-af5a4d0358ee",
+      "database_id": "<D1_DATABASE_ID>",
       "database_name": "affbc-production"
     }
   ],

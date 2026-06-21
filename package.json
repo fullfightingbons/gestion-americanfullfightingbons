@@ -1,24 +1,11 @@
 {
 	"name": "gestion-americanfullfightingbons",
-	"description": "Cloudflare's native serverless SQL database.",
-	"cloudflare": {
-		"label": "Worker + D1 Database",
-		"products": [
-			"Workers",
-			"D1"
-		],
-		"categories": [
-			"storage"
-		],
-		"docs_url": "https://developers.cloudflare.com/d1/",
-		"preview_icon_url": "https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/6c63cca8-354a-4951-45a0-d58769ac6f00/public",
-		"preview_image_url": "https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/aa6158f1-7711-4485-f134-a8c802c0a800/preview",
-		"publish": true
-	},
+	"description": "Application de gestion du club AFFBC (adhérents, comptabilité, banque, achats, facturation) — Cloudflare Workers + D1 + R2.",
 	"devDependencies": {
 		"esbuild": "^0.24.0",
 		"typescript": "5.9.3",
-		"wrangler": "4.97.0"
+		"wrangler": "4.97.0",
+		"vitest": "^2.1.0"
 	},
 	"scripts": {
 		"cf-typegen": "wrangler types",
@@ -28,7 +15,8 @@
 		"check": "tsc && npm run build && wrangler deploy --dry-run",
 		"deploy": "npm run build && wrangler deploy",
 		"dev": "wrangler dev",
-		"seedLocalD1": "wrangler d1 migrations apply DB --local"
+		"seedLocalD1": "wrangler d1 migrations apply DB --local",
+		"test": "vitest run"
 	},
 	"private": true
 }
