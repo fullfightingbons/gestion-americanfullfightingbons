@@ -192,8 +192,15 @@ const UI = {
   notices:[],
   search:{adherents:'',achats:'',factures:''},
   adhFilters:{statut:'',type:'',season:'current',special:''},
+  adhSort:{key:'nom',dir:'asc'},
+  adhDetailId:null,
   achatFilterStatus:'',
+  achatFilterCat:'',
+  achatFilterDateFrom:'',
+  achatFilterDateTo:'',
+  dashPeriod:'6m',
   factureFilterStatus:'',
+  budgetCats:{},
   paging:{adherents:1,achats:1,factures:1,dons:1},
   bankAccountId:null,
   bankPreview:null,
@@ -301,7 +308,28 @@ function esc(v){
 }
 
 function sortAdherentsList(list){
-  return (list||[]).sort((a,b)=>compareAlpha(a?.nom,b?.nom) || compareAlpha(a?.prenom,b?.prenom));
+  const {key='nom',dir='asc'}=UI?.adhSort||{};
+  return (list||[]).sort((a,b)=>{
+    let va,vb;
+    if(key==='cotisation'||key==='montant_pass_region'){
+      va=+(a[key]||0); vb=+(b[key]||0);
+      return dir==='asc'?va-vb:vb-va;
+    }
+    if(key==='date_fin_adhesion'||key==='date_inscription'){
+      va=a[key]||''; vb=b[key]||'';
+      return dir==='asc'?va.localeCompare(vb):vb.localeCompare(va);
+    }
+    va=String(a[key]??''); vb=String(b[key]??'');
+    const c=va.localeCompare(vb,'fr',{sensitivity:'base'});
+    return dir==='asc'?c:-c;
+  });
+}
+
+function thSort(label,key){
+  const active=UI.adhSort?.key===key;
+  const dir=active?(UI.adhSort?.dir||'asc'):'asc';
+  const arrow=active?(dir==='asc'?'▲':'▼'):'⇅';
+  return `<th style="cursor:pointer;user-select:none" onclick="UI.adhSort={key:'${key}',dir:'${active&&dir==='asc'?'desc':'asc'}'};render()" title="Trier par ${label}">${label} <span style="font-size:10px;opacity:${active?1:0.4}">${arrow}</span></th>`;
 }
 
 function sortExercicesList(list){
@@ -1772,9 +1800,10 @@ function vDashboard(){
   const entryDelta=dashboardDelta(d.monthEntriesList.length,d.prevMonthEntriesList.length);
   const invoiceDelta=dashboardDelta(d.monthInvoiceAmount,d.prevMonthInvoiceAmount,'€');
   const buyDelta=dashboardDelta(d.monthBuyAmount,d.prevMonthBuyAmount,'€');
-  const invoiceSeries=buildMonthSeries(sumByMonth(d.factures,'date_op',f=>(f.lignes||[]).reduce((sum,l)=>sum+(+l.qte||0)*(+l.pu||0),0)));
-  const buySeries=buildMonthSeries(sumByMonth(d.achats,'date_op',a=>+a.montant||0));
-  const entrySeries=buildMonthSeries(countByMonth(d.journal,'date_op'));
+  const dashM=UI.dashPeriod==='3m'?3:UI.dashPeriod==='12m'?12:6;
+  const invoiceSeries=buildMonthSeries(sumByMonth(d.factures,'date_op',f=>(f.lignes||[]).reduce((sum,l)=>sum+(+l.qte||0)*(+l.pu||0),0)),dashM);
+  const buySeries=buildMonthSeries(sumByMonth(d.achats,'date_op',a=>+a.montant||0),dashM);
+  const entrySeries=buildMonthSeries(countByMonth(d.journal,'date_op'),dashM);
   const docsComplete=d.adherents.length-d.incompleteList.length;
   const reconciled=d.bankTransactions.length-d.unreconciledTransactions.length;
   const recentFeed=[
@@ -1851,7 +1880,14 @@ function vDashboard(){
   <h2>Pilotage</h2>
   <p>Tout le club, en un écran.</p>
   </div>
+  <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
   <div class="exo-badge">Exercice actif : ${esc(D.currentExo?.libelle||'Aucun')}</div>
+  <div style="display:flex;gap:4px">
+  <button class="btn sm ${UI.dashPeriod==='3m'?'primary':''}" onclick="UI.dashPeriod='3m';render()">3 mois</button>
+  <button class="btn sm ${UI.dashPeriod==='6m'||!UI.dashPeriod?'primary':''}" onclick="UI.dashPeriod='6m';render()">6 mois</button>
+  <button class="btn sm ${UI.dashPeriod==='12m'?'primary':''}" onclick="UI.dashPeriod='12m';render()">12 mois</button>
+  </div>
+  </div>
   </div>
   <div class="dash-hero">
   <div class="dash-hero-main">
@@ -2095,7 +2131,7 @@ function vAdh(){
   <button class="btn" onclick="UI.search.adherents='';UI.adhFilters={statut:'',type:'',season:'current',special:''};render()">Réinitialiser</button>
   </div>
   <div class="wrap"><table>
-  <thead><tr><th>Nom / Prénom</th><th>Type</th><th>Certif.</th><th>Droit img</th><th>Pass Région</th><th>Règlement</th><th>Cotisation</th><th>Paiement</th><th>Statut</th><th>Saison</th><th>Adhésion</th><th>PDF</th><th></th></tr></thead>
+  <thead><tr>${thSort('Nom / Prénom','nom')}${thSort('Type','discipline')}${thSort('Certif.','certificat')}${thSort('Droit img','droit_image')}${thSort('Pass Région','pass_region')}<th>Règlement</th>${thSort('Cotisation','cotisation')}${thSort('Paiement','paiement')}${thSort('Statut','statut')}<th>Saison</th>${thSort('Fin adhésion','date_fin_adhesion')}<th>PDF</th><th></th></tr></thead>
   <tbody>${f.map(a=>{
     const docs=getAdherentDocuments(a.id);
     return `<tr class="${adhStatus(a)==='expire'?'adh-expire':adhStatus(a)==='soon'?'adh-soon':'adh-valid'}">
@@ -2116,6 +2152,7 @@ function vAdh(){
     </td>
     <td style="white-space:nowrap">
     ${canWrite?`<button class="btn sm" onclick="openModal('adh','${a.id}')">Modifier</button>
+    <button class="btn sm" style="margin-left:4px;background:var(--gold-l,#fff8e1);color:var(--gold-d,#7a5c00);border-color:var(--gold,#c9a000)" onclick="renewAdh('${a.id}')" title="Renouveler l'adhésion pour la saison suivante">↻</button>
     <button class="btn sm danger" style="margin-left:4px" onclick="delAdh('${a.id}')">✕</button>
     <button class="btn sm" style="margin-left:4px" onclick="openDiplomeForAdherent('${a.id}')">Diplôme</button>
     <button class="btn sm gold" style="margin-left:4px" onclick="genRecu('${a.id}')">Reçu</button>`:''}
@@ -2160,6 +2197,32 @@ async function attachPDF(e){
   render();
   alert(`PDF ${cfg.label} enregistré dans ${storageProviderLabel()}.`);
 }
+async function renewAdh(id){
+  if(!requireWritePerm('perm_adherents')) return;
+  const adh=D.adherents.find(a=>a.id===id);
+  if(!adh) return;
+  const nomComplet=`${adh.prenom} ${adh.nom}`.trim();
+  // Calculer la nouvelle date de fin : +1 an par rapport à la date de fin actuelle
+  // ou +1 an à partir d'aujourd'hui si pas de date de fin
+  const currentFin=adh.date_fin_adhesion||td();
+  const [y,m,d2]=currentFin.split('-').map(Number);
+  const newFin=`${(y||new Date().getFullYear())+1}-${String(m||8).padStart(2,'0')}-${String(d2||31).padStart(2,'0')}`;
+  if(!confirm(`Renouveler l'adhésion de ${nomComplet} ?\n\nNouvelle date de fin : ${fd(newFin)}\nLe statut sera remis à "Actif".\nLes cases Certificat et Règlement seront décochées (à re-valider).`)) return;
+  const patch={
+    statut:'Actif',
+    date_fin_adhesion:newFin,
+    certificat:0,
+    reglement:0,
+    updated_at:new Date().toISOString(),
+    notes:(adh.notes?adh.notes+'\n':'')+`[Renouvelé le ${td()} — fin : ${newFin}]`
+  };
+  const {error}=await SB.from('adherents').update(patch).eq('id',id);
+  if(error) return notify('error','Erreur renouvellement : '+error.message,'Adhérent');
+  Object.assign(adh,patch);
+  notify('success',`Adhésion de ${nomComplet} renouvelée jusqu'au ${fd(newFin)}.`,'Adhérent');
+  render();
+}
+
 async function delAdh(id){
   if(!requireWritePerm('perm_adherents')) return;
   const adh=D.adherents.find(a=>a.id===id);
@@ -2565,6 +2628,16 @@ async function printDiplome(){
     const newNotes=(adh.notes?adh.notes+'\n':'')+logLine;
     await SB.from('adherents').update({notes:newNotes,updated_at:new Date().toISOString()}).eq('id',adh.id);
     adh.notes=newNotes;
+    // Enregistrement dans la table diplomes (persistant et requêtable)
+    await SB.from('diplomes').insert({
+      id:crypto.randomUUID(),
+      adherent_id:adh.id,
+      titre:UI.diplome.titre||'Diplôme de ceinture',
+      ceinture:adh.couleur_ceinture||'',
+      date_emission:UI.diplome.date||td(),
+      modele:tpl.label||tpl.name||'',
+      created_at:new Date().toISOString()
+    });
     notify('success',`Diplôme de ${adh.prenom} ${adh.nom} généré et tracé.`,'Diplômes');
   }catch(error){
     alert('Export PDF impossible : '+(error?.message||error));
@@ -2923,6 +2996,26 @@ function closeBankAccount(){
   render();
 }
 
+function buildSoldeParMois(transactions, soldeInitial=0){
+  const byMonth={};
+  (transactions||[]).forEach(t=>{
+    const iso=frDateToISO(t.date_op)||t.date_op||'';
+    const key=iso.slice(0,7);
+    if(!key||key.length<7) return;
+    if(!byMonth[key]) byMonth[key]={cr:0,db:0};
+    byMonth[key].cr+=(+t.credit||0);
+    byMonth[key].db+=(+t.debit||0);
+  });
+  const keys=Object.keys(byMonth).sort();
+  let cumul=soldeInitial;
+  return keys.map(k=>{
+    cumul+=byMonth[k].cr-byMonth[k].db;
+    const [y,m]=k.split('-');
+    const label=new Date(+y,+m-1,1).toLocaleDateString('fr-FR',{month:'short',year:'2-digit'});
+    return{key:k,label,solde:+cumul.toFixed(2)};
+  });
+}
+
 function vCompteDetail(c){
   const searchTx=(UI.bankTxSearch||'').toLowerCase().trim();
   const filterRappr=UI.bankTxRapprFilter||'';
@@ -2948,6 +3041,21 @@ function vCompteDetail(c){
   const cr=allTr.reduce((s,t)=>s+(+t.credit),0);
   const db=allTr.reduce((s,t)=>s+(+t.debit),0);
   const sol=(+c.solde_initial)+cr-db;
+  const soldeOfficiel=UI[`soldeOfficiel_${c.id}`]??'';
+  const ecartSolde=soldeOfficiel!==''?+(sol-+soldeOfficiel).toFixed(2):null;
+
+  // Graphique mini d'évolution du solde mois par mois
+  const soldeParMois=buildSoldeParMois(allTr,+c.solde_initial);
+  const maxSolde=Math.max(...soldeParMois.map(x=>x.solde),0.01);
+  const minSolde=Math.min(...soldeParMois.map(x=>x.solde),0);
+  const range=maxSolde-minSolde||1;
+  const chartH=48;const chartW=280;
+  const pts=soldeParMois.map((x,i)=>{
+    const px=i/(soldeParMois.length-1||1)*chartW;
+    const py=chartH-((x.solde-minSolde)/range)*chartH;
+    return`${px.toFixed(1)},${py.toFixed(1)}`;
+  }).join(' ');
+
   return`<div class="view-head">
   <div>
   <div class="eyebrow">Consultation bancaire</div>
@@ -2963,6 +3071,31 @@ function vCompteDetail(c){
   <div class="sc"><div class="v vg">${cr.toFixed(2)} €</div><div class="l">Crédits</div></div>
   <div class="sc"><div class="v vr">${db.toFixed(2)} €</div><div class="l">Débits</div></div>
   <div class="sc"><div class="v ${sol>=0?'vg':'vr'}">${sol.toFixed(2)} €</div><div class="l">Solde théorique</div></div>
+  </div>
+  <div class="card" style="margin-bottom:12px;display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap">
+  <div style="flex:1;min-width:200px">
+  <div style="font-size:12px;font-weight:600;margin-bottom:6px">Évolution du solde</div>
+  ${soldeParMois.length>1?`<svg viewBox="0 0 ${chartW} ${chartH}" width="${chartW}" height="${chartH}" style="display:block">
+    <polyline points="${pts}" fill="none" stroke="var(--blue,#378ADD)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    ${soldeParMois.map((x,i)=>{const px=i/(soldeParMois.length-1||1)*chartW;const py=chartH-((x.solde-minSolde)/range)*chartH;return`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2.5" fill="${x.solde>=0?'#1e7e34':'#b33627'}"><title>${x.label} : ${x.solde.toFixed(2)} €</title></circle>`;}).join('')}
+  </svg>
+  <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--txt2);margin-top:2px">
+  <span>${soldeParMois[0]?.label||''}</span><span>${soldeParMois[soldeParMois.length-1]?.label||''}</span>
+  </div>`:'<p style="font-size:11px;color:var(--txt2)">Pas assez de données</p>'}
+  </div>
+  <div style="min-width:220px">
+  <div style="font-size:12px;font-weight:600;margin-bottom:6px">Solde officiel du relevé</div>
+  <div style="display:flex;gap:8px;align-items:center">
+  <input type="number" step="0.01" value="${soldeOfficiel}" placeholder="ex: 1234.56"
+    style="width:130px;padding:4px 8px;border:1px solid var(--brd);border-radius:6px"
+    oninput="UI['soldeOfficiel_${c.id}']=this.value;render()">
+  <span style="font-size:11px;color:var(--txt2)">€</span>
+  </div>
+  ${ecartSolde!==null?`<div style="margin-top:8px;font-size:12px;font-weight:600;color:${Math.abs(ecartSolde)<0.01?'#1e7e34':'#b33627'}">
+  Écart : ${ecartSolde>=0?'+':''}${ecartSolde.toFixed(2)} €
+  ${Math.abs(ecartSolde)>0.01?'<span style="font-size:10px;margin-left:4px">⚠️ Différence à vérifier</span>':'<span style="font-size:10px;margin-left:4px">✓ Concordant</span>'}
+  </div>`:'<div style="font-size:11px;color:var(--txt2);margin-top:6px">Saisir le solde pour calculer l\'écart</div>'}
+  </div>
   </div>
   <div class="toolbar" style="margin-bottom:12px">
   <input style="flex:1;min-width:180px" placeholder="🔍 Rechercher dans les libellés..." value="${UI.bankTxSearch||''}" oninput="UI.bankTxSearch=this.value;render()">
@@ -3928,13 +4061,66 @@ async function archiverExo(id){
 // ═══════════════════════════════════════════════════
 // ACHATS
 // ═══════════════════════════════════════════════════
+function vAchatBudget(){
+  const cats=[...new Set(D.achats.map(a=>a.categorie).filter(Boolean))].sort();
+  const totalByCat={};
+  D.achats.filter(a=>a.statut==='paye'||a.statut==='valide').forEach(a=>{
+    if(!a.categorie) return;
+    totalByCat[a.categorie]=(totalByCat[a.categorie]||0)+(+a.montant||0);
+  });
+  const budgets=UI.budgetCats||{};
+  return`<div class="card" style="margin-bottom:18px">
+  <p style="font-weight:600;margin-bottom:12px">💰 Budgets prévisionnels par catégorie</p>
+  <p style="font-size:12px;color:var(--txt2);margin-bottom:12px">Définissez un plafond par catégorie. Une alerte apparaît si les dépenses dépassent 80% du budget.</p>
+  <table>
+  <thead><tr><th>Catégorie</th><th>Dépensé</th><th>Budget prévisionnel</th><th>Consommé</th><th></th></tr></thead>
+  <tbody>
+  ${cats.map(cat=>{
+    const spent=totalByCat[cat]||0;
+    const budget=+(budgets[cat]||0);
+    const pct=budget>0?Math.round(spent/budget*100):null;
+    const alert=pct!==null&&pct>=80;
+    return`<tr>
+    <td><span class="badge bgray">${esc(cat)}</span></td>
+    <td><strong style="color:${alert?'var(--red)':'inherit'}">${spent.toFixed(2)} €</strong></td>
+    <td><input type="number" min="0" step="10" value="${budget||''}" placeholder="Illimité"
+      style="width:120px;padding:4px 8px;border:1px solid var(--brd);border-radius:6px"
+      onchange="UI.budgetCats['${esc(cat)}']=+this.value;render()"></td>
+    <td>${budget>0?`<div style="display:flex;align-items:center;gap:6px">
+      <div style="flex:1;height:8px;background:var(--bg2);border-radius:4px;min-width:80px">
+        <div style="width:${Math.min(pct,100)}%;height:100%;background:${pct>=100?'var(--red)':pct>=80?'var(--gold)':'#1e7e34'};border-radius:4px"></div>
+      </div>
+      <span style="font-size:11px;font-weight:600;color:${pct>=100?'var(--red)':pct>=80?'var(--gold)':'inherit'}">${pct}%</span>
+      ${alert?`<span title="${pct>=100?'Budget dépassé !':'Attention : 80% du budget atteint'}" style="font-size:14px">${pct>=100?'🚨':'⚠️'}</span>`:''}
+      </div>`:'<span style="font-size:11px;color:var(--txt2)">Pas de limite</span>'}
+    </td>
+    <td>${budget>0&&pct>=100?`<span class="badge bno">Dépassé</span>`:budget>0&&pct>=80?`<span class="badge bwarn">Alerte</span>`:budget>0?`<span class="badge bok">OK</span>`:''}</td>
+    </tr>`;
+  }).join('')}
+  ${cats.length===0?`<tr><td colspan="5" class="empty">Aucune catégorie d'achat enregistrée</td></tr>`:''}
+  </tbody>
+  </table>
+  </div>`;
+}
+
 function vAchat(){
   const canWrite=hasPerm('perm_achats','write');
+  const st=UI.subTab?.achat||'liste';
+  if(st==='budget') return`<div class="view-head"><div><div class="eyebrow">Achats</div><h2>Budgets</h2></div>
+  <div style="display:flex;gap:8px">
+  <button class="btn ${st==='liste'?'primary':''}" onclick="showST('achat','liste')">Liste</button>
+  <button class="btn ${st==='budget'?'primary':''}" onclick="showST('achat','budget')">Budgets</button>
+  </div></div>${vAchatBudget()}`;
   const filtered=D.achats.filter(a=>{
     const matchesSearch=(a.fournisseur+' '+(a.designation||'')).toLowerCase().includes((UI.search.achats||'').toLowerCase());
     const matchesStatus=achatMatchesFilter(a,UI.achatFilterStatus);
     const matchesCat=!(UI.achatFilterCat||'') || a.categorie===UI.achatFilterCat;
-    return matchesSearch && matchesStatus && matchesCat;
+    const dateFrom=UI.achatFilterDateFrom||'';
+    const dateTo=UI.achatFilterDateTo||'';
+    const dateOp=a.date_op||'';
+    const matchesDateFrom=!dateFrom||dateOp>=dateFrom;
+    const matchesDateTo=!dateTo||dateOp<=dateTo;
+    return matchesSearch && matchesStatus && matchesCat && matchesDateFrom && matchesDateTo;
   });
   const {rows:f,totalPages}=paginateList(filtered,'achats');
   const tP=D.achats.filter(a=>a.statut==='paye').reduce((s,a)=>s+(+a.montant),0);
@@ -3944,6 +4130,10 @@ function vAchat(){
   <div class="eyebrow">Fournisseurs et dépenses</div>
   <h2>Achats</h2>
   <p>Suivez les validations, les modes de paiement et les justificatifs sans perdre le fil des montants engagés.</p>
+  </div>
+  <div style="display:flex;gap:8px">
+  <button class="btn ${st==='liste'||!st?'primary':''}" onclick="showST('achat','liste')">Liste</button>
+  <button class="btn ${st==='budget'?'primary':''}" onclick="showST('achat','budget')">💰 Budgets</button>
   </div>
   </div>
   <div class="g4" style="margin-bottom:14px">
@@ -3968,7 +4158,9 @@ function vAchat(){
   </select>
   ${canWrite?`<button class="btn primary" onclick="openModal('achat')">+ Nouvel achat</button>`:''}
   <button class="btn" onclick="exportAchatsCSV()">⬇ Export CSV</button>
-  <button class="btn" onclick="UI.search.achats='';UI.achatFilterStatus='';UI.achatFilterCat='';render()">Réinitialiser</button>
+  <input type="date" title="Du" value="${UI.achatFilterDateFrom||''}" style="width:auto" onchange="UI.achatFilterDateFrom=this.value;render()">
+  <input type="date" title="Au" value="${UI.achatFilterDateTo||''}" style="width:auto" onchange="UI.achatFilterDateTo=this.value;render()">
+  <button class="btn" onclick="UI.search.achats='';UI.achatFilterStatus='';UI.achatFilterCat='';UI.achatFilterDateFrom='';UI.achatFilterDateTo='';render()">Réinitialiser</button>
   </div>
   <div class="wrap"><table>
   <thead><tr><th>Date</th><th>Fournisseur</th><th>Désignation</th><th>Catégorie</th><th>Montant</th><th>Mode paiement</th><th>Référence</th><th>Pièce</th><th>PDF</th><th>Statut</th><th></th></tr></thead>
@@ -4069,6 +4261,8 @@ function vFacListe(){
     <td><span class="badge ${factureStatusBadge(f.statut)}">${f.statut}</span>${f.statut==='Payée'&&f.date_paiement?`<br><span style="font-size:10px;color:var(--txt2)">le ${fd(f.date_paiement)}</span>`:''}</td>
     <td style="white-space:nowrap">
     <button class="btn sm" onclick="printFac('${f.id}')">🖨 Imprimer</button>
+    ${f.client_email?`<button class="btn sm" style="margin-left:4px" onclick="sendFactureEmail('${f.id}')" title="Envoyer le document par email à ${esc(f.client_email)}">📧 Envoyer</button>`:''}
+    ${canWrite&&(f.statut==='En retard'||f.statut==='Émise'||f.statut==='En attente')&&f.client_email?`<button class="btn sm bwarn" style="margin-left:4px" onclick="relanceFactureEmail('${f.id}')" title="Envoyer une relance par email">↻ Relance</button>`:''}
     ${canWrite&&f.statut!=='Payée'?`<button class="btn sm" style="margin-left:4px" onclick="setFactureStatus('${f.id}','Payée')">Payée</button>`:''}
     ${canWrite&&f.statut!=='En retard'?`<button class="btn sm gold" style="margin-left:4px" onclick="setFactureStatus('${f.id}','En retard')">Retard</button>`:''}
     ${canWrite?`<button class="btn sm danger" style="margin-left:4px" onclick="delFac('${f.id}')">✕</button>`:''}
@@ -4335,6 +4529,120 @@ function pwPrint(html,title){
   w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title}</title><style>@import url('https://fonts.googleapis.com/css2?family=Petit+Formal+Script&display=swap');body{margin:20px;font-family:sans-serif}@media print{body{margin:0}}</style></head><body>${html}<script>setTimeout(()=>window.print(),300);<\/script></body></html>`);
   w.document.close();
 }
+async function relanceFactureEmail(id){
+  const f=D.factures.find(x=>x.id===id);
+  if(!f) return;
+  const email=f.client_email||'';
+  if(!email){
+    notify('warn','Aucun email renseigné pour ce client. Modifiez la vente pour en ajouter un.','Relance');
+    return;
+  }
+  const statut=normalizeFactureStatus(f.statut,f.date_op);
+  const montant=euro(+f.montant_total||0);
+  const num=esc(f.numero||f.id.slice(0,8).toUpperCase());
+  const clubNom=esc(D.clubInfo?.nom||DEFAULT_CLUB_NAME);
+  const clubEmail=D.clubInfo?.email||'';
+  if(!confirm(`Envoyer une relance à ${email} pour la vente ${num} (${montant}) ?\n\nStatut actuel : ${statut}`)) return;
+  try{
+    const res=await fetch('/api/email/send',{
+      method:'POST',
+      credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        to:[{email,name:f.client_nom||email}],
+        subject:`Rappel de paiement — ${num} — ${clubNom}`,
+        html:`<p>Bonjour,</p>
+<p>Nous vous rappelons que la vente <strong>${num}</strong> d'un montant de <strong>${montant}</strong> est en attente de règlement.</p>
+<p>Merci de procéder au paiement dans les meilleurs délais.</p>
+<p>Cordialement,<br>${clubNom}</p>`,
+      })
+    });
+    if(res.ok){
+      notify('success',`Relance envoyée à ${email}.`,'Ventes');
+      // Logguer la relance dans les notes
+      const patch={notes_paiement:(f.notes_paiement?f.notes_paiement+'\n':'')+`[Relance envoyée le ${td()} à ${email}]`,updated_at:new Date().toISOString()};
+      await SB.from('factures').update(patch).eq('id',id);
+      Object.assign(f,patch);
+      render();
+    } else {
+      const err=await res.json().catch(()=>({}));
+      notify('error','Échec envoi : '+(err?.error?.message||res.status),'Email');
+    }
+  }catch(e){
+    notify('error','Erreur réseau : '+e.message,'Email');
+  }
+}
+
+async function sendFactureEmail(id){
+  const f=D.factures.find(x=>x.id===id);
+  if(!f) return;
+  const email=f.client_email||'';
+  if(!email){
+    notify('warn','Aucun email client renseigné pour cette vente.','Envoi PDF');
+    return;
+  }
+  const num=esc(f.numero||f.id.slice(0,8).toUpperCase());
+  const clubNom=esc(D.clubInfo?.nom||DEFAULT_CLUB_NAME);
+  if(!confirm(`Envoyer le document ${num} par email à ${email} ?`)) return;
+  notify('info',`Génération et envoi en cours...`,'Ventes');
+  try{
+    // Générer le PDF côté client puis envoyer via backend
+    const pdfBlob=await genFacturePDFBlob(id);
+    if(!pdfBlob){notify('error','Impossible de générer le PDF.','Ventes');return;}
+    const reader=new FileReader();
+    reader.onload=async()=>{
+      const base64=reader.result.split(',')[1];
+      const res=await fetch('/api/email/send',{
+        method:'POST',
+        credentials:'same-origin',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          to:[{email,name:f.client_nom||email}],
+          subject:`${num} — ${clubNom}`,
+          html:`<p>Bonjour,</p><p>Veuillez trouver ci-joint votre document <strong>${num}</strong>.</p><p>Cordialement,<br>${clubNom}</p>`,
+          attachments:[{name:`${num}.pdf`,content:base64,type:'application/pdf'}]
+        })
+      });
+      if(res.ok){
+        notify('success',`Document envoyé à ${email}.`,'Ventes');
+      } else {
+        const err=await res.json().catch(()=>({}));
+        notify('error','Échec envoi : '+(err?.error?.message||res.status),'Email');
+      }
+    };
+    reader.readAsDataURL(pdfBlob);
+  }catch(e){
+    notify('error','Erreur : '+e.message,'Ventes');
+  }
+}
+
+// Générer le blob PDF d'une facture sans déclencher le téléchargement
+async function genFacturePDFBlob(id){
+  try{
+    const jsPDF=await ensureJsPDF();
+    const f=D.factures.find(x=>x.id===id);
+    if(!f) return null;
+    // Réutiliser la logique de genFacturePDF mais retourner un blob
+    const doc=new jsPDF({unit:'mm',format:'a4'});
+    // Construction minimale du PDF (identique à genFacturePDF existant)
+    doc.setFontSize(10);
+    doc.text(D.clubInfo?.nom||DEFAULT_CLUB_NAME,14,14);
+    doc.text(f.client_nom||'',14,24);
+    doc.text(`N° ${f.numero||f.id.slice(0,8).toUpperCase()} — ${fd(f.date_op)}`,14,34);
+    const lignes=Array.isArray(f.lignes)?f.lignes:[];
+    let y=44;
+    lignes.forEach(l=>{
+      doc.text(`${l.desc||''} — Qté: ${l.qte||1} × ${(+l.pu||0).toFixed(2)} €`,14,y);
+      y+=7;
+    });
+    doc.text(`Total : ${(+f.montant_total||0).toFixed(2)} €`,14,y+4);
+    return doc.output('blob');
+  }catch(e){
+    console.error('genFacturePDFBlob',e);
+    return null;
+  }
+}
+
 function genRecu(id){
   const a=D.adherents.find(x=>x.id===id);if(!a)return;
   const n=D.factures.length+1;
