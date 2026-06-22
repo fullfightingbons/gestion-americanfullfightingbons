@@ -1,59 +1,51 @@
-# Worker + D1 Database
+# Gestion — American Full Fighting Bons en Chablais
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/cloudflare/templates/tree/main/d1-template)
+Back-office interne de gestion du club AFFBC : adhérents, diplômes, comptabilité (exercices, journal comptable, factures, achats), comptes bancaires, et inscriptions publiques. Worker Cloudflare + base D1, déployé en interne (réservé aux membres du bureau).
 
-![Worker + D1 Template Preview](https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/cb7cb0a9-6102-4822-633c-b76b7bb25900/public)
+## Stack
 
-<!-- dash-content-start -->
+- **Cloudflare Workers** (TypeScript) — API + service de fichiers statiques (`src/index.ts`)
+- **Cloudflare D1** — base SQL (`migrations/`)
+- **Frontend** — HTML/JS vanilla (`public/`), PDF.js vendorisé pour la lecture de documents (`public/vendor/pdfjs/`)
 
-D1 is Cloudflare's native serverless SQL database ([docs](https://developers.cloudflare.com/d1/)). This project demonstrates using a Worker with a D1 binding to execute a SQL statement. A simple frontend displays the result of this query:
+## Modèle de données
 
-```SQL
-SELECT * FROM comments LIMIT 3;
+Tables gérées via une API CRUD générique (`/api/<table>`) :
+`adherents`, `achats`, `audit_logs`, `club_info`, `comptes_bancaires`, `diplomes`, `exercices`, `factures`, `inscriptions_publiques`, `journal_comptable`, `transactions`, `utilisateurs`.
+
+## Sécurité et permissions
+
+- **RBAC par table** : chaque table est protégée par une permission dédiée (`perm_adherents`, `perm_banque`, `perm_comptabilite`, `perm_facturation`, `perm_administration`, `perm_achats`), avec un droit `read`/`write` distinct par utilisateur.
+- **Authentification par session** (`/api/auth/login`, `/api/auth/session`, `/api/auth/logout`, `/api/auth/change-password`).
+- **Anti-bruteforce** sur le login (limitation par IP + fenêtre de blocage).
+- **Audit log** systématique des actions sensibles (table `audit_logs`).
+- **En-têtes de sécurité** (CSP, X-Frame-Options, Permissions-Policy) sur toutes les réponses.
+- Invalidation de session si le mot de passe change.
+
+## Développement local
+
+```bash
+npm install
+npm run seedLocalD1   # applique les migrations sur la base D1 locale
+npm run dev            # wrangler dev
 ```
 
-The D1 database is initialized with a `comments` table and this data:
+## Déploiement
 
-```SQL
-INSERT INTO comments (author, content)
-VALUES
-    ('Kristian', 'Congrats!'),
-    ('Serena', 'Great job!'),
-    ('Max', 'Keep up the good work!')
-;
+```bash
+npm run check    # typecheck + dry-run
+npm run deploy    # wrangler deploy (applique aussi les migrations distantes)
 ```
 
-> [!IMPORTANT]
-> When using C3 to create this project, select "no" when it asks if you want to deploy. You need to follow this project's [setup steps](https://github.com/cloudflare/templates/tree/main/d1-template#setup-steps) before deploying.
+Le déploiement est piloté par `.github/workflows/deploy.yml` (CI GitHub Actions).
 
-<!-- dash-content-end -->
+## Tests
 
-## Getting Started
-
-Outside of this repo, you can start a new project with this template using [C3](https://developers.cloudflare.com/pages/get-started/c3/) (the `create-cloudflare` CLI):
-
-```
-npm create cloudflare@latest -- --template=cloudflare/templates/d1-template
+```bash
+npm test
 ```
 
-A live public deployment of this template is available at [https://d1-template.templates.workers.dev](https://d1-template.templates.workers.dev)
+## Notes de maintenance
 
-## Setup Steps
-
-1. Install the project dependencies with a package manager of your choice:
-   ```bash
-   npm install
-   ```
-2. Create a [D1 database](https://developers.cloudflare.com/d1/get-started/) with the name "d1-template-database":
-   ```bash
-   npx wrangler d1 create d1-template-database
-   ```
-   ...and update the `database_id` field in `wrangler.json` with the new database ID.
-3. Run the following db migration to initialize the database (notice the `migrations` directory in this project):
-   ```bash
-   npx wrangler d1 migrations apply --remote d1-template-database
-   ```
-4. Deploy the project!
-   ```bash
-   npx wrangler deploy
-   ```
+- PDF.js est actuellement vendorisé en dur dans `public/vendor/pdfjs/` plutôt que géré comme dépendance npm — à surveiller pour les mises à jour de sécurité de cette librairie.
+- `wrangler.local.json` est versionné dans le dépôt : à vérifier qu'aucune information d'environnement sensible ne doit en être retirée (fichier habituellement exclu via `.gitignore`).
