@@ -40,6 +40,9 @@ jobs:
         run: npm ci
       - name: Build (minification frontend)
         run: npm run build
+      - name: Inject D1 database_id
+        run: |
+          sed -i 's|<D1_DATABASE_ID>|${{ secrets.CLOUDFLARE_D1_DATABASE_ID }}|g' wrangler.json
       - name: Deploy to Cloudflare Workers
         run: npx wrangler deploy
         env:
