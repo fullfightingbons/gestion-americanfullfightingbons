@@ -195,6 +195,7 @@ const UI = {
   notices:[],
   search:{adherents:'',achats:'',factures:''},
   adhFilters:{statut:'',type:'',season:'current',special:''},
+  adhSelected:{},
   adhSort:{key:'nom',dir:'asc'},
   adhDetailId:null,
   achatFilterStatus:'',
@@ -1241,6 +1242,11 @@ function render(){
   renderModal();
   updLogo();
   if(UI.tab==='diplomes') refreshDiplomePreviewCanvas();
+  if(UI.tab==='services' && !UI.servicesAutoChecked){
+    UI.servicesAutoChecked=true;
+    checkServiceStatus();
+  }
+  if(UI.tab!=='services') UI.servicesAutoChecked=false; // permet une nouvelle auto-vérification à la prochaine visite de l'onglet
 }
 
 function updLogo(){
@@ -2160,11 +2166,17 @@ function vAdh(){
   <button class="btn" onclick="showTab('administration');showST('admin','imp_adh')">Import DoliAsso</button>
   <button class="btn" onclick="UI.search.adherents='';UI.adhFilters={statut:'',type:'',season:'current',special:''};render()">Réinitialiser</button>
   </div>
+  ${canWrite && Object.keys(UI.adhSelected).some(id=>UI.adhSelected[id])?`<div class="toolbar" style="background:var(--gold-l,#fff8e1);border-color:var(--gold,#c9a000)">
+  <strong>${Object.values(UI.adhSelected).filter(Boolean).length} sélectionné(s)</strong>
+  <button class="btn gold" onclick="bulkRenewSelectedAdh()">↻ Renouveler la sélection</button>
+  <button class="btn" onclick="clearAdhSelection()">Désélectionner tout</button>
+  </div>`:''}
   <div class="wrap"><table>
-  <thead><tr>${thSort('Nom / Prénom','nom')}${thSort('Type','discipline')}${thSort('Certif.','certificat')}${thSort('Droit img','droit_image')}${thSort('Pass Région','pass_region')}<th>Règlement</th>${thSort('Cotisation','cotisation')}${thSort('Paiement','paiement')}${thSort('Statut','statut')}<th>Saison</th>${thSort('Fin adhésion','date_fin_adhesion')}<th>PDF</th><th></th></tr></thead>
+  <thead><tr>${canWrite?`<th style="width:32px"><input type="checkbox" style="width:auto" onchange='toggleAdhSelectAllVisible(${JSON.stringify(f.map(a=>a.id))})' ${f.length&&f.every(a=>UI.adhSelected[a.id])?'checked':''}></th>`:''}${thSort('Nom / Prénom','nom')}${thSort('Type','discipline')}${thSort('Certif.','certificat')}${thSort('Droit img','droit_image')}${thSort('Pass Région','pass_region')}<th>Règlement</th>${thSort('Cotisation','cotisation')}${thSort('Paiement','paiement')}${thSort('Statut','statut')}<th>Saison</th>${thSort('Fin adhésion','date_fin_adhesion')}<th>PDF</th><th></th></tr></thead>
   <tbody>${f.map(a=>{
     const docs=getAdherentDocuments(a.id);
     return `<tr class="${adhStatus(a)==='expire'?'adh-expire':adhStatus(a)==='soon'?'adh-soon':'adh-valid'}">
+    ${canWrite?`<td><input type="checkbox" style="width:auto" ${UI.adhSelected[a.id]?'checked':''} onchange="toggleAdhSelect('${a.id}')"></td>`:''}
     <td><strong style="font-weight:500">${a.nom} ${a.prenom}</strong>${a.ville?`<br><span style="font-size:10px;color:var(--txt2)">${a.ville}</span>`:''}</td>
     <td><span class="badge bgray">${a.discipline||'Club'}</span></td>
     <td>${bdg(a.certificat)}</td><td>${bdg(a.droit_image)}</td>
@@ -2189,7 +2201,7 @@ function vAdh(){
     </td>
     </tr>`;
   }).join('')}
-  ${f.length===0?`<tr><td colspan="13" class="empty">Aucun adhérent</td></tr>`:''}
+  ${f.length===0?`<tr><td colspan="${canWrite?14:13}" class="empty">Aucun adhérent</td></tr>`:''}
   </tbody>
   </table></div>
   ${renderPager('adherents',totalPages)}`;
@@ -2227,6 +2239,49 @@ async function attachPDF(e){
   render();
   alert(`PDF ${cfg.label} enregistré dans ${storageProviderLabel()}.`);
 }
+function toggleAdhSelect(id){
+  if(UI.adhSelected[id]) delete UI.adhSelected[id];
+  else UI.adhSelected[id]=true;
+  render();
+}
+function toggleAdhSelectAllVisible(ids){
+  const allSelected=ids.length>0 && ids.every(id=>UI.adhSelected[id]);
+  if(allSelected) ids.forEach(id=>delete UI.adhSelected[id]);
+  else ids.forEach(id=>UI.adhSelected[id]=true);
+  render();
+}
+function clearAdhSelection(){ UI.adhSelected={}; render(); }
+
+async function bulkRenewSelectedAdh(){
+  if(!requireWritePerm('perm_adherents')) return;
+  const ids=Object.keys(UI.adhSelected).filter(id=>UI.adhSelected[id]);
+  const adhs=ids.map(id=>D.adherents.find(a=>a.id===id)).filter(Boolean);
+  if(!adhs.length) return;
+  if(!confirm(`Renouveler l'adhésion de ${adhs.length} adhérent(s) sélectionné(s) ?\n\nPour chacun : nouvelle date de fin = +1 an, statut remis à "Actif", Certificat et Règlement décochés (à re-valider individuellement).`)) return;
+  let okCount=0, errCount=0;
+  for(const adh of adhs){
+    const currentFin=adh.date_fin_adhesion||td();
+    const [y,m,d2]=currentFin.split('-').map(Number);
+    const newFin=`${(y||new Date().getFullYear())+1}-${String(m||8).padStart(2,'0')}-${String(d2||31).padStart(2,'0')}`;
+    const patch={
+      statut:'Actif',
+      date_fin_adhesion:newFin,
+      certificat:0,
+      reglement:0,
+      updated_at:new Date().toISOString(),
+      notes:(adh.notes?adh.notes+'\n':'')+`[Renouvelé en lot le ${td()} — fin : ${newFin}]`
+    };
+    const {error}=await SB.from('adherents').update(patch).eq('id',adh.id);
+    if(error){ errCount++; continue; }
+    Object.assign(adh,patch);
+    okCount++;
+  }
+  UI.adhSelected={};
+  if(errCount) notify('warn',`${okCount} renouvelé(s), ${errCount} échec(s).`,'Adhérents');
+  else notify('success',`${okCount} adhésion(s) renouvelée(s).`,'Adhérents');
+  render();
+}
+
 async function renewAdh(id){
   if(!requireWritePerm('perm_adherents')) return;
   const adh=D.adherents.find(a=>a.id===id);
@@ -2676,6 +2731,35 @@ async function printDiplome(){
       // configuré), on n'empêche pas la génération du diplôme, on prévient juste l'utilisateur.
       notify('error','Diplôme généré mais non archivé (PDF) : '+(archiveError?.message||archiveError),'Diplômes');
     }
+    // Envoi automatique du diplôme par email à l'adhérent (si une adresse est renseignée).
+    // Non bloquant : un échec d'envoi n'empêche jamais la génération/l'archivage du diplôme.
+    if(adh.email){
+      try{
+        const pdfBase64=pdf.output('datauristring').split(',')[1];
+        const clubNom=esc(D.clubInfo?.nom||DEFAULT_CLUB_NAME);
+        const res=await fetch('/api/email/send',{
+          method:'POST',
+          credentials:'same-origin',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({
+            to:[{email:adh.email,name:`${adh.prenom||''} ${adh.nom||''}`.trim()}],
+            subject:`Votre diplôme — ${UI.diplome.titre||'Diplôme de ceinture'} — ${clubNom}`,
+            html:`<p>Bonjour ${esc(adh.prenom||'')},</p>
+<p>Félicitations ! Vous trouverez ci-joint votre diplôme${adh.couleur_ceinture?` de ceinture <strong>${esc(adh.couleur_ceinture)}</strong>`:''}, daté du ${fd(emissionDate)}.</p>
+<p>Sportivement,<br>${clubNom}</p>`,
+            attachments:[{name:`${safeName||'diplome'}.pdf`,content:pdfBase64}],
+          })
+        });
+        if(res.ok){
+          notify('success',`Diplôme également envoyé par email à ${adh.email}.`,'Diplômes');
+        }else{
+          const err=await res.json().catch(()=>({}));
+          notify('warn','Diplôme généré mais email non envoyé : '+(err?.error?.message||res.status),'Diplômes');
+        }
+      }catch(emailError){
+        notify('warn','Diplôme généré mais email non envoyé : '+(emailError?.message||emailError),'Diplômes');
+      }
+    }
     // Enregistrement dans la table diplomes (persistant et requêtable, par saison)
     await SB.from('diplomes').insert({
       id:crypto.randomUUID(),
@@ -2811,7 +2895,7 @@ function vDiplomes(){
   <div>
   <div class="eyebrow">Documents sportifs</div>
   <h2>Diplômes</h2>
-  <p>Chaque modèle dispose maintenant de son propre réglage libre. Vous pouvez déplacer les champs directement dans l’aperçu puis enregistrer la configuration dans Supabase.</p>
+  <p>Chaque modèle dispose maintenant de son propre réglage libre. Vous pouvez déplacer les champs directement dans l’aperçu puis enregistrer la configuration.</p>
   </div>
   </div>
   <div class="dipl-grid">
@@ -5231,7 +5315,7 @@ function vBackup(){
   <button class="btn primary" onclick="backupJSON()">Télécharger</button>
   </div>
   <div class="card"><p style="font-weight:500;margin-bottom:6px">📥 Import JSON</p>
-  <p style="font-size:12px;color:var(--txt2);margin-bottom:10px">Restaure une sauvegarde complète et remplace les données courantes dans Supabase.</p>
+  <p style="font-size:12px;color:var(--txt2);margin-bottom:10px">Restaure une sauvegarde complète et remplace les données courantes dans la base.</p>
   <button class="btn ${IMP.backup.restoring?'':'gold'}" onclick="triggerBackupImport()" ${IMP.backup.restoring?'disabled':''}>${IMP.backup.restoring?'Import en cours...':'Choisir un fichier'}</button>
   ${IMP.backup.lastMessage?`<div class="${IMP.backup.lastMessage.includes('Erreur')?'imp-err':'imp-ok'}" style="margin-top:10px">${IMP.backup.lastMessage}</div>`:''}
   </div>
@@ -5251,7 +5335,7 @@ function vBackup(){
   <button class="btn sm" onclick="exportAuditCSV()" title="Journal d'audit complet en CSV">🔍 Journal d'audit</button>
   </div>
   </div>
-  <p style="font-size:12px;color:var(--txt2);margin-top:12px">✓ Données sauvegardées automatiquement dans Supabase à chaque action.</p>
+  <p style="font-size:12px;color:var(--txt2);margin-top:12px">✓ Données sauvegardées automatiquement dans la base (Cloudflare D1) à chaque action.</p>
   </div>`;
 }
 
