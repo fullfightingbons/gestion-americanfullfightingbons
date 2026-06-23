@@ -4,6 +4,8 @@
 const CLOUDFLARE_API_BASE = '/api';
 const FORCED_LOGO_URL = '/assets/Logo_1_nnoir_copie-removebg-preview.png';
 const DIPLOME_BUCKET = 'storage';
+const DIPLOME_PDF_BUCKET = 'fullfighting-pdf';
+const DIPLOME_PDF_PREFIX = 'adherents/diplomes'; // perm_adherents (cf. hasStoragePermission côté Worker)
 const DIPLOME_IMAGE_RE = /\.(png|jpe?g|webp)$/i;
 const DIPLOME_LAYOUTS_KEY = 'diplome_layouts';
 const DIPLOME_SIGNATURE_KEY = 'diplome_signature_url';
@@ -181,8 +183,9 @@ const D = {
     diplomeTemplates:[],
     diplomeTemplatesError:'',
     diplomeLayouts:{},
+    diplomes:[],
     rolePerms: JSON.parse(JSON.stringify(DEFAULT_ROLE_PERMS)),
-    loaded:{core:false,dashboard:false,adherents:false,banque:false,comptabilite:false,achat:false,facture:false,administration:false},
+    loaded:{core:false,dashboard:false,adherents:false,banque:false,comptabilite:false,achat:false,facture:false,administration:false,diplomesArchive:false},
     loading:{},
 };
 const UI = {
@@ -210,6 +213,7 @@ const UI = {
   bankTxDateTo:'',
   pdfTarget:null,
   diplome:{adherentId:'',date:td(),templatePath:'',titre:'Diplôme de ceinture',selectedField:'nomComplet'},
+  diplomeArchive:{saison:'current'},
   invState:{numero:'FAC-001',date:td(),destinataire:'',adresse:'',objet:'',lignes:[{desc:'',qte:1,pu:0}],notes:''},
   invKind:'facture',
   glFilter:'',
@@ -456,6 +460,7 @@ async function loadTabData(tab, force=false){
       ]);
       D.adherents=sortAdherentsList(adherentsRes.data||[]);
       D.publicRegistrations=registrationsRes.data||[];
+      if(tab==='diplomes') await loadDiplomeArchive(force);
       markLoaded('adherents');
       return;
     }
@@ -507,6 +512,31 @@ async function loadTabData(tab, force=false){
     delete D.loading[tab];
   });
   return D.loading[tab];
+}
+
+async function loadDiplomeArchive(force){
+  if(D.loaded.diplomesArchive && !force) return;
+  try{
+    const {data,error}=await SB.from('diplomes').select('*').order('date_emission',{ascending:false});
+    if(error) throw error;
+    D.diplomes=data||[];
+    D.loaded.diplomesArchive=true;
+  }catch(e){
+    notify('error','Impossible de charger l’historique des diplômes : '+(e?.message||e),'Diplômes');
+  }
+}
+
+// Liste des saisons distinctes présentes dans l'archive, triées de la plus récente à la plus ancienne.
+function diplomeArchiveSeasons(){
+  const set=new Set(D.diplomes.map(d=>d.saison).filter(Boolean));
+  return Array.from(set).sort().reverse();
+}
+
+function diplomeArchiveFiltered(){
+  const filterSeason=UI.diplomeArchive.saison;
+  if(filterSeason==='all') return D.diplomes;
+  const target=filterSeason==='current'?currentSeasonLabel():filterSeason;
+  return D.diplomes.filter(d=>d.saison===target);
 }
 
 async function loadDiplomeTemplates(){
@@ -2628,17 +2658,40 @@ async function printDiplome(){
     const newNotes=(adh.notes?adh.notes+'\n':'')+logLine;
     await SB.from('adherents').update({notes:newNotes,updated_at:new Date().toISOString()}).eq('id',adh.id);
     adh.notes=newNotes;
-    // Enregistrement dans la table diplomes (persistant et requêtable)
+    // Archivage de la saison en cours : la saison est calculée et figée à l'émission,
+    // elle ne sera jamais recalculée si la convention de saison change plus tard.
+    const emissionDate=UI.diplome.date||td();
+    const saison=seasonFromDate(emissionDate)||currentSeasonLabel();
+    // Conservation d'une copie PDF du diplôme dans R2, pour traçabilité/historique
+    // (jusqu'ici, le PDF n'était que téléchargé dans le navigateur, sans aucune trace côté club).
+    let pdfStoragePath=null;
+    try{
+      const pdfBlob=pdf.output('blob');
+      const archivePath=`${DIPLOME_PDF_PREFIX}/${saison}/${safeName||'diplome'}_${Date.now()}.pdf`;
+      const {error:uploadError}=await SB.storage.from(DIPLOME_PDF_BUCKET).upload(archivePath,pdfBlob);
+      if(uploadError) throw uploadError;
+      pdfStoragePath=archivePath;
+    }catch(archiveError){
+      // L'archivage est une amélioration de traçabilité : s'il échoue (ex. bucket non
+      // configuré), on n'empêche pas la génération du diplôme, on prévient juste l'utilisateur.
+      notify('error','Diplôme généré mais non archivé (PDF) : '+(archiveError?.message||archiveError),'Diplômes');
+    }
+    // Enregistrement dans la table diplomes (persistant et requêtable, par saison)
     await SB.from('diplomes').insert({
       id:crypto.randomUUID(),
       adherent_id:adh.id,
+      nom:adh.nom||'',
+      prenom:adh.prenom||'',
       titre:UI.diplome.titre||'Diplôme de ceinture',
       ceinture:adh.couleur_ceinture||'',
-      date_emission:UI.diplome.date||td(),
+      date_emission:emissionDate,
+      saison,
       modele:tpl.label||tpl.name||'',
+      pdf_storage_path:pdfStoragePath,
       created_at:new Date().toISOString()
     });
-    notify('success',`Diplôme de ${adh.prenom} ${adh.nom} généré et tracé.`,'Diplômes');
+    await loadDiplomeArchive(true); // rafraîchit l'historique affiché dans l'onglet Diplômes
+    notify('success',`Diplôme de ${adh.prenom} ${adh.nom} généré et tracé (saison ${saison}).`,'Diplômes');
   }catch(error){
     alert('Export PDF impossible : '+(error?.message||error));
   }
@@ -2656,6 +2709,8 @@ async function printDiplomeBatch(adherentIds){
     const pdf=new jsPDF({orientation:'landscape',unit:'pt',format:'a4',compress:true});
     let first=true;
     const date=UI.diplome.date||td();
+    const saison=seasonFromDate(date)||currentSeasonLabel();
+    const batchRecords=[];
     for(const adh of adhs){
       if(!first) pdf.addPage();
       first=false;
@@ -2673,9 +2728,37 @@ async function printDiplomeBatch(adherentIds){
         layout:selectedDiplomeLayout()
       });
       pdf.addImage(canvas.toDataURL('image/png'),'PNG',0,0,DIPLOME_PAGE.pdfWidthPt,DIPLOME_PAGE.pdfHeightPt,undefined,'FAST');
+      batchRecords.push({adh,modele:bestTpl.label||bestTpl.name||''});
     }
     pdf.save(`diplomes_batch_${date}.pdf`);
-    notify('success',`${adhs.length} diplôme(s) générés.`,'Diplômes batch');
+    // Archivage d'une seule copie PDF du lot complet (toutes les pages), référencée
+    // par chaque ligne de la table diplomes pour ce lot.
+    let pdfStoragePath=null;
+    try{
+      const pdfBlob=pdf.output('blob');
+      const archivePath=`${DIPLOME_PDF_PREFIX}/${saison}/batch_${date}_${adhs.length}adherents_${Date.now()}.pdf`;
+      const {error:uploadError}=await SB.storage.from(DIPLOME_PDF_BUCKET).upload(archivePath,pdfBlob);
+      if(uploadError) throw uploadError;
+      pdfStoragePath=archivePath;
+    }catch(archiveError){
+      notify('error','Lot généré mais non archivé (PDF) : '+(archiveError?.message||archiveError),'Diplômes batch');
+    }
+    const rows=batchRecords.map(({adh,modele})=>({
+      id:crypto.randomUUID(),
+      adherent_id:adh.id,
+      nom:adh.nom||'',
+      prenom:adh.prenom||'',
+      titre:UI.diplome.titre||'Diplôme de ceinture',
+      ceinture:adh.couleur_ceinture||'',
+      date_emission:date,
+      saison,
+      modele,
+      pdf_storage_path:pdfStoragePath,
+      created_at:new Date().toISOString()
+    }));
+    await SB.from('diplomes').insert(rows);
+    await loadDiplomeArchive(true);
+    notify('success',`${adhs.length} diplôme(s) générés et tracés (saison ${saison}).`,'Diplômes batch');
   }catch(err){
     alert('Génération batch impossible : '+(err?.message||err));
   }
@@ -2891,7 +2974,46 @@ function vDiplomes(){
         </div>
         ${adh?`<div>${html}</div>`:`<div class="empty">Sélectionnez un adhérent pour prévisualiser le diplôme.</div>`}
         </div>
-        </div>`;
+        </div>
+        ${vDiplomesArchive()}`;
+}
+
+function vDiplomesArchive(){
+  const seasons=diplomeArchiveSeasons();
+  const rows=diplomeArchiveFiltered();
+  const filter=UI.diplomeArchive.saison;
+  return `<div class="card" style="margin-top:18px">
+  <div class="view-head" style="margin-bottom:12px">
+  <div>
+  <div class="eyebrow">Traçabilité</div>
+  <h3 style="margin:0">Historique des diplômes par saison</h3>
+  <p style="margin:4px 0 0;font-size:13px;color:var(--txt2)">Chaque diplôme émis est archivé ici avec sa saison (du 1ᵉʳ septembre au 31 août), pour garder une trace même après le départ d'un adhérent.</p>
+  </div>
+  <button class="btn" onclick="loadDiplomeArchive(true).then(()=>render())">↻ Actualiser</button>
+  </div>
+  <div class="fg" style="max-width:260px;margin-bottom:12px">
+  <label>Saison</label>
+  <select onchange="UI.diplomeArchive.saison=this.value;render()">
+  <option value="current" ${filter==='current'?'selected':''}>Saison en cours (${currentSeasonLabel()})</option>
+  <option value="all" ${filter==='all'?'selected':''}>Toutes les saisons</option>
+  ${seasons.map(s=>`<option value="${s}" ${filter===s?'selected':''}>${s}</option>`).join('')}
+  </select>
+  </div>
+  ${rows.length?`<div style="overflow-x:auto"><table class="tbl">
+  <thead><tr><th>Adhérent</th><th>Ceinture</th><th>Titre</th><th>Date</th><th>Saison</th><th>Modèle</th><th>Archive PDF</th></tr></thead>
+  <tbody>
+  ${rows.map(d=>`<tr>
+  <td>${esc(d.nom||'')} ${esc(d.prenom||'')}</td>
+  <td>${esc(d.ceinture||'—')}</td>
+  <td>${esc(d.titre||'—')}</td>
+  <td>${fd(d.date_emission)}</td>
+  <td>${esc(d.saison||'—')}</td>
+  <td>${esc(d.modele||'—')}</td>
+  <td>${d.pdf_storage_path?`<a class="btn sm" href="${buildStorageObjectUrl(DIPLOME_PDF_BUCKET,d.pdf_storage_path)}" target="_blank">⬇ PDF</a>`:'—'}</td>
+  </tr>`).join('')}
+  </tbody>
+  </table></div>`:`<div class="empty">Aucun diplôme archivé pour cette sélection.</div>`}
+  </div>`;
 }
 
 let diplomeDragState=null;
