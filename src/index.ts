@@ -841,11 +841,85 @@ async function handleStorageGet(
   return new Response(object.body, { headers });
 }
 
+interface EmailRecipient {
+  email: string;
+  name?: string;
+}
+
+interface EmailAttachment {
+  /** Nom de fichier proposé au destinataire (ex. "diplome.pdf") */
+  name: string;
+  /** Contenu encodé en base64 (sans préfixe data:) */
+  content: string;
+}
+
+interface EmailSendBody {
+  to?: EmailRecipient[];
+  subject?: string;
+  html?: string;
+  attachments?: EmailAttachment[];
+}
+
+// Envoi d'email transactionnel via Brevo (ex-Sendinblue), réutilisé par plusieurs
+// fonctionnalités du back-office (relance de vente impayée, envoi de diplôme PDF...).
+// Doc : https://developers.brevo.com/reference/sendtransacemail
+async function handleEmailSend(request: Request, env: Env): Promise<Response> {
+  const user = await getCurrentUser(request, env, SESSION_COOKIE);
+  if (!user) return badRequest("Unauthorized", 401);
+  if (!env.BREVO_API_KEY) {
+    return badRequest("Service d'email non configuré (secret BREVO_API_KEY manquant)", 503);
+  }
+  let body: EmailSendBody;
+  try {
+    body = (await request.json()) as EmailSendBody;
+  } catch {
+    return badRequest("Corps de requête JSON invalide");
+  }
+  const recipients = Array.isArray(body.to) ? body.to.filter((r) => r?.email) : [];
+  if (!recipients.length) return badRequest("Destinataire manquant");
+  if (!body.subject) return badRequest("Sujet manquant");
+  if (!body.html) return badRequest("Contenu HTML manquant");
+
+  const payload: Record<string, unknown> = {
+    sender: {
+      name: env.BREVO_FROM_NAME || "AFFBC",
+      email: env.BREVO_FROM_EMAIL,
+    },
+    to: recipients.map((r) => ({ email: r.email, name: r.name || r.email })),
+    subject: body.subject,
+    htmlContent: body.html,
+  };
+  if (Array.isArray(body.attachments) && body.attachments.length) {
+    payload.attachment = body.attachments
+      .filter((a) => a?.name && a?.content)
+      .map((a) => ({ name: a.name, content: a.content }));
+  }
+
+  try {
+    const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "api-key": env.BREVO_API_KEY,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      return json({ data: null, error: { message: `Brevo error ${res.status}: ${errText}` } }, { status: 502 });
+    }
+    return json({ data: { sent: true }, error: null });
+  } catch (err) {
+    return json({ data: null, error: { message: err instanceof Error ? err.message : String(err) } }, { status: 502 });
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
     const method = request.method.toUpperCase();
+
 
     if (path === "/api/health" && (method === "GET" || method === "HEAD")) {
       const response = withSecurityHeaders(json({ ok: true, data: { service: "gestion-americanfullfightingbons", date: new Date().toISOString(), bindings: { hasDb: !!env.DB } } }));
@@ -905,6 +979,9 @@ export default {
     if ((path === "/api/auth/change-password" || path === "/api/auth/password") && method === "POST") {
       return withSecurityHeaders(await handleChangePassword(request, env));
     }
+    if (path === "/api/email/send" && method === "POST") {
+      return withSecurityHeaders(await handleEmailSend(request, env));
+    }
 
     const dbMatch = path.match(/^\/api\/db\/([A-Za-z0-9_]+)$/);
     if (dbMatch) {
@@ -935,5 +1012,30 @@ export default {
     }
 
     return withSecurityHeaders(new Response("Not Found", { status: 404 }));
+  },
+
+  // Sauvegarde automatique programmée (Cron Trigger, cf. wrangler.json "triggers").
+  // Complète le bouton de sauvegarde manuel existant : ici, dump complet de toutes
+  // les tables (y compris diplômes, audit, transactions — absents de l'export manuel
+  // côté interface) vers R2, sans dépendre de la mémoire d'un humain pour la déclencher.
+  async scheduled(_event: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
+    const db = env.DB;
+    const dump: Record<string, unknown> = {
+      version: "auto-1",
+      generated_at: new Date().toISOString(),
+    };
+    for (const table of TABLES) {
+      try {
+        const { results } = await db.prepare(`SELECT * FROM ${table}`).all();
+        dump[table] = results;
+      } catch (err) {
+        dump[table] = { error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+    const dateLabel = new Date().toISOString().slice(0, 10);
+    const path = `backups/auto/backup_${dateLabel}.json`;
+    await env.R2_STORAGE.put(path, JSON.stringify(dump, null, 2), {
+      httpMetadata: { contentType: "application/json" },
+    });
   },
 } satisfies ExportedHandler<Env>;
