@@ -17,6 +17,12 @@ declare namespace Cloudflare {
 		/** Cloudflare Worker secret — set via `wrangler secret put PASSWORD_PEPPER` */
 		PASSWORD_PEPPER: string;
 		HELLOASSO_ORGANIZATION_SLUG: string;
+		/** Cloudflare Worker secret — set via `wrangler secret put BREVO_API_KEY` */
+		BREVO_API_KEY?: string;
+		/** Cloudflare Worker secret — set via `wrangler secret put BREVO_FROM_EMAIL` */
+		BREVO_FROM_EMAIL?: string;
+		/** Cloudflare Worker secret — set via `wrangler secret put BREVO_FROM_NAME` */
+		BREVO_FROM_NAME?: string;
 	}
 }
 interface Env extends Cloudflare.Env {}
