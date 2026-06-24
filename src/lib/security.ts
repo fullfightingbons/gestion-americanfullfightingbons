@@ -155,11 +155,11 @@ async function verifyPassword(
     };
   }
 
-  if (!secureEquals(password, stored)) return { valid: false, upgradedHash: null };
-  return {
-    valid: true,
-    upgradedHash: await hashPassword(password, env, passwordHashPrefix, maxPbkdf2Iterations),
-  };
+  // Hash non reconnu (ni PBKDF2 ni SHA-256 legacy) : rejeter sans fallback en clair.
+  // Cela protège contre un stockage corrompu ou un format inconnu qui pourrait
+  // être comparé directement contre le mot de passe en clair.
+  console.error("[security] verifyPassword: format de hash non reconnu, connexion refusée.");
+  return { valid: false, upgradedHash: null };
 }
 
 async function prepareUserWriteValues(
