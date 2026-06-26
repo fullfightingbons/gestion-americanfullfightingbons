@@ -519,7 +519,11 @@ export default {
   },
 
   // ── Cron trigger : sync automatique toutes les heures ───────────────────
-  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+  async scheduled(
+  _controller: ScheduledController,
+  env: Env,
+  ctx: ExecutionContext
+): Promise<void> {
     ctx.waitUntil(syncInscriptionsValidees(env));
   },
 } satisfies ExportedHandler<Env>;
