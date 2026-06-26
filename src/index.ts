@@ -13,7 +13,7 @@ export interface Env {
   ASSETS: Fetcher;
 }
 
-import {verifyPassword, createSessionToken, parseSessionToken} from './lib/security';
+import {verifyPassword, createSessionToken, parseSessionToken, hashPassword} from './lib/security';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -242,11 +242,54 @@ export default {
       return json({ token, expires_at: expiresAt });
     }
 
-    
+    // POST /api/admin/reset-password
+    // Réinitialise le mot de passe d'un utilisateur en le hachant avec le
+    // PASSWORD_PEPPER réellement actif sur ce Worker (contrairement à un hash
+    // inséré à la main en SQL, qui ne peut jamais matcher si le pepper diffère).
+    // Protégée par ADMIN_PASSWORD : c'est la seule clé "maître" indépendante
+    // des comptes utilisateurs, donc utilisable même si plus personne ne peut
+    // se connecter via /api/auth/login.
+    if (method === 'POST' && path === '/api/admin/reset-password') {
+      const body = await request.json<{ adminPassword?: string; email?: string; newPassword?: string }>();
+      if (!body?.adminPassword || !body?.email || !body?.newPassword) {
+        return err('adminPassword, email et newPassword sont requis', 400);
+      }
+
+      // Comparaison en temps constant, identique à /api/admin/login
+      const encoder = new TextEncoder();
+      const a = encoder.encode(body.adminPassword);
+      const b = encoder.encode(env.ADMIN_PASSWORD);
+      let same = a.length === b.length;
+      for (let i = 0; i < Math.min(a.length, b.length); i++) {
+        if (a[i] !== b[i]) same = false;
+      }
+      if (!same) return err('Mot de passe admin incorrect', 401);
+
+      if (body.newPassword.length < 8) {
+        return err('Le nouveau mot de passe doit faire au moins 8 caractères', 400);
+      }
+
+      const emailNormalized = body.email.trim().toLowerCase();
+      const user = await env.DB
+        .prepare(`SELECT id FROM utilisateurs WHERE LOWER(TRIM(email))=?`)
+        .bind(emailNormalized)
+        .first<any>();
+      if (!user) return err('Utilisateur introuvable', 404);
+
+      const newHash = await hashPassword(body.newPassword, env as any, 'pbkdf2_sha256', 100000);
+      await env.DB
+        .prepare(`UPDATE utilisateurs SET mot_de_passe=?, password_changed_at=? WHERE id=?`)
+        .bind(newHash, new Date().toISOString(), user.id)
+        .run();
+
+      return json({ ok: true });
+    }
+
     // POST /api/auth/login
     if (method === 'POST' && path === '/api/auth/login') {
       const body= await request.json<any>();
-      const user= await env.DB.prepare(`SELECT * FROM utilisateurs WHERE email=? AND (actif=1 OR actif IS NULL)`).bind(body.email).first<any>();
+      const emailNormalized = String(body?.email || '').trim().toLowerCase();
+      const user= await env.DB.prepare(`SELECT * FROM utilisateurs WHERE LOWER(TRIM(email))=? AND (actif=1 OR actif IS NULL)`).bind(emailNormalized).first<any>();
       if(!user) return err('Utilisateur introuvable',401);
       const check= await verifyPassword(body.password,user.mot_de_passe,env as any,'pbkdf2_sha256',2000000,/^[a-f0-9]{64}$/i);
       if(!check.valid) return err('Email ou mot de passe incorrect',401);
@@ -285,6 +328,7 @@ export default {
     // Toutes les routes /api/* (sauf login/logout) nécessitent un token
     const publicApiRoutes = new Set([
   "/api/admin/login",
+  "/api/admin/reset-password",
   "/api/auth/login",
   "/api/auth/session",
   "/api/health"
