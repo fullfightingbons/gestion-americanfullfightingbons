@@ -19,6 +19,7 @@ import type {
   ExportedHandler,
   ScheduledController,
 } from "@cloudflare/workers-types";
+import {verifyPassword, createSessionToken} from './lib/security';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -37,21 +38,10 @@ function err(message: string, status = 400): Response {
 }
 
 async function requireAuth(request: Request, env: Env): Promise<boolean> {
-  const auth = request.headers.get('Authorization') ?? '';
-  const token = auth.replace(/^Bearer\s+/i, '').trim();
-
-  if (!token) return false;
-
-  // Vérifier en DB si la session est valide et non expirée
-  const session = await env.DB
-    .prepare(
-      `SELECT token FROM admin_sessions
-       WHERE token = ? AND expires_at > datetime('now')`
-    )
-    .bind(token)
-    .first<{ token: string }>();
-
-  return session !== null;
+ const auth=request.headers.get('Authorization')??'';
+ const token=auth.replace(/^Bearer\s+/i,'').trim();
+ if(!token) return false;
+ try{const payload=JSON.parse(atob(token.split('.')[0].replace(/-/g,'+').replace(/_/g,'/'))); return payload.expiresAt>Date.now();}catch{return false;}
 }
 
 // Saison courante : si on est après le 1er septembre → saison N/N+1, sinon N-1/N
@@ -261,6 +251,18 @@ export default {
         .run();
 
       return json({ token, expires_at: expiresAt });
+    }
+
+    
+    // POST /api/auth/login
+    if (method === 'POST' && path === '/api/auth/login') {
+      const body= await request.json<any>();
+      const user= await env.DB.prepare(`SELECT * FROM utilisateurs WHERE email=? AND (actif=1 OR actif IS NULL)`).bind(body.email).first<any>();
+      if(!user) return err('Utilisateur introuvable',401);
+      const check= await verifyPassword(body.password,user.mot_de_passe,env as any,'pbkdf2_sha256',100000,/^[a-f0-9]{64}$/i);
+      if(!check.valid) return err('Email ou mot de passe incorrect',401);
+      const token= await createSessionToken({userId:user.id,expiresAt:Date.now()+86400000,pwdStamp:user.password_changed_at||''},env as any);
+      return json({token,user:{id:user.id,prenom:user.prenom,nom:user.nom,email:user.email,role:user.role}})
     }
 
     // POST /api/admin/logout
