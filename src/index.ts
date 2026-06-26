@@ -13,12 +13,6 @@ export interface Env {
   ASSETS: Fetcher;
 }
 
-import type {
-  D1Database,
-  ExecutionContext,
-  ExportedHandler,
-  ScheduledController,
-} from "@cloudflare/workers-types";
 import {verifyPassword, createSessionToken, parseSessionToken} from './lib/security';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
