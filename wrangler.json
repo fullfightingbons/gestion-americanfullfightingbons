@@ -12,7 +12,7 @@
     {
       "binding": "AFFBC_DB",
       "database_id": "678b90d9-5d87-4011-b077-af5a4d0358ee",
-      "database_name": "affbc-prod"
+      "database_name": "affbc-production"
     }
   ],
   "observability": {
