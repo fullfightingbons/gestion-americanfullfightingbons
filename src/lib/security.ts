@@ -135,8 +135,18 @@ async function verifyPassword(
     if (!iterations || !saltRaw || !hashRaw || iterations > maxPbkdf2Iterations) {
       return { valid: false, upgradedHash: null };
     }
-    // Django PBKDF2 : le sel est utilisé tel quel (UTF-8), sans pepper ni décodage base64.
-    const saltBytes = new TextEncoder().encode(saltRaw);
+
+    // ── Chemin 1 : hash créé par hashPassword() (format maison, avec pepper) ──
+    // Le sel et le hash sont en base64url. Le pepper est appliqué.
+    const nativeHash = await derivePasswordHash(password, bytesFromBase64Url(saltRaw), iterations, env);
+    if (secureEquals(bytesToBase64Url(nativeHash), hashRaw)) {
+      return { valid: true, upgradedHash: null };
+    }
+
+    // ── Chemin 2 : hash Django legacy (sans pepper) ──
+    // Le sel Django est en base64url mais utilisé décodé (bytes bruts) par Django.
+    // Le hash final Django est en base64 standard (avec + / =), pas base64url.
+    const saltBytes = bytesFromBase64Url(saltRaw);
     const keyMaterial = await crypto.subtle.importKey(
       "raw",
       new TextEncoder().encode(password),
@@ -151,7 +161,11 @@ async function verifyPassword(
     );
     let binary = ""; for (const b of new Uint8Array(bits)) binary += String.fromCharCode(b);
     const djangoHash = btoa(binary);
-    return { valid: secureEquals(djangoHash, hashRaw), upgradedHash: null };
+    if (secureEquals(djangoHash, hashRaw)) {
+      return { valid: true, upgradedHash: null };
+    }
+
+    return { valid: false, upgradedHash: null };
   }
 
   if (legacySha256Re.test(stored)) {
