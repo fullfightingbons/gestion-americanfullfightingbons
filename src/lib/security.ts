@@ -135,13 +135,11 @@ async function verifyPassword(
     if (!iterations || !saltRaw || !hashRaw || iterations > maxPbkdf2Iterations) {
       return { valid: false, upgradedHash: null };
     }
-    const derived = await derivePasswordHash(
-      password,
-      bytesFromBase64Url(saltRaw),
-      iterations,
-      env,
-    );
-    return { valid: secureEquals(bytesToBase64Url(derived), hashRaw), upgradedHash: null };
+    const saltBytes=new TextEncoder().encode(saltRaw);
+    const derived = await derivePasswordHash(password,saltBytes,iterations,env);
+    let binary=''; for (const b of derived) binary+=String.fromCharCode(b);
+    const djangoHash=btoa(binary);
+    return { valid: secureEquals(djangoHash, hashRaw), upgradedHash: null };
   }
 
   if (legacySha256Re.test(stored)) {
@@ -288,6 +286,7 @@ function isPublicStorageObject(bucketName: string, key: string): boolean {
 
 export {
   createSessionToken,
+  parseSessionToken,
   getCurrentUser,
   hashPassword,
   hasPermission,
