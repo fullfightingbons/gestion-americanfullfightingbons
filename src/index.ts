@@ -515,8 +515,11 @@ export default {
     // ── Fallback : servir le front-office HTML ────────────────────────────
     // (le fichier index.html est servi via env.ASSETS si configuré,
     //  sinon on renvoie une réponse minimale)
-    return new Response('Not Found', { status: 404 });
-  },
+   if (env.ASSETS) {
+  return env.ASSETS.fetch(request);
+}
+
+return new Response('Not Found', { status: 404 });
 
   // ── Cron trigger : sync automatique toutes les heures ───────────────────
   async scheduled(
