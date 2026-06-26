@@ -3,6 +3,12 @@
   "main": "src/index.ts",
   "name": "gestion-americanfullfightingbons",
   "upload_source_maps": true,
+
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+
   "d1_databases": [
     {
       "binding": "DB",
@@ -15,6 +21,7 @@
       "database_name": "affbc-production"
     }
   ],
+
   "observability": {
     "enabled": true
   }
