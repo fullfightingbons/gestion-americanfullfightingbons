@@ -135,10 +135,22 @@ async function verifyPassword(
     if (!iterations || !saltRaw || !hashRaw || iterations > maxPbkdf2Iterations) {
       return { valid: false, upgradedHash: null };
     }
-    const saltBytes=new TextEncoder().encode(saltRaw);
-    const derived = await derivePasswordHash(password,saltBytes,iterations,env);
-    let binary=''; for (const b of derived) binary+=String.fromCharCode(b);
-    const djangoHash=btoa(binary);
+    // Django PBKDF2 : le sel est utilisé tel quel (UTF-8), sans pepper ni décodage base64.
+    const saltBytes = new TextEncoder().encode(saltRaw);
+    const keyMaterial = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(password),
+      "PBKDF2",
+      false,
+      ["deriveBits"],
+    );
+    const bits = await crypto.subtle.deriveBits(
+      { name: "PBKDF2", hash: "SHA-256", salt: saltBytes, iterations },
+      keyMaterial,
+      256,
+    );
+    let binary = ""; for (const b of new Uint8Array(bits)) binary += String.fromCharCode(b);
+    const djangoHash = btoa(binary);
     return { valid: secureEquals(djangoHash, hashRaw), upgradedHash: null };
   }
 
