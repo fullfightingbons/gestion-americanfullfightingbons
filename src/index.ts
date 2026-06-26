@@ -268,6 +268,12 @@ export default {
       return json({ ok: true });
     }
 
+     // ── Santé ─────────────────────────────────────────────────────────────
+
+    if (method === 'GET' && path === '/api/health') {
+      return json({ ok: true, ts: new Date().toISOString() });
+    }
+
     // ── Routes protégées ──────────────────────────────────────────────────
 
     // Toutes les routes /api/* (sauf login/logout) nécessitent un token
@@ -504,12 +510,6 @@ export default {
       } catch (e) {
         return err(`Impossible de lire AFFBC_DB: ${String(e)}`, 500);
       }
-    }
-
-    // ── Santé ─────────────────────────────────────────────────────────────
-
-    if (method === 'GET' && path === '/api/health') {
-      return json({ ok: true, ts: new Date().toISOString() });
     }
 
     // ── Fallback : servir le front-office HTML ────────────────────────────
