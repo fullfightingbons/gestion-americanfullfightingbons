@@ -13,6 +13,13 @@ export interface Env {
   ASSETS: Fetcher;
 }
 
+import type {
+  D1Database,
+  ExecutionContext,
+  ExportedHandler,
+  ScheduledController,
+} from "@cloudflare/workers-types";
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function json(data: unknown, status = 200): Response {
@@ -528,6 +535,7 @@ export default {
 }
 
 return new Response('Not Found', { status: 404 });
+    },
 
   // ── Cron trigger : sync automatique toutes les heures ───────────────────
   async scheduled(
