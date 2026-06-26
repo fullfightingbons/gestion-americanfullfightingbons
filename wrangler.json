@@ -12,8 +12,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_id": "b1a25d5f-481c-447e-aa0c-9c6f2da1eb28",
-      "database_name": "gestion-americanfullfightingbonsdb"
+      "database_id": "678b90d9-5d87-4011-b077-af5a4d0358ee",
+      "database_name": "affbc-production"
     },
     {
       "binding": "AFFBC_DB",
