@@ -271,10 +271,17 @@ export default {
 
      // ── Santé ─────────────────────────────────────────────────────────────
 
-    if (method === 'GET' && path === '/api/health') {
-      return json({ ok: true, ts: new Date().toISOString() });
-    }
-
+   if (method === 'GET' && path === '/api/health') {
+    return json({
+        ok: true,
+        ts: new Date().toISOString(),
+        data: {
+            bindings: {
+                hasDb: !!env.DB
+            }
+        }
+    });
+}
     // ── Routes protégées ──────────────────────────────────────────────────
 
     // Toutes les routes /api/* (sauf login/logout) nécessitent un token
