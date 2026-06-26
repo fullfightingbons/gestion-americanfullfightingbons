@@ -10,6 +10,7 @@ export interface Env {
   AFFBC_DB: D1Database;   // affbc-prod (inscriptions validées par HelloAsso)
   ADMIN_PASSWORD: string;
   BREVO_API_KEY?: string;
+  ASSETS: Fetcher;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
