@@ -292,10 +292,19 @@ export default {
     // ── Routes protégées ──────────────────────────────────────────────────
 
     // Toutes les routes /api/* (sauf login/logout) nécessitent un token
-    if (path.startsWith('/api/')) {
-      const authed = await requireAuth(request, env);
-      if (!authed) return err('Non autorisé', 401);
+    const publicApiRoutes = new Set([
+  "/api/admin/login",
+  "/api/auth/login",
+  "/api/auth/session",
+  "/api/health"
+]);
+
+if (path.startsWith("/api/") && !publicApiRoutes.has(path)) {
+    const authed = await requireAuth(request, env);
+    if (!authed) {
+        return err("Non autorisé", 401);
     }
+}
 
     // ── Synchronisation ───────────────────────────────────────────────────
 
