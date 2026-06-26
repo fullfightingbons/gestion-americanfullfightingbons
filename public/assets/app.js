@@ -175,6 +175,7 @@ const ECR_FIELDS = [
 // STATE
 // ═══════════════════════════════════════════════════
 let SB = null;
+let AUTH_TOKEN = null; // token JWT Bearer pour les appels API
 const D = {
   adherents:[], comptes:[], journal:[], achats:[], factures:[],
   publicRegistrations:[],
@@ -860,9 +861,12 @@ function apiUrl(path){
 }
 
 function clearSession(){
-  return fetch(apiUrl('/auth/session'),{
-    method:'DELETE',
-    credentials:'same-origin',
+  const headers = {};
+  if(AUTH_TOKEN) headers['Authorization'] = 'Bearer ' + AUTH_TOKEN;
+  AUTH_TOKEN = null;
+  return fetch(apiUrl('/admin/logout'),{
+    method:'POST',
+    headers,
     cache:'no-store'
   }).catch(function(){});
 }
@@ -914,12 +918,14 @@ async function apiRequest(path, options={}){
   if(options.body && !(options.body instanceof FormData) && !headers.has('Content-Type')){
     headers.set('Content-Type','application/json');
   }
+  if(AUTH_TOKEN && !headers.has('Authorization')){
+    headers.set('Authorization','Bearer '+AUTH_TOKEN);
+  }
   const res=await fetch(apiUrl(path),{
     method:options.method||'GET',
     headers,
     body:options.body,
-    cache:'no-store',
-    credentials:'same-origin'
+    cache:'no-store'
   });
   let payload=null;
   try{payload=await res.json();}catch(e){payload=null;}
@@ -1080,7 +1086,8 @@ async function doLogin(){
     return;
   }
   document.getElementById('login-err').style.display='none';
-  UI.currentUser=normalizeUserRow(data);
+  if(data.token) AUTH_TOKEN = data.token;
+  UI.currentUser=normalizeUserRow(data.user||data);
   resetLoadedData();
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').style.display='block';
