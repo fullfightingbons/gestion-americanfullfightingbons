@@ -213,8 +213,8 @@ const UI = {
   bankTxDateFrom:'',
   bankTxDateTo:'',
   pdfTarget:null,
-  diplome:{adherentId:'',date:td(),templatePath:'',titre:'Diplôme de ceinture',selectedField:'nomComplet'},
-  diplomeArchive:{saison:'current'},
+  diplome:{adherentId:'',date:td(),templatePath:'',titre:'Diplôme de ceinture',selectedField:'nomComplet',delivrePar:'',commentaire:''},
+  diplomeArchive:{saison:'current',search:''},
   invState:{numero:'FAC-001',date:td(),destinataire:'',adresse:'',objet:'',lignes:[{desc:'',qte:1,pu:0}],notes:''},
   invKind:'facture',
   glFilter:'',
@@ -535,9 +535,14 @@ function diplomeArchiveSeasons(){
 
 function diplomeArchiveFiltered(){
   const filterSeason=UI.diplomeArchive.saison;
-  if(filterSeason==='all') return D.diplomes;
-  const target=filterSeason==='current'?currentSeasonLabel():filterSeason;
-  return D.diplomes.filter(d=>d.saison===target);
+  const q=(UI.diplomeArchive.search||'').toLowerCase().trim();
+  let rows=D.diplomes;
+  if(filterSeason!=='all'){
+    const target=filterSeason==='current'?currentSeasonLabel():filterSeason;
+    rows=rows.filter(d=>d.saison===target);
+  }
+  if(q) rows=rows.filter(d=>`${d.nom||''} ${d.prenom||''}`.toLowerCase().includes(q));
+  return rows;
 }
 
 async function loadDiplomeTemplates(){
@@ -2772,6 +2777,8 @@ async function printDiplome(){
       saison,
       modele:tpl.label||tpl.name||'',
       pdf_storage_path:pdfStoragePath,
+      delivre_par:UI.diplome.delivrePar||null,
+      commentaire:UI.diplome.commentaire||null,
       created_at:new Date().toISOString()
     });
     await loadDiplomeArchive(true); // rafraîchit l'historique affiché dans l'onglet Diplômes
@@ -2838,6 +2845,8 @@ async function printDiplomeBatch(adherentIds){
       saison,
       modele,
       pdf_storage_path:pdfStoragePath,
+      delivre_par:UI.diplome.delivrePar||null,
+      commentaire:UI.diplome.commentaire||null,
       created_at:new Date().toISOString()
     }));
     await SB.from('diplomes').insert(rows);
@@ -2939,6 +2948,16 @@ function vDiplomes(){
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
     <button class="btn" onclick="document.getElementById('diplome-signature-input').click()">Importer la signature</button>
     <button class="btn" onclick="saveDiplomeSignatureUrl(document.getElementById('diplome-signature-url').value)">Enregistrer l’URL</button>
+    </div>
+    </div>
+    <div class="g2" style="margin-top:14px">
+    <div class="fg">
+    <label>Délivré par (enseignant / jury)</label>
+    <input value="${esc(UI.diplome.delivrePar||'')}" placeholder="Ex. Serge Suivant" oninput="UI.diplome.delivrePar=this.value">
+    </div>
+    <div class="fg">
+    <label>Commentaire (facultatif)</label>
+    <input value="${esc(UI.diplome.commentaire||'')}" placeholder="Ex. Passage de grade juin 2026…" oninput="UI.diplome.commentaire=this.value">
     </div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
@@ -3066,16 +3085,25 @@ function vDiplomesArchive(){
   const seasons=diplomeArchiveSeasons();
   const rows=diplomeArchiveFiltered();
   const filter=UI.diplomeArchive.saison;
+  const total=D.diplomes.length;
   return `<div class="card" style="margin-top:18px">
   <div class="view-head" style="margin-bottom:12px">
   <div>
   <div class="eyebrow">Traçabilité</div>
-  <h3 style="margin:0">Historique des diplômes par saison</h3>
-  <p style="margin:4px 0 0;font-size:13px;color:var(--txt2)">Chaque diplôme émis est archivé ici avec sa saison (du 1ᵉʳ septembre au 31 août), pour garder une trace même après le départ d'un adhérent.</p>
+  <h3 style="margin:0">Historique des diplômes émis</h3>
+  <p style="margin:4px 0 0;font-size:13px;color:var(--txt2)">Chaque diplôme est archivé avec sa saison, pour garder une trace même après le départ d'un adhérent. ${total} au total.</p>
   </div>
+  <div style="display:flex;gap:8px;align-items:center">
+  <button class="btn" onclick="exportDiplomesCSV()">⬇ CSV</button>
   <button class="btn" onclick="loadDiplomeArchive(true).then(()=>render())">↻ Actualiser</button>
   </div>
-  <div class="fg" style="max-width:260px;margin-bottom:12px">
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;align-items:flex-end">
+  <div class="fg" style="min-width:180px;flex:1">
+  <label>Rechercher un membre</label>
+  <input value="${esc(UI.diplomeArchive.search||'')}" placeholder="Nom, prénom…" oninput="UI.diplomeArchive.search=this.value;render()">
+  </div>
+  <div class="fg" style="min-width:160px">
   <label>Saison</label>
   <select onchange="UI.diplomeArchive.saison=this.value;render()">
   <option value="current" ${filter==='current'?'selected':''}>Saison en cours (${currentSeasonLabel()})</option>
@@ -3083,21 +3111,48 @@ function vDiplomesArchive(){
   ${seasons.map(s=>`<option value="${s}" ${filter===s?'selected':''}>${s}</option>`).join('')}
   </select>
   </div>
+  </div>
   ${rows.length?`<div style="overflow-x:auto"><table class="tbl">
-  <thead><tr><th>Adhérent</th><th>Ceinture</th><th>Titre</th><th>Date</th><th>Saison</th><th>Modèle</th><th>Archive PDF</th></tr></thead>
+  <thead><tr><th>Adhérent</th><th>Ceinture</th><th>Titre</th><th>Date</th><th>Saison</th><th>Délivré par</th><th>Modèle</th><th>Archive PDF</th>${hasPerm('perm_adherents','write')?'<th></th>':''}</tr></thead>
   <tbody>
   ${rows.map(d=>`<tr>
   <td>${esc(d.nom||'')} ${esc(d.prenom||'')}</td>
   <td>${esc(d.ceinture||'—')}</td>
-  <td>${esc(d.titre||'—')}</td>
+  <td>${esc(d.titre||'—')}${d.commentaire?`<br><span style="font-size:11px;color:var(--txt2)">${esc(d.commentaire)}</span>`:''}</td>
   <td>${fd(d.date_emission)}</td>
   <td>${esc(d.saison||'—')}</td>
+  <td>${esc(d.delivre_par||'—')}</td>
   <td>${esc(d.modele||'—')}</td>
   <td>${d.pdf_storage_path?`<a class="btn sm" href="${buildStorageObjectUrl(DIPLOME_PDF_BUCKET,d.pdf_storage_path)}" target="_blank">⬇ PDF</a>`:'—'}</td>
+  ${hasPerm('perm_adherents','write')?`<td><button class="btn sm" style="color:var(--red)" onclick="deleteDiplome('${d.id}')" title="Supprimer cet enregistrement">✕</button></td>`:''}
   </tr>`).join('')}
   </tbody>
-  </table></div>`:`<div class="empty">Aucun diplôme archivé pour cette sélection.</div>`}
+  </table></div>
+  <p style="font-size:12px;color:var(--txt2);margin-top:8px">${rows.length} diplôme(s) affiché(s) sur ${total} au total.</p>`:`<div class="empty">Aucun diplôme archivé pour cette sélection.</div>`}
   </div>`;
+}
+ 
+async function deleteDiplome(id){
+  if(!hasPerm('perm_adherents','write')) return;
+  if(!confirm('Supprimer cet enregistrement de diplôme ? Cette action est irréversible.')) return;
+  const {error}=await SB.from('diplomes').delete().eq('id',id);
+  if(error){notify('error','Suppression échouée : '+(error.message||error),'Diplômes');return;}
+  D.diplomes=D.diplomes.filter(d=>d.id!==id);
+  notify('success','Enregistrement supprimé.','Diplômes');
+  render();
+}
+ 
+function exportDiplomesCSV(){
+  const rows=diplomeArchiveFiltered();
+  if(!rows.length){notify('warn','Aucun diplôme à exporter pour cette sélection.','Diplômes');return;}
+  const header=['Nom','Prénom','Ceinture','Titre','Date d\'émission','Saison','Délivré par','Modèle','Commentaire','PDF archivé'];
+  const lines=rows.map(d=>[
+    d.nom||'',d.prenom||'',d.ceinture||'',d.titre||'',d.date_emission||'',
+    d.saison||'',d.delivre_par||'',d.modele||'',d.commentaire||'',
+    d.pdf_storage_path?'Oui':'Non'
+  ].map(c=>`"${String(c).replace(/"/g,'""')}"`).join(';'));
+  dl('\uFEFF'+[header.join(';'),...lines].join('\n'),`diplomes_${td()}.csv`,'text/csv;charset=utf-8');
+  notify('success',`${rows.length} diplôme(s) exporté(s).`,'Diplômes');
 }
 
 let diplomeDragState=null;
@@ -5416,6 +5471,21 @@ function renderModal(){
           </div>`:`<p style="font-size:12px;color:var(--txt2)">Aucune pièce issue de l'inscription web n'est rattachée à cet adhérent.</p>`}
           </div>
           <div class="fg full"><label>Notes</label><textarea id="f-not" rows="2" style="resize:vertical">${a.notes||''}</textarea></div>
+          ${a.id&&D.loaded.diplomesArchive?`<div class="fg full" style="background:var(--bg2);padding:10px;border-radius:var(--r)">
+          <p style="font-size:12px;font-weight:500;margin-bottom:8px">🎓 Diplômes reçus</p>
+          ${(()=>{
+            const diplAdh=(D.diplomes||[]).filter(d=>d.adherent_id===a.id).sort((x,y)=>(y.date_emission||'').localeCompare(x.date_emission||''));
+            return diplAdh.length
+              ?`<div style="display:flex;flex-direction:column;gap:6px">${diplAdh.map(d=>`<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:6px 8px;background:var(--bg);border-radius:8px;flex-wrap:wrap">
+                <div><span style="font-size:13px;font-weight:500">${esc(d.ceinture||d.titre||'Diplôme')}</span>${d.delivre_par?`<span style="font-size:11px;color:var(--txt2);margin-left:8px">par ${esc(d.delivre_par)}</span>`:''}</div>
+                <div style="display:flex;gap:8px;align-items:center">
+                <span style="font-size:12px;color:var(--txt2)">${fd(d.date_emission)}</span>
+                ${d.pdf_storage_path?`<a class="btn sm" href="${buildStorageObjectUrl(DIPLOME_PDF_BUCKET,d.pdf_storage_path)}" target="_blank">PDF</a>`:''}
+                </div>
+                </div>`).join('')}</div>`
+              :`<p style="font-size:12px;color:var(--txt2)">Aucun diplôme émis pour cet adhérent.</p>`;
+          })()}
+          </div>`:(a.id?`<div class="fg full" style="background:var(--bg2);padding:10px;border-radius:var(--r)"><p style="font-size:12px;font-weight:500;margin-bottom:4px">🎓 Diplômes reçus</p><p style="font-size:12px;color:var(--txt2)">Ouvrez l'onglet Diplômes pour charger l'historique.</p></div>`:'')}
           </div>
           <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="saveAdh('${a.id||''}')">Enregistrer</button></div>
           </div>`;
