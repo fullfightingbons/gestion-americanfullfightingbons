@@ -186,6 +186,10 @@ async function handleDbApi(request: Request, env: Env, table: string): Promise<R
         if (!f.value.length) { parts.push('0'); continue; }
         parts.push(`${col} IN (${f.value.map(() => '?').join(',')})`);
         params.push(...f.value.map(dbNormalizeValue));
+      } else if (f.op === 'is_null') {
+        parts.push(`${col} IS NULL`);
+      } else if (f.op === 'is_not_null') {
+        parts.push(`${col} IS NOT NULL`);
       } else {
         parts.push(`${col} = ?`);
         params.push(dbNormalizeValue(f.value));
@@ -219,6 +223,12 @@ async function handleDbApi(request: Request, env: Env, table: string): Promise<R
       }
       const inserted: unknown[] = [];
       for (const row of rows) {
+        // Filet de sécurité : si la table utilise une PK "id" TEXT et que le
+        // frontend n'en a pas fourni (ou a envoyé une chaîne vide), on génère
+        // un UUID ici pour éviter les lignes avec id NULL.
+        if (primaryKey === 'id' && !row['id']) {
+          row['id'] = crypto.randomUUID();
+        }
         const cols = Object.keys(row);
         if (!cols.length) continue;
         const colsSql = cols.map(dbQuoteIdentifier).join(', ');
