@@ -44,13 +44,15 @@ type PermissionMatrix = Record<string, Record<string, string>>;
 
 const DB_TABLES = new Set([
   'adherents', 'achats', 'audit_logs', 'club_info', 'comptes_bancaires',
-  'diplomes', 'exercices', 'factures', 'inscriptions_publiques',
+  'diplomes', 'exercices', 'factures', 'feedback_campaigns', 'feedback_recipients', 'feedback_responses',
+  'inscriptions_publiques',
   'journal_comptable', 'transactions', 'utilisateurs',
 ]);
 
 const DB_PRIMARY_KEYS: Record<string, string> = {
   adherents: 'id', achats: 'id', audit_logs: 'id', club_info: 'cle',
   comptes_bancaires: 'id', diplomes: 'id', exercices: 'id', factures: 'id',
+  feedback_campaigns: 'id', feedback_recipients: 'id', feedback_responses: 'id',
   inscriptions_publiques: 'id', journal_comptable: 'id', transactions: 'id',
   utilisateurs: 'id',
 };
@@ -64,6 +66,9 @@ const DB_TABLE_PERMISSIONS: Record<string, { read: string; write: string }> = {
   diplomes: { read: 'perm_adherents', write: 'perm_adherents' },
   exercices: { read: 'perm_comptabilite', write: 'perm_comptabilite' },
   factures: { read: 'perm_facturation', write: 'perm_facturation' },
+  feedback_campaigns: { read: 'perm_administration', write: 'perm_administration' },
+  feedback_recipients: { read: 'perm_administration', write: 'perm_administration' },
+  feedback_responses: { read: 'perm_administration', write: 'perm_administration' },
   inscriptions_publiques: { read: 'perm_administration', write: 'perm_administration' },
   journal_comptable: { read: 'perm_comptabilite', write: 'perm_comptabilite' },
   transactions: { read: 'perm_banque', write: 'perm_banque' },
