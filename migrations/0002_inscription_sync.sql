@@ -6,7 +6,13 @@
 -- confirmé) et les répercute sur les onglets adhérents, compta et ventes.
 -- ══════════════════════════════════════════════════════════════════════════
 
-PRAGMA journal_mode = WAL;
+-- NOTE (2026-06-27) : PRAGMA journal_mode = WAL a été retiré ci-dessous.
+-- D1 gère lui-même son journal_mode et REFUSE catégoriquement qu'une
+-- migration le modifie : cette ligne faisait échouer toute la migration
+-- (et donc bloquait aussi les migrations suivantes, ex. 0008/0009) avec
+-- "not authorized: SQLITE_AUTH [code: 7500]". Même cause déjà rencontrée
+-- sur calendrier-americanfullfightingbons. PRAGMA foreign_keys = ON est
+-- conservé : c'est déjà le comportement par défaut de D1, donc inoffensif.
 PRAGMA foreign_keys = ON;
 
 -- ──────────────────────────────────────────────────────────────────────────
