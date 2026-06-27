@@ -3838,13 +3838,15 @@ async function regulariserEquilibreExo(){
   if(!issues.length) return alert('Le journal de cet exercice est déjà équilibré.');
   if(!confirm(`Créer des écritures de régularisation sur le compte 471 pour ${issues.length} pièce(s) déséquilibrée(s) ?`)) return;
   const rows=issues.map((issue,idx)=>({
+    id:crypto.randomUUID(),
     date_op:issue.firstDate||td(),
                                       piece:issue.key==='__SANS_PIECE__'?`REGUL-SANSPIECE-${idx+1}`:issue.key,
                                       compte:'471 - Comptes d attente',
                                       libelle:`Régularisation équilibre - ${issue.piece}`,
                                       debit:issue.ecart<0?Math.abs(issue.ecart):0,
                                       credit:issue.ecart>0?issue.ecart:0,
-                                      exercice_id:D.currentExo?.id||null
+                                      exercice_id:D.currentExo?.id||null,
+                                      created_at:new Date().toISOString()
   }));
   try{
     await insertJournalRows(rows);
@@ -3876,13 +3878,15 @@ async function regulariserPieceEquilibreAvecCompte(issueKey,compte,reason='Régu
   if(!issue) return alert('Cette pièce semble déjà équilibrée.');
   if(!confirm(`Créer ${issue.ecart>0?'un crédit':'un débit'} de ${Math.abs(issue.ecart).toFixed(2)} € sur ${compte} pour la pièce ${issue.piece} ?`)) return;
   const row={
+    id:crypto.randomUUID(),
     date_op:issue.firstDate||td(),
     piece:issue.key==='__SANS_PIECE__'?`REGUL-SANSPIECE-${Date.now()}`:issue.key,
     compte,
     libelle:`${reason} - ${issue.piece}`,
     debit:issue.ecart<0?Math.abs(issue.ecart):0,
     credit:issue.ecart>0?issue.ecart:0,
-    exercice_id:D.currentExo?.id||null
+    exercice_id:D.currentExo?.id||null,
+    created_at:new Date().toISOString()
   };
   try{
     await insertJournalRows([row]);
@@ -4777,7 +4781,7 @@ async function saveFac(){
       }
     }
   }else{
-    const {data,error}=await SB.from('factures').insert(payload).select().single();
+    const {data,error}=await SB.from('factures').insert({...payload,id:crypto.randomUUID(),created_at:new Date().toISOString()}).select().single();
     if(error)return alert('Erreur : '+error.message);
     D.factures.unshift(normalizeFactureRow(data));
     if(UI.invKind!=='don'){
@@ -4814,7 +4818,8 @@ async function setFactureStatus(id,status){
 }
 async function delFac(id){
   if(!confirm('Supprimer ?'))return;
-  await SB.from('factures').delete().eq('id',id);
+  const {error}=await SB.from('factures').delete().eq('id',id);
+  if(error)return alert('Erreur lors de la suppression : '+error.message);
   try{await deleteJournalAuto(autoPiece('vente',id));}catch(e){return alert('Vente supprimée, mais écriture comptable non supprimée : '+e.message);}
   D.factures=D.factures.filter(f=>f.id!==id);render();
 }
@@ -6186,7 +6191,7 @@ async function upsertJournalAuto(entry){
     if(error) throw error;
     Object.assign(existing,entry);
   }else{
-    const {data,error}=await SB.from('journal_comptable').insert(entry).select().single();
+    const {data,error}=await SB.from('journal_comptable').insert({...entry,id:entry.id||crypto.randomUUID(),created_at:entry.created_at||new Date().toISOString()}).select().single();
     if(error) throw error;
     D.journal.push(data);
   }
@@ -6230,22 +6235,26 @@ async function syncAchatJournal(achat){
   const compteContrepartie=achat.statut==='paye' ? paiementCompteAuto(achat.mode_paiement) : '401 - Fournisseurs';
   await insertJournalRows([
     {
+      id:crypto.randomUUID(),
       date_op:dateOp,
       piece:`${piece}-CHG`,
       compte:achatCompteAuto(achat.categorie),
                           libelle:libelleAchatAuto(achat),
                           debit:montant,
                           credit:0,
-                          exercice_id:achat.exercice_id||D.currentExo?.id||null
+                          exercice_id:achat.exercice_id||D.currentExo?.id||null,
+                          created_at:new Date().toISOString()
     },
     {
+      id:crypto.randomUUID(),
       date_op:dateOp,
       piece:`${piece}-CTR`,
       compte:compteContrepartie,
       libelle:libelleAchatAuto(achat),
                           debit:0,
                           credit:montant,
-                          exercice_id:achat.exercice_id||D.currentExo?.id||null
+                          exercice_id:achat.exercice_id||D.currentExo?.id||null,
+                          created_at:new Date().toISOString()
     }
   ]);
 }
@@ -6261,22 +6270,26 @@ async function syncVenteJournal(facture){
   const libelle=libelleVenteAuto(facture);
   await insertJournalRows([
     {
+      id:crypto.randomUUID(),
       date_op:dateOp,
       piece:`${piece}-CLI`,
       compte:'411 - Adhérents et clients',
       libelle,
       debit:total,
       credit:0,
-      exercice_id:facture.exercice_id||D.currentExo?.id||null
+      exercice_id:facture.exercice_id||D.currentExo?.id||null,
+      created_at:new Date().toISOString()
     },
     {
+      id:crypto.randomUUID(),
       date_op:dateOp,
       piece:`${piece}-PRO`,
       compte:venteCompteAuto(facture),
                           libelle,
                           debit:0,
                           credit:total,
-                          exercice_id:facture.exercice_id||D.currentExo?.id||null
+                          exercice_id:facture.exercice_id||D.currentExo?.id||null,
+                          created_at:new Date().toISOString()
     }
   ]);
 }
@@ -6293,13 +6306,15 @@ async function syncAdherentJournal(adherent){
   const dateOp=adherent.date_inscription||td();
   const base={
     date_op:dateOp,
-    exercice_id:adherent.exercice_id||D.currentExo?.id||null
+    exercice_id:adherent.exercice_id||D.currentExo?.id||null,
+    created_at:new Date().toISOString()
   };
   const nom=`${adherent.nom||''} ${adherent.prenom||''}`.trim();
   const comptePaiement=paiementCompteAuto(adherent.paiement);
   const rows=[
     {
       ...base,
+      id:crypto.randomUUID(),
       piece:`${prefix}-ENC`,
       compte:comptePaiement,
       libelle:`Encaissement adhésion - ${nom}`,
@@ -6310,6 +6325,7 @@ async function syncAdherentJournal(adherent){
   if(cotisation>0){
     rows.push({
       ...base,
+      id:crypto.randomUUID(),
       piece:`${prefix}-COT`,
       compte:'7561 - Cotisations membres actifs',
       libelle:`Cotisation adhérent - ${nom}`,
@@ -6320,6 +6336,7 @@ async function syncAdherentJournal(adherent){
   if(passRegion>0){
     rows.push({
       ...base,
+      id:crypto.randomUUID(),
       piece:`${prefix}-PAS`,
       compte:'7088 - Participations et produits accessoires Pass Région',
       libelle:`Pass Région - ${nom}`,
@@ -6352,7 +6369,7 @@ async function saveAdh(id){
       return alert('Adhérent enregistré, mais écritures comptables non synchronisées : '+e.message);
     }
   }else{
-    const {data,error}=await SB.from('adherents').insert(d).select().single();
+    const {data,error}=await SB.from('adherents').insert({...d,id:crypto.randomUUID(),created_at:new Date().toISOString()}).select().single();
     if(error)return alert('Erreur : '+error.message);
     D.adherents.push(data);
     D.adherents=sortAdherentsList(D.adherents);
@@ -6368,7 +6385,7 @@ async function saveAdh(id){
 async function saveCpt(){
   const nom=document.getElementById('c-nom').value.trim();if(!nom)return;
   const d={nom,numero:document.getElementById('c-num').value.trim(),solde_initial:parseFloat(document.getElementById('c-sol').value)||0};
-  const {data,error}=await SB.from('comptes_bancaires').insert(d).select().single();
+  const {data,error}=await SB.from('comptes_bancaires').insert({...d,id:crypto.randomUUID(),created_at:new Date().toISOString()}).select().single();
   if(error)return alert('Erreur : '+error.message);
   D.comptes.push({...data,transactions:[]});
   closeModal();render();
@@ -6386,8 +6403,8 @@ async function saveEcr(){
   if(debit<=0&&credit<=0)return alert('Saisissez un débit ou un crédit.');
   if(debit>0&&credit>0)return alert('Saisissez un seul montant par ligne. La contrepartie sera créée automatiquement.');
   const rows=[
-    {date_op:dateOp,piece:`${piece}-L1`,compte,libelle:lib,debit,credit,exercice_id:D.currentExo?.id||null},
-    {date_op:dateOp,piece:`${piece}-L2`,compte:contrepartie,libelle:`Contrepartie - ${lib}`,debit:credit>0?credit:0,credit:debit>0?debit:0,exercice_id:D.currentExo?.id||null}
+    {id:crypto.randomUUID(),date_op:dateOp,piece:`${piece}-L1`,compte,libelle:lib,debit,credit,exercice_id:D.currentExo?.id||null,created_at:new Date().toISOString()},
+    {id:crypto.randomUUID(),date_op:dateOp,piece:`${piece}-L2`,compte:contrepartie,libelle:`Contrepartie - ${lib}`,debit:credit>0?credit:0,credit:debit>0?debit:0,exercice_id:D.currentExo?.id||null,created_at:new Date().toISOString()}
   ];
   try{
     await insertJournalRows(rows);
@@ -6426,7 +6443,8 @@ async function saveAchat(id){
 }
 async function delAchat(id){
   if(!confirm('Supprimer ?'))return;
-  await SB.from('achats').delete().eq('id',id);
+  const {error}=await SB.from('achats').delete().eq('id',id);
+  if(error)return alert('Erreur lors de la suppression : '+error.message);
   try{await deleteJournalAuto(autoPiece('achat',id));}catch(e){return alert('Achat supprimé, mais écriture comptable non supprimée : '+e.message);}
   D.achats=D.achats.filter(a=>a.id!==id);render()
 }
@@ -6465,7 +6483,7 @@ async function saveUser(id){
     const idx=D.users.findIndex(u=>u.id===id);if(idx>=0)D.users[idx]={...D.users[idx],...safeLocal,must_change_password:pwd?true:D.users[idx].must_change_password};
   }else{
     if(!pwd)return alert('Mot de passe obligatoire');
-    const {data,error}=await SB.from('utilisateurs').insert(d).select().single();
+    const {data,error}=await SB.from('utilisateurs').insert({...d,id:crypto.randomUUID(),created_at:new Date().toISOString()}).select().single();
     if(error)return alert('Erreur : '+error.message);
     D.users.push(normalizeUserRow(data));
   }
@@ -6513,7 +6531,7 @@ async function createExo(payload,archiveActive){
       D.exercices=D.exercices.map(e=>ids.includes(e.id)?{...e,statut:'archive'}:e);
     }
   }
-  const {data,error}=await SB.from('exercices').insert({libelle:lib,date_debut:deb,date_fin:fin,statut:'actif'}).select().single();
+  const {data,error}=await SB.from('exercices').insert({libelle:lib,date_debut:deb,date_fin:fin,statut:'actif',id:crypto.randomUUID(),created_at:new Date().toISOString()}).select().single();
   if(error)return alert('Erreur : '+error.message);
   D.exercices.unshift(data);
   refreshCurrentExo();
@@ -7370,7 +7388,7 @@ async function doImportAdh(){
   const dateISO=v=>{if(!v)return null;v=v.trim();const x=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);if(x)return`${x[3].length===2?'20'+x[3]:x[3]}-${x[2].padStart(2,'0')}-${x[1].padStart(2,'0')}`;if(/^\d{4}-\d{2}-\d{2}$/.test(v))return v;return null;};
   const bool=v=>{if(!v)return false;const s=v.toLowerCase().trim();return['oui','yes','true','1','x'].includes(s);};
   const num=v=>parseFloat((v||'').replace(',','.'))||0;
-  const rows=IMP.adh.rows.map(r=>normalizeAdherentFinance({nom:(r[m.nom]||'').trim().toUpperCase(),prenom:(r[m.prenom]||'').trim(),naissance:dateISO(r[m.naissance]),couleur_ceinture:(r[m.couleur_ceinture]||'').trim(),numero_licence:(r[m.numero_licence]||'').trim(),email:(r[m.email]||'').trim().toLowerCase(),telephone:(r[m.telephone]||'').trim(),adresse:(r[m.adresse]||'').trim(),code_postal:(r[m.code_postal]||'').trim(),ville:(r[m.ville]||'').trim(),discipline:r[m.discipline]||'Club',cotisation:num(r[m.cotisation]),paiement:r[m.paiement]||'Chèque',date_inscription:dateISO(r[m.date_inscription])||td(),date_fin_adhesion:dateISO(r[m.date_fin_adhesion]),statut:r[m.statut]||'Actif',certificat:bool(r[m.certificat]),droit_image:bool(r[m.droit_image]),reglement:bool(r[m.reglement]),pass_region:bool(r[m.pass_region]),montant_pass_region:num(r[m.montant_pass_region]),urgence_nom:(r[m.urgence_nom]||'').trim(),urgence_telephone:(r[m.urgence_telephone]||'').trim(),notes:(r[m.notes]||'').trim(),exercice_id:D.currentExo?.id||null})).filter(r=>r.nom&&r.prenom);
+  const rows=IMP.adh.rows.map(r=>normalizeAdherentFinance({id:crypto.randomUUID(),nom:(r[m.nom]||'').trim().toUpperCase(),prenom:(r[m.prenom]||'').trim(),naissance:dateISO(r[m.naissance]),couleur_ceinture:(r[m.couleur_ceinture]||'').trim(),numero_licence:(r[m.numero_licence]||'').trim(),email:(r[m.email]||'').trim().toLowerCase(),telephone:(r[m.telephone]||'').trim(),adresse:(r[m.adresse]||'').trim(),code_postal:(r[m.code_postal]||'').trim(),ville:(r[m.ville]||'').trim(),discipline:r[m.discipline]||'Club',cotisation:num(r[m.cotisation]),paiement:r[m.paiement]||'Chèque',date_inscription:dateISO(r[m.date_inscription])||td(),date_fin_adhesion:dateISO(r[m.date_fin_adhesion]),statut:r[m.statut]||'Actif',certificat:bool(r[m.certificat]),droit_image:bool(r[m.droit_image]),reglement:bool(r[m.reglement]),pass_region:bool(r[m.pass_region]),montant_pass_region:num(r[m.montant_pass_region]),urgence_nom:(r[m.urgence_nom]||'').trim(),urgence_telephone:(r[m.urgence_telephone]||'').trim(),notes:(r[m.notes]||'').trim(),exercice_id:D.currentExo?.id||null,created_at:new Date().toISOString()})).filter(r=>r.nom&&r.prenom);
   let ok=0,err=0;
   for(let i=0;i<rows.length;i+=50){
     const {data,error}=await SB.from('adherents').insert(rows.slice(i,i+50)).select();
@@ -7425,7 +7443,7 @@ async function doImportEcr(){
       let compte=(r[m.compte]||'').trim();
       if(compte&&!compte.includes(' - ')){const match=PLAN.find(p=>p.startsWith(compte));if(match)compte=match;}
       if(!compte)compte='7580 - Autres produits de gestion courante';
-      return{date_op:dateISO(r[m.date_op]),piece:(r[m.piece]||'').trim()||null,compte,libelle:(r[m.libelle]||'').trim(),debit:deb,credit:cred,exercice_id:D.currentExo?.id||null};
+      return{id:crypto.randomUUID(),date_op:dateISO(r[m.date_op]),piece:(r[m.piece]||'').trim()||null,compte,libelle:(r[m.libelle]||'').trim(),debit:deb,credit:cred,exercice_id:D.currentExo?.id||null,created_at:new Date().toISOString()};
     }).filter(r=>r&&r.libelle);
   }catch(error){
     IMP.ecr.importing=false;
