@@ -1115,13 +1115,14 @@ async function doLogin(){
   resetLoadedData();
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').style.display='block';
-  document.getElementById('cu-name').textContent=data.prenom||data.nom;
-  document.getElementById('cu-role').textContent=ROLES[data.role]||data.role;
+  const loggedUser=data.user||data;
+  document.getElementById('cu-name').textContent=loggedUser.prenom||loggedUser.nom;
+  document.getElementById('cu-role').textContent=ROLES[loggedUser.role]||loggedUser.role;
   await loadCoreData(true);
   await loadTabData(UI.tab,true);
   if(UI.tab==='diplomes') await loadDiplomeTemplates();
   renderTabs();render();
-  notify('success',`Connexion réussie pour ${data.prenom||data.nom}.`,'Connexion');
+  notify('success',`Connexion réussie pour ${loggedUser.prenom||loggedUser.nom}.`,'Connexion');
   if(UI.currentUser?.must_change_password) setTimeout(forcePasswordRotation,120);
 }
 
