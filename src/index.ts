@@ -252,6 +252,7 @@ async function handleDbApi(request: Request, env: Env, table: string): Promise<R
       const setSql = cols.map((c) => `${dbQuoteIdentifier(c)} = ?`).join(', ');
       const setValues = cols.map((c) => dbNormalizeValue(row[c]));
       const { sql: whereSql, params: whereParams } = buildWhere();
+      if (!whereSql) return err('UPDATE sans filtre refusé', 400);
       const sql = `UPDATE ${dbQuoteIdentifier(table)} SET ${setSql}${whereSql} RETURNING *`;
       const { results } = await env.DB.prepare(sql).bind(...setValues, ...whereParams).all();
       const rows = results || [];
@@ -697,7 +698,6 @@ export default {
       }
 
       return json({ data: { ok: true }, error: null });
-    }
     }
 
     // POST /api/admin/logout  (sessions admin legacy — clé UUID stockée en base)
