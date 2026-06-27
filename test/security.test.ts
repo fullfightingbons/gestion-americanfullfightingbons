@@ -11,6 +11,8 @@ import {
   createSessionToken,
   hashPassword,
   hasPermission,
+  hasStoragePermission,
+  isPublicStorageObject,
   prepareUserWriteValues,
   secureEquals,
   verifyPassword,
@@ -162,5 +164,70 @@ describe("hasPermission", () => {
   it("refuse l'accès si aucune règle ne matche (none)", () => {
     const user = { role: "membre" } as any;
     expect(hasPermission(user, "perm_comptabilite", "read", defaultRolePerms)).toBe(false);
+  });
+});
+
+// Tests pour les routes /api/storage/:bucket/* (upload, list, lecture) du
+// Worker, ajoutées le 2026-06-27 et dont les décisions d'accès reposent
+// entièrement sur ces deux fonctions.
+describe("hasStoragePermission", () => {
+  const defaultRolePerms = {
+    admin: { perm_adherents: "write", perm_administration: "write" },
+    entraineur: { perm_adherents: "read", perm_administration: "none" },
+    membre: { perm_adherents: "none", perm_administration: "none" },
+  };
+
+  it("bucket fullfighting-pdf, chemin achats/ → perm_achats", () => {
+    const user = { role: "membre", perm_achats: "write" } as any;
+    expect(hasStoragePermission(user, "fullfighting-pdf", "achats/facture.pdf", "write", defaultRolePerms)).toBe(true);
+  });
+
+  it("bucket fullfighting-pdf, chemin adherents/ → perm_adherents", () => {
+    const lecteur = { role: "entraineur" } as any;
+    expect(hasStoragePermission(lecteur, "fullfighting-pdf", "adherents/diplomes/x.pdf", "read", defaultRolePerms)).toBe(true);
+    expect(hasStoragePermission(lecteur, "fullfighting-pdf", "adherents/diplomes/x.pdf", "write", defaultRolePerms)).toBe(false);
+  });
+
+  it("bucket fullfighting-pdf, chemin hors achats/adherents → perm_administration (refusé pour un rôle sans ce droit)", () => {
+    const entraineur = { role: "entraineur" } as any;
+    expect(hasStoragePermission(entraineur, "fullfighting-pdf", "autre/dossier.pdf", "read", defaultRolePerms)).toBe(false);
+  });
+
+  it("bucket storage, chemin diplome/ → perm_adherents", () => {
+    const entraineur = { role: "entraineur" } as any;
+    expect(hasStoragePermission(entraineur, "storage", "diplome/modele.png", "read", defaultRolePerms)).toBe(true);
+  });
+
+  it("bucket storage, chemin branding/ → perm_administration", () => {
+    const membre = { role: "membre" } as any;
+    expect(hasStoragePermission(membre, "storage", "branding/logo.png", "write", defaultRolePerms)).toBe(false);
+    const admin = { role: "admin" } as any;
+    expect(hasStoragePermission(admin, "storage", "branding/logo.png", "write", defaultRolePerms)).toBe(true);
+  });
+
+  it("normalise un chemin commençant par un ou plusieurs slashes", () => {
+    const entraineur = { role: "entraineur" } as any;
+    expect(hasStoragePermission(entraineur, "storage", "///diplome/x.png", "read", defaultRolePerms)).toBe(true);
+  });
+
+  it("refuse tout accès pour un bucket inconnu", () => {
+    const admin = { role: "admin" } as any;
+    expect(hasStoragePermission(admin, "un-bucket-qui-n-existe-pas", "x", "read", defaultRolePerms)).toBe(false);
+  });
+});
+
+describe("isPublicStorageObject", () => {
+  it("considère les objets sous storage/branding/ comme publics", () => {
+    expect(isPublicStorageObject("storage", "branding/logo.png")).toBe(true);
+    expect(isPublicStorageObject("storage", "/branding/logo.png")).toBe(true);
+  });
+
+  it("ne considère pas les autres chemins de storage comme publics", () => {
+    expect(isPublicStorageObject("storage", "diplome/modele.png")).toBe(false);
+    expect(isPublicStorageObject("storage", "club-assets/signature/x.png")).toBe(false);
+  });
+
+  it("ne considère jamais fullfighting-pdf comme public, même sous un chemin similaire", () => {
+    expect(isPublicStorageObject("fullfighting-pdf", "branding/x.pdf")).toBe(false);
   });
 });

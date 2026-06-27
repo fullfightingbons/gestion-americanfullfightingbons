@@ -1,13 +1,18 @@
 /**
  * Worker Gestion AFFBC
- * Back-office : adhérents, comptabilité, ventes.
- * Lit la base d'inscription (AFFBC_DB = affbc-prod) via un second binding D1
- * pour synchroniser automatiquement les dossiers validés.
+ * Back-office : adhérents, comptabilité, achats, factures, diplômes.
+ *
+ * AFFBC_DB n'est actuellement plus utilisé par aucune route (cf. notes
+ * "2026-06-27" plus bas) : le binding pointe d'ailleurs vers le même
+ * database_id que DB (affbc-production), donc pas vers une base distincte
+ * du worker inscription-americanfullfightingbons. Conservé dans Env/wrangler
+ * en l'état pour ne pas casser une éventuelle réintroduction future d'une
+ * synchronisation, mais à corriger (ou retirer) si non réutilisé.
  */
 
 export interface Env {
-  DB: D1Database;         // gestion-americanfullfightingbonsdb (tables locales)
-  AFFBC_DB: D1Database;   // affbc-prod (inscriptions validées par HelloAsso)
+  DB: D1Database;         // affbc-production (tables locales : adherents, journal_comptable, etc.)
+  AFFBC_DB: D1Database;   // actuellement non utilisé — voir note ci-dessus
   ADMIN_PASSWORD: string;
   BREVO_API_KEY?: string;
   ASSETS: Fetcher;
@@ -15,7 +20,7 @@ export interface Env {
   R2_PDF?: R2Bucket;
 }
 
-import {verifyPassword, createSessionToken, parseSessionToken, hashPassword, prepareUserWriteValues} from './lib/security';
+import {verifyPassword, createSessionToken, parseSessionToken, hashPassword, prepareUserWriteValues, hasStoragePermission, isPublicStorageObject} from './lib/security';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -259,160 +264,128 @@ async function handleDbApi(request: Request, env: Env, table: string): Promise<R
   }
 }
 
-// Saison courante : si on est après le 1er septembre → saison N/N+1, sinon N-1/N
-function currentSaison(): string {
-  const now = new Date();
-  const y = now.getFullYear();
-  return now.getMonth() >= 8 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
+// ─── /api/storage/:bucket/* — proxy R2 (upload / liste / lecture d'objet) ───
+// Le frontend (app.js → CloudflareQueryBuilder.storage) appelle :
+//   GET  /api/storage/:bucket/list?prefix=...      (liste, auth + perm read)
+//   POST /api/storage/:bucket/upload?path=...      (upload, auth + perm write)
+//   GET  /api/storage/:bucket/<chemin/objet>        (lecture, publique pour
+//                                                     branding/*, sinon perm read)
+// Buckets exposés : "storage" (R2_STORAGE) et "fullfighting-pdf" (R2_PDF).
+
+const STORAGE_BUCKETS: Record<string, 'R2_STORAGE' | 'R2_PDF'> = {
+  storage: 'R2_STORAGE',
+  'fullfighting-pdf': 'R2_PDF',
+};
+
+function getStorageBucket(env: Env, bucketName: string): R2Bucket | null {
+  const binding = STORAGE_BUCKETS[bucketName];
+  if (!binding) return null;
+  return env[binding] ?? null;
 }
 
-// ─── Synchronisation inscription → gestion ──────────────────────────────────
+function r2ContentType(key: string, fallback?: string | null): string {
+  if (fallback) return fallback;
+  const ext = (key.split('.').pop() || '').toLowerCase();
+  const map: Record<string, string> = {
+    png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp',
+    gif: 'image/gif', svg: 'image/svg+xml', pdf: 'application/pdf', json: 'application/json',
+  };
+  return map[ext] || 'application/octet-stream';
+}
 
-/**
- * Récupère toutes les inscriptions validées (paiement_status = 'valide')
- * depuis affbc-prod qui ne sont pas encore synchronisées dans gestion.
- * Crée le membre, l'écriture compta et la ligne de vente correspondants.
- */
-async function syncInscriptionsValidees(env: Env): Promise<{
-  synced: number;
-  skipped: number;
-  errors: string[];
-}> {
-  const stats = { synced: 0, skipped: 0, errors: [] as string[] };
+async function handleStorageApi(request: Request, env: Env, bucketName: string, rest: string): Promise<Response> {
+  const bucket = getStorageBucket(env, bucketName);
+  if (!bucket) return err('Bucket inconnu', 404);
 
-  // Lire les inscriptions validées dans affbc-prod
-  // La table s'appelle "inscriptions" dans affbc-prod (worker inscription)
-  let inscriptions: Array<Record<string, unknown>> = [];
-  try {
-    const result = await env.AFFBC_DB
-      .prepare(
-        `SELECT
-           i.id,
-           i.nom, i.prenom, i.email, i.telephone,
-           i.date_naissance, i.is_mineur,
-           i.categorie, i.niveau, i.licence_ffk,
-           i.ceinture_actuelle,
-           i.montant_total,
-           i.helloasso_ref,
-           i.saison,
-           i.statut,
-           i.created_at
-         FROM inscriptions i
-         WHERE i.statut = 'valide'
-           AND i.helloasso_ref IS NOT NULL
-         ORDER BY i.created_at ASC`
-      )
-      .all<Record<string, unknown>>();
-    inscriptions = result.results ?? [];
-  } catch (e) {
-    stats.errors.push(`Lecture AFFBC_DB impossible: ${String(e)}`);
-    return stats;
+  const url = new URL(request.url);
+  const method = request.method.toUpperCase();
+
+  // ── POST /api/storage/:bucket/upload?path=... ──────────────────────────
+  if (method === 'POST' && rest === 'upload') {
+    const path = url.searchParams.get('path');
+    if (!path) return err('Paramètre "path" requis', 400);
+
+    const user = await getCurrentUserFromBearer(request, env);
+    if (!user) return err('Unauthorized', 401);
+    const rolePerms = await getRolePerms(env);
+    if (!hasStoragePermission(user, bucketName, path, 'write', rolePerms)) {
+      return err('Permission refusée', 403);
+    }
+
+    let form: FormData;
+    try { form = await request.formData(); } catch { return err('Corps multipart invalide', 400); }
+    const file = form.get('file');
+    if (!(file instanceof File)) return err('Fichier manquant (champ "file")', 400);
+
+    const key = path.replace(/^\/+/, '');
+    await bucket.put(key, await file.arrayBuffer(), {
+      httpMetadata: { contentType: r2ContentType(key, file.type) },
+    });
+    return json({ data: { path: key }, error: null }, 201);
   }
 
-  for (const insc of inscriptions) {
-    const ref = String(insc.helloasso_ref ?? '');
-    if (!ref) {
-      stats.skipped++;
-      continue;
+  // ── GET /api/storage/:bucket/list?prefix=... ────────────────────────────
+  if (method === 'GET' && rest === 'list') {
+    const prefix = url.searchParams.get('prefix') || '';
+
+    const user = await getCurrentUserFromBearer(request, env);
+    if (!user) return err('Unauthorized', 401);
+    const rolePerms = await getRolePerms(env);
+    if (!hasStoragePermission(user, bucketName, prefix, 'read', rolePerms)) {
+      return err('Permission refusée', 403);
     }
 
-    // Idempotence : déjà synchronisé ?
-    const existing = await env.DB
-      .prepare(`SELECT id FROM membres WHERE inscription_ref = ?`)
-      .bind(ref)
-      .first<{ id: number }>();
+    const listed = await bucket.list({ prefix, limit: 1000 });
+    const files = listed.objects.map((obj) => ({
+      name: obj.key.slice(prefix.length).replace(/^\/+/, '') || obj.key,
+      id: obj.key,
+      metadata: { mimetype: obj.httpMetadata?.contentType || '', size: obj.size },
+    }));
+    return json({ data: files, error: null });
+  }
 
-    if (existing) {
-      stats.skipped++;
-      continue;
-    }
+  // ── GET /api/storage/:bucket/<chemin> — lecture d'un objet ──────────────
+  if (method === 'GET' && rest) {
+    const key = rest.replace(/^\/+/, '');
 
-    const saison = String(insc.saison ?? currentSaison());
-    const montant = Number(insc.montant_total ?? 0);
-
-    try {
-      // 1. Créer le membre
-      const membreResult = await env.DB
-        .prepare(
-          `INSERT INTO membres
-             (inscription_ref, inscription_id, nom, prenom, email, telephone,
-              date_naissance, is_mineur, saison, categorie, niveau,
-              licence_ffk, ceinture_actuelle, date_adhesion)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,date('now'))
-           RETURNING id`
-        )
-        .bind(
-          ref,
-          Number(insc.id),
-          String(insc.nom ?? ''),
-          String(insc.prenom ?? ''),
-          String(insc.email ?? ''),
-          String(insc.telephone ?? ''),
-          String(insc.date_naissance ?? ''),
-          Number(insc.is_mineur ?? 0),
-          saison,
-          String(insc.categorie ?? ''),
-          String(insc.niveau ?? ''),
-          String(insc.licence_ffk ?? ''),
-          String(insc.ceinture_actuelle ?? ''),
-        )
-        .first<{ id: number }>();
-
-      const membreId = membreResult?.id ?? null;
-
-      // 2. Écriture comptable (recette cotisation)
-      if (montant > 0) {
-        await env.DB
-          .prepare(
-            `INSERT INTO ecritures_compta
-               (date_ecriture, libelle, montant, categorie, source, source_ref, source_id, membre_id)
-             VALUES (date('now'), ?, ?, 'cotisation', 'inscription', ?, ?, ?)`
-          )
-          .bind(
-            `Cotisation ${saison} — ${String(insc.prenom)} ${String(insc.nom)}`,
-            montant,
-            ref,
-            Number(insc.id),
-            membreId,
-          )
-          .run();
+    if (!isPublicStorageObject(bucketName, key)) {
+      const user = await getCurrentUserFromBearer(request, env);
+      if (!user) return err('Unauthorized', 401);
+      const rolePerms = await getRolePerms(env);
+      if (!hasStoragePermission(user, bucketName, key, 'read', rolePerms)) {
+        return err('Permission refusée', 403);
       }
-
-      // 3. Ligne de vente
-      await env.DB
-        .prepare(
-          `INSERT INTO ventes_inscription
-             (membre_id, inscription_ref, saison, produit, montant, statut_paiement)
-           VALUES (?, ?, ?, 'Cotisation annuelle', ?, 'valide')`
-        )
-        .bind(membreId, ref, saison, montant)
-        .run();
-
-      // 4. Log de sync
-      await env.DB
-        .prepare(
-          `INSERT INTO sync_log (action, inscription_id, helloasso_ref, status)
-           VALUES ('inscription_validated', ?, ?, 'ok')`
-        )
-        .bind(Number(insc.id), ref)
-        .run();
-
-      stats.synced++;
-    } catch (e) {
-      const errMsg = `Inscription #${insc.id} (${ref}): ${String(e)}`;
-      stats.errors.push(errMsg);
-      await env.DB
-        .prepare(
-          `INSERT INTO sync_log (action, inscription_id, helloasso_ref, status, detail)
-           VALUES ('inscription_validated', ?, ?, 'error', ?)`
-        )
-        .bind(Number(insc.id), ref, errMsg)
-        .run();
     }
+
+    const object = await bucket.get(key);
+    if (!object) return err('Fichier introuvable', 404);
+    return new Response(object.body, {
+      headers: {
+        'Content-Type': r2ContentType(key, object.httpMetadata?.contentType),
+        'Cache-Control': isPublicStorageObject(bucketName, key) ? 'public, max-age=3600' : 'private, no-store',
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
   }
 
-  return stats;
+  return err('Method Not Allowed', 405);
 }
+
+// NOTE : syncInscriptionsValidees(env) a été retirée le 2026-06-27. Elle
+// synchronisait les inscriptions HelloAsso validées vers un schéma legacy
+// (tables membres / ecritures_compta / ventes_inscription / sync_log) jamais
+// présent en base de production (cf. migrations/0002_inscription_sync.sql,
+// non appliquée — voir le dashboard D1 réel et le README, qui ne listent que
+// adherents, achats, audit_logs, club_info, comptes_bancaires, diplomes,
+// exercices, factures, inscriptions_publiques, journal_comptable,
+// transactions, utilisateurs). Aucun trigger cron n'était d'ailleurs défini
+// dans wrangler.json, donc cette fonction n'a jamais réellement tourné en
+// production. Si une synchronisation automatique HelloAsso → adhérents est
+// encore souhaitée, elle doit être réécrite contre le vrai schéma
+// (table adherents, journal_comptable) et le binding AFFBC_DB doit d'abord
+// être corrigé pour pointer vers la base réelle du worker
+// inscription-americanfullfightingbons (actuellement il pointe par erreur
+// vers le même database_id que DB, donc vers affbc-production).
 
 // ─── Handler principal ───────────────────────────────────────────────────────
 
@@ -461,6 +434,12 @@ export default {
     if (dbMatch) {
       if (method !== 'POST') return err('Method Not Allowed', 405);
       return await handleDbApi(request, env, dbMatch[1]);
+    }
+
+    // ── /api/storage/:bucket/* ───────────────────────────────────────────
+    const storageMatch = path.match(/^\/api\/storage\/([A-Za-z0-9_-]+)\/(.*)$/);
+    if (storageMatch) {
+      return await handleStorageApi(request, env, storageMatch[1], decodeURIComponent(storageMatch[2]));
     }
 
     // ── Authentification ──────────────────────────────────────────────────
@@ -579,6 +558,16 @@ export default {
         }
     });
 }
+
+   if (method === 'GET' && path === '/api/version') {
+    return json({
+        ok: true,
+        data: {
+            service: 'gestion-americanfullfightingbons',
+            version: '1.0.0',
+        }
+    });
+}
     // ── Routes protégées ──────────────────────────────────────────────────
 
     // Toutes les routes /api/* (sauf login/logout) nécessitent un token
@@ -587,7 +576,8 @@ export default {
   "/api/admin/reset-password",
   "/api/auth/login",
   "/api/auth/session",
-  "/api/health"
+  "/api/health",
+  "/api/version"
 ]);
 
 if (path.startsWith("/api/") && !publicApiRoutes.has(path)) {
@@ -597,235 +587,22 @@ if (path.startsWith("/api/") && !publicApiRoutes.has(path)) {
     }
 }
 
-    // ── Synchronisation ───────────────────────────────────────────────────
+    // NOTE : les anciennes routes /api/sync/*, /api/membres*, /api/compta
+    // (legacy) et /api/ventes* ont été retirées le 2026-06-27 : elles
+    // interrogeaient des tables (membres, ventes_inscription, sync_log,
+    // ecritures_compta) issues d'un schéma jamais appliqué en production
+    // (migrations/0002_inscription_sync.sql, non reflété dans le D1 réel ni
+    // dans le README). Aucune route du frontend actuel ne les appelait ; elles
+    // auraient échoué en 500 ("no such table") au premier appel. Le vrai
+    // modèle de données (adhérents, comptabilité via journal_comptable, etc.)
+    // passe par /api/db/:table, déjà branché plus haut.
 
-    // POST /api/sync/inscriptions  — déclenche la sync manuellement (ou via cron)
-    if (method === 'POST' && path === '/api/sync/inscriptions') {
-      const stats = await syncInscriptionsValidees(env);
-      return json(stats);
-    }
-
-    // GET /api/sync/log
-    if (method === 'GET' && path === '/api/sync/log') {
-      const rows = await env.DB
-        .prepare(
-          `SELECT * FROM sync_log ORDER BY created_at DESC LIMIT 100`
-        )
-        .all();
-      return json(rows.results);
-    }
-
-    // ── Adhérents ─────────────────────────────────────────────────────────
-
-    // GET /api/membres
-    if (method === 'GET' && path === '/api/membres') {
-      const saison = url.searchParams.get('saison') ?? currentSaison();
-      const statut = url.searchParams.get('statut');
-      const q = url.searchParams.get('q');
-
-      let query = `SELECT * FROM membres WHERE saison = ?`;
-      const params: unknown[] = [saison];
-
-      if (statut) {
-        query += ` AND statut = ?`;
-        params.push(statut);
-      }
-      if (q) {
-        query += ` AND (nom LIKE ? OR prenom LIKE ? OR email LIKE ?)`;
-        params.push(`%${q}%`, `%${q}%`, `%${q}%`);
-      }
-      query += ` ORDER BY nom, prenom`;
-
-      const stmt = env.DB.prepare(query);
-      const rows = await stmt.bind(...params).all();
-      return json(rows.results);
-    }
-
-    // GET /api/membres/:id
-    if (method === 'GET' && /^\/api\/membres\/\d+$/.test(path)) {
-      const id = path.split('/').pop();
-      const row = await env.DB
-        .prepare(`SELECT * FROM membres WHERE id = ?`)
-        .bind(id)
-        .first();
-      if (!row) return err('Membre introuvable', 404);
-      return json(row);
-    }
-
-    // PATCH /api/membres/:id  — mise à jour partielle (ceinture, statut, etc.)
-    if (method === 'PATCH' && /^\/api\/membres\/\d+$/.test(path)) {
-      const id = path.split('/').pop();
-      const body = await request.json<Record<string, unknown>>();
-      const allowed = ['statut', 'ceinture_actuelle', 'licence_ffk', 'telephone', 'email', 'niveau'];
-      const updates: string[] = [];
-      const vals: unknown[] = [];
-      for (const key of allowed) {
-        if (key in body) {
-          updates.push(`${key} = ?`);
-          vals.push(body[key]);
-        }
-      }
-      if (updates.length === 0) return err('Aucun champ modifiable fourni', 400);
-      updates.push(`updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')`);
-      vals.push(id);
-      await env.DB
-        .prepare(`UPDATE membres SET ${updates.join(', ')} WHERE id = ?`)
-        .bind(...vals)
-        .run();
-      return json({ ok: true });
-    }
-
-    // GET /api/membres/stats
-    if (method === 'GET' && path === '/api/membres/stats') {
-      const saison = url.searchParams.get('saison') ?? currentSaison();
-      const stats = await env.DB
-        .prepare(
-          `SELECT
-             COUNT(*) AS total,
-             SUM(CASE WHEN statut = 'actif' THEN 1 ELSE 0 END) AS actifs,
-             SUM(CASE WHEN is_mineur = 1 THEN 1 ELSE 0 END) AS mineurs,
-             SUM(CASE WHEN is_mineur = 0 THEN 1 ELSE 0 END) AS adultes
-           FROM membres WHERE saison = ?`
-        )
-        .bind(saison)
-        .first();
-      return json(stats);
-    }
-
-    // ── Comptabilité ──────────────────────────────────────────────────────
-
-    // GET /api/compta
-    if (method === 'GET' && path === '/api/compta') {
-      const annee = url.searchParams.get('annee') ?? String(new Date().getFullYear());
-      const categorie = url.searchParams.get('categorie');
-
-      let query = `SELECT * FROM ecritures_compta WHERE strftime('%Y', date_ecriture) = ?`;
-      const params: unknown[] = [annee];
-      if (categorie) {
-        query += ` AND categorie = ?`;
-        params.push(categorie);
-      }
-      query += ` ORDER BY date_ecriture DESC`;
-
-      const rows = await env.DB.prepare(query).bind(...params).all();
-      return json(rows.results);
-    }
-
-    // GET /api/compta/resume
-    if (method === 'GET' && path === '/api/compta/resume') {
-      const annee = url.searchParams.get('annee') ?? String(new Date().getFullYear());
-      const resume = await env.DB
-        .prepare(
-          `SELECT
-             categorie,
-             source,
-             COUNT(*) AS nb,
-             SUM(montant) AS total
-           FROM ecritures_compta
-           WHERE strftime('%Y', date_ecriture) = ?
-           GROUP BY categorie, source
-           ORDER BY total DESC`
-        )
-        .bind(annee)
-        .all();
-
-      const solde = await env.DB
-        .prepare(
-          `SELECT SUM(montant) AS solde
-           FROM ecritures_compta
-           WHERE strftime('%Y', date_ecriture) = ?`
-        )
-        .bind(annee)
-        .first<{ solde: number | null }>();
-
-      return json({ annee, solde: solde?.solde ?? 0, details: resume.results });
-    }
-
-    // POST /api/compta  — écriture manuelle
-    if (method === 'POST' && path === '/api/compta') {
-      const body = await request.json<{
-        libelle?: string;
-        montant?: number;
-        categorie?: string;
-        date_ecriture?: string;
-        commentaire?: string;
-      }>();
-      if (!body?.libelle || body?.montant === undefined) {
-        return err('libelle et montant requis', 400);
-      }
-      await env.DB
-        .prepare(
-          `INSERT INTO ecritures_compta
-             (date_ecriture, libelle, montant, categorie, source, commentaire)
-           VALUES (?, ?, ?, ?, 'manuel', ?)`
-        )
-        .bind(
-          body.date_ecriture ?? new Date().toISOString().slice(0, 10),
-          body.libelle,
-          body.montant,
-          body.categorie ?? 'autre',
-          body.commentaire ?? null,
-        )
-        .run();
-      return json({ ok: true }, 201);
-    }
-
-    // ── Ventes ────────────────────────────────────────────────────────────
-
-    // GET /api/ventes
-    if (method === 'GET' && path === '/api/ventes') {
-      const saison = url.searchParams.get('saison') ?? currentSaison();
-      const rows = await env.DB
-        .prepare(
-          `SELECT
-             v.*,
-             m.nom, m.prenom, m.email, m.categorie
-           FROM ventes_inscription v
-           LEFT JOIN membres m ON m.id = v.membre_id
-           WHERE v.saison = ?
-           ORDER BY v.date_vente DESC`
-        )
-        .bind(saison)
-        .all();
-      return json(rows.results);
-    }
-
-    // GET /api/ventes/stats
-    if (method === 'GET' && path === '/api/ventes/stats') {
-      const saison = url.searchParams.get('saison') ?? currentSaison();
-      const stats = await env.DB
-        .prepare(
-          `SELECT
-             COUNT(*) AS nb_ventes,
-             SUM(montant) AS chiffre_affaires,
-             SUM(CASE WHEN statut_paiement = 'valide' THEN montant ELSE 0 END) AS encaisse
-           FROM ventes_inscription WHERE saison = ?`
-        )
-        .bind(saison)
-        .first();
-      return json(stats);
-    }
-
-    // ── Inscriptions brutes (lecture depuis AFFBC_DB) ─────────────────────
-
-    // GET /api/inscriptions-en-attente
-    // Inscriptions dans affbc-prod dont le statut n'est pas encore 'valide'
-    if (method === 'GET' && path === '/api/inscriptions-en-attente') {
-      try {
-        const rows = await env.AFFBC_DB
-          .prepare(
-            `SELECT id, nom, prenom, email, montant_total, statut, created_at
-             FROM inscriptions
-             WHERE statut != 'valide'
-             ORDER BY created_at DESC
-             LIMIT 100`
-          )
-          .all();
-        return json(rows.results);
-      } catch (e) {
-        return err(`Impossible de lire AFFBC_DB: ${String(e)}`, 500);
-      }
-    }
+    // NOTE : /api/inscriptions-en-attente a été retirée le 2026-06-27, pour
+    // la même raison (table "inscriptions" inexistante ; binding AFFBC_DB
+    // pointant d'ailleurs vers le même database_id que DB, donc vers
+    // affbc-production, pas vers une base distincte du worker inscription).
+    // La donnée correspondante côté gestion est inscriptions_publiques,
+    // déjà exposée via /api/db/inscriptions_publiques.
 
     // ── Fallback : servir le front-office HTML ────────────────────────────
     // (le fichier index.html est servi via env.ASSETS si configuré,
@@ -836,13 +613,4 @@ if (path.startsWith("/api/") && !publicApiRoutes.has(path)) {
 
 return new Response('Not Found', { status: 404 });
     },
-
-  // ── Cron trigger : sync automatique toutes les heures ───────────────────
-  async scheduled(
-  _controller: ScheduledController,
-  env: Env,
-  ctx: ExecutionContext
-): Promise<void> {
-    ctx.waitUntil(syncInscriptionsValidees(env));
-  },
 } satisfies ExportedHandler<Env>;
