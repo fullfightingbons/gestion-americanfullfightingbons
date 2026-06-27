@@ -14,16 +14,19 @@
 -- idx_feedback_recipients_statut, lui, est exécuté ensuite et plante car la
 -- colonne qu'il référence n'existe pas réellement en base.
 --
--- Les index sur "statut" ont donc été retirés de cette migration (voir plus
--- bas) pour ne plus bloquer le déploiement. Avant de les recréer :
---   1) Vérifier le schéma réel :
---        npx wrangler d1 execute DB --remote --command "SELECT sql FROM sqlite_master WHERE type IN ('table','index') AND name LIKE 'feedback_%'"
---   2) Si la colonne "statut" manque sur feedback_recipients ou
---      feedback_campaigns, l'ajouter manuellement :
---        npx wrangler d1 execute DB --remote --command "ALTER TABLE feedback_recipients ADD COLUMN statut TEXT NOT NULL DEFAULT 'en_attente'"
---      (idem pour feedback_campaigns avec son propre defaut 'brouillon')
---   3) Recréer ensuite les index dans une nouvelle migration (0011_...), pas
---      ici, pour ne pas re-casser ce fichier déjà appliqué une fois corrigé.
+-- ⚠️ INCIDENT DU 2026-06-27 (suite) : un 2e échec identique est survenu, cette
+-- fois avec "no such column: submitted_at at offset 83", sur l'index
+-- idx_feedback_responses_submitted. Même cause que pour "statut" ci-dessus :
+-- feedback_responses existe déjà en prod avec un schéma divergent qui ne
+-- correspond pas exactement à celui défini plus bas dans ce fichier.
+--
+-- Conclusion : on ne peut faire AUCUNE hypothèse sur les colonnes présentes
+-- dans les tables déjà existantes (feedback_campaigns / feedback_recipients /
+-- feedback_responses) tant que le schéma réel n'a pas été vérifié. Tous les
+-- index portant sur une colonne autre que la clé primaire "id" ont donc été
+-- retirés de cette migration (campaign_id, statut, submitted_at). Ils
+-- devront être recréés dans une migration ultérieure (0011_...), un par un,
+-- après vérification du schéma réel via la commande ci-dessus.
 -- ─────────────────────────────────────────────────────────────────────────────
 
 PRAGMA foreign_keys = ON;
@@ -69,10 +72,9 @@ CREATE TABLE IF NOT EXISTS feedback_responses (
 );
 
 -- ── Index ─────────────────────────────────────────────────────────────────────
--- Les index sur la colonne "statut" (idx_feedback_recipients_statut) ont été
--- retirés : voir le commentaire d'incident en haut de ce fichier. Ils ne
--- doivent être recréés que dans une migration ultérieure, une fois le schéma
--- réel de feedback_recipients confirmé.
-CREATE INDEX IF NOT EXISTS idx_feedback_recipients_campaign  ON feedback_recipients(campaign_id);
-CREATE INDEX IF NOT EXISTS idx_feedback_responses_campaign   ON feedback_responses(campaign_id);
-CREATE INDEX IF NOT EXISTS idx_feedback_responses_submitted  ON feedback_responses(submitted_at DESC);
+-- AUCUN index n'est créé ici (voir les deux incidents documentés en haut de ce
+-- fichier) : toutes les colonnes visées (campaign_id, statut, submitted_at)
+-- se sont révélées absentes du schéma réel d'au moins une table existante.
+-- Recréer les index séparément (migration 0011_...) une fois le schéma
+-- réel confirmé via :
+--   npx wrangler d1 execute DB --remote --command "SELECT sql FROM sqlite_master WHERE type IN ('table','index') AND name LIKE 'feedback_%'"
