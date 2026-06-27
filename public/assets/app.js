@@ -6413,7 +6413,7 @@ async function saveAchat(id){
       return alert('Achat enregistré, mais écriture comptable non synchronisée : '+e.message);
     }
   }else{
-    const {data,error}=await SB.from('achats').insert(d).select().single();
+    const {data,error}=await SB.from('achats').insert({...d,id:crypto.randomUUID(),created_at:new Date().toISOString()}).select().single();
     if(error)return alert('Erreur : '+error.message);
     D.achats.unshift(data);
     try{
