@@ -54,22 +54,25 @@ const CEINTURE_COLORS = ['Blanche','Jaune','Orange','Verte','Bleue','Marron','No
 
 const ALL_TABS = [
   {id:'dashboard',    icon:'🏁',label:'Pilotage'},
-{id:'services',     icon:'🟢',label:'Services',     perm:'perm_administration'},
+{id:'services',     icon:'🟢',label:'Services',     perm:'perm_services'},
 {id:'adherents',    icon:'👥',label:'Adhérents',    perm:'perm_adherents'},
-{id:'diplomes',     icon:'🎓',label:'Diplômes',     perm:'perm_adherents'},
+{id:'diplomes',     icon:'🎓',label:'Diplômes',     perm:'perm_diplomes'},
 {id:'banque',       icon:'🏦',label:'Banque',        perm:'perm_banque'},
 {id:'comptabilite', icon:'📊',label:'Comptabilité',  perm:'perm_comptabilite'},
 {id:'achat',        icon:'🛒',label:'Achats',         perm:'perm_achats'},
 {id:'facture',      icon:'💸',label:'Ventes',        perm:'perm_facturation'},
-{id:'feedback',     icon:'💬',label:'Feedback',      perm:'perm_administration'},
+{id:'feedback',     icon:'💬',label:'Feedback',      perm:'perm_feedback'},
 {id:'administration',icon:'⚙️',label:'Administration',perm:'perm_administration'},
 ];
 const PERM_META = [
   ['perm_adherents','👥 Adhérents'],
+['perm_diplomes','🎓 Diplômes'],
 ['perm_banque','🏦 Banque'],
 ['perm_comptabilite','📊 Comptabilité'],
 ['perm_achats','🛒 Achats'],
 ['perm_facturation','💸 Ventes'],
+['perm_feedback','💬 Feedback'],
+['perm_services','🟢 Services'],
 ['perm_administration','⚙️ Administration'],
 ];
 const PERM_LEVELS = {
@@ -78,11 +81,11 @@ const PERM_LEVELS = {
   write:{label:'Lecture / écriture',rank:2},
 };
 const DEFAULT_ROLE_PERMS = {
-  admin:{perm_adherents:'write',perm_banque:'write',perm_comptabilite:'write',perm_achats:'write',perm_facturation:'write',perm_administration:'write'},
-  tresorier:{perm_adherents:'write',perm_banque:'write',perm_comptabilite:'write',perm_achats:'write',perm_facturation:'write',perm_administration:'none'},
-  secretaire:{perm_adherents:'write',perm_banque:'none',perm_comptabilite:'none',perm_achats:'none',perm_facturation:'none',perm_administration:'none'},
-  entraineur:{perm_adherents:'read',perm_banque:'none',perm_comptabilite:'none',perm_achats:'none',perm_facturation:'none',perm_administration:'none'},
-  membre:{perm_adherents:'none',perm_banque:'none',perm_comptabilite:'none',perm_achats:'none',perm_facturation:'none',perm_administration:'none'},
+  admin:{perm_adherents:'write',perm_diplomes:'write',perm_banque:'write',perm_comptabilite:'write',perm_achats:'write',perm_facturation:'write',perm_feedback:'write',perm_services:'write',perm_administration:'write'},
+  tresorier:{perm_adherents:'write',perm_diplomes:'read',perm_banque:'write',perm_comptabilite:'write',perm_achats:'write',perm_facturation:'write',perm_feedback:'none',perm_services:'none',perm_administration:'none'},
+  secretaire:{perm_adherents:'write',perm_diplomes:'write',perm_banque:'none',perm_comptabilite:'none',perm_achats:'none',perm_facturation:'none',perm_feedback:'none',perm_services:'none',perm_administration:'none'},
+  entraineur:{perm_adherents:'read',perm_diplomes:'read',perm_banque:'none',perm_comptabilite:'none',perm_achats:'none',perm_facturation:'none',perm_feedback:'none',perm_services:'none',perm_administration:'none'},
+  membre:{perm_adherents:'none',perm_diplomes:'none',perm_banque:'none',perm_comptabilite:'none',perm_achats:'none',perm_facturation:'none',perm_feedback:'none',perm_services:'none',perm_administration:'none'},
 };
 
 const PLAN = [
@@ -380,7 +383,7 @@ function normalizeUserRow(row){
   });
   // Permissions : conserver la valeur string "read"/"write"/"none" si présente
   // Ne normaliser en booléen que si la valeur est 0/1/true/false
-  ['perm_adherents','perm_banque','perm_comptabilite','perm_achats','perm_facturation','perm_administration'].forEach(key=>{
+  ['perm_adherents','perm_diplomes','perm_banque','perm_comptabilite','perm_achats','perm_facturation','perm_feedback','perm_services','perm_administration'].forEach(key=>{
     const v=next[key];
     if(typeof v==='string' && (v==='read'||v==='write'||v==='none')) return; // OK, laisser tel quel
     if(v===true || v===1 || v==='1') next[key]='write';
@@ -3145,7 +3148,7 @@ function vDiplomesArchive(){
   </div>
   </div>
   ${rows.length?`<div style="overflow-x:auto"><table class="tbl">
-  <thead><tr><th>Adhérent</th><th>Ceinture</th><th>Titre</th><th>Date</th><th>Saison</th><th>Délivré par</th><th>Modèle</th><th>Archive PDF</th>${hasPerm('perm_adherents','write')?'<th></th>':''}</tr></thead>
+  <thead><tr><th>Adhérent</th><th>Ceinture</th><th>Titre</th><th>Date</th><th>Saison</th><th>Délivré par</th><th>Modèle</th><th>Archive PDF</th>${hasPerm('perm_diplomes','write')?'<th></th>':''}</tr></thead>
   <tbody>
   ${rows.map(d=>`<tr>
   <td>${esc(d.nom||'')} ${esc(d.prenom||'')}</td>
@@ -3156,7 +3159,7 @@ function vDiplomesArchive(){
   <td>${esc(d.delivre_par||'—')}</td>
   <td>${esc(d.modele||'—')}</td>
   <td>${d.pdf_storage_path?`<a class="btn sm" href="${buildStorageObjectUrl(DIPLOME_PDF_BUCKET,d.pdf_storage_path)}" target="_blank">⬇ PDF</a>`:'—'}</td>
-  ${hasPerm('perm_adherents','write')?`<td><button class="btn sm" style="color:var(--red)" onclick="deleteDiplome('${d.id}')" title="Supprimer cet enregistrement">✕</button></td>`:''}
+  ${hasPerm('perm_diplomes','write')?`<td><button class="btn sm" style="color:var(--red)" onclick="deleteDiplome('${d.id}')" title="Supprimer cet enregistrement">✕</button></td>`:''}
   </tr>`).join('')}
   </tbody>
   </table></div>
@@ -3165,7 +3168,7 @@ function vDiplomesArchive(){
 }
  
 async function deleteDiplome(id){
-  if(!hasPerm('perm_adherents','write')) return;
+  if(!hasPerm('perm_diplomes','write')) return;
   if(!confirm('Supprimer cet enregistrement de diplôme ? Cette action est irréversible.')) return;
   const {error}=await SB.from('diplomes').delete().eq('id',id);
   if(error){notify('error','Suppression échouée : '+(error.message||error),'Diplômes');return;}
@@ -4970,7 +4973,7 @@ function vFeedback(){
 }
 
 function vFeedbackListe(){
-  const canWrite=hasPerm('perm_administration','write');
+  const canWrite=hasPerm('perm_feedback','write');
   const q=(UI.search.feedback||'').toLowerCase();
   const filtered=D.feedbackCampaigns.filter(c=>(c.titre+' '+(c.description||'')).toLowerCase().includes(q));
   const {rows:f,totalPages}=paginateList(filtered,'feedback');
@@ -5024,7 +5027,7 @@ function vFeedbackListe(){
 }
 
 function vFeedbackDetail(camp){
-  const canWrite=hasPerm('perm_administration','write');
+  const canWrite=hasPerm('perm_feedback','write');
   const recs=D.feedbackRecipients.filter(r=>r.campaign_id===camp.id);
   const reps=D.feedbackResponses.filter(r=>r.campaign_id===camp.id);
   const taux=recs.length?Math.round(reps.length/recs.length*100):0;
@@ -6085,7 +6088,7 @@ function openEcritureType(type){
 }
 
 function openModal(t,id){
-  const permMap={adh:'perm_adherents',compte:'perm_banque',ecr:'perm_comptabilite',achat:'perm_achats',user:'perm_administration',exo:'perm_comptabilite',exo_close:'perm_comptabilite',feedback_campaign:'perm_administration',feedback_invite:'perm_administration'};
+  const permMap={adh:'perm_adherents',compte:'perm_banque',ecr:'perm_comptabilite',achat:'perm_achats',user:'perm_administration',exo:'perm_comptabilite',exo_close:'perm_comptabilite',feedback_campaign:'perm_feedback',feedback_invite:'perm_feedback'};
   if(permMap[t] && !requireWritePerm(permMap[t])) return;
   UI.modal=t;UI.editObj=null;
   if(id){

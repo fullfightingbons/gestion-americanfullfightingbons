@@ -172,9 +172,9 @@ describe("hasPermission", () => {
 // entièrement sur ces deux fonctions.
 describe("hasStoragePermission", () => {
   const defaultRolePerms = {
-    admin: { perm_adherents: "write", perm_administration: "write" },
-    entraineur: { perm_adherents: "read", perm_administration: "none" },
-    membre: { perm_adherents: "none", perm_administration: "none" },
+    admin: { perm_adherents: "write", perm_administration: "write", perm_diplomes: "write" },
+    entraineur: { perm_adherents: "read", perm_administration: "none", perm_diplomes: "read" },
+    membre: { perm_adherents: "none", perm_administration: "none", perm_diplomes: "none" },
   };
 
   it("bucket fullfighting-pdf, chemin achats/ → perm_achats", () => {
@@ -193,7 +193,7 @@ describe("hasStoragePermission", () => {
     expect(hasStoragePermission(entraineur, "fullfighting-pdf", "autre/dossier.pdf", "read", defaultRolePerms)).toBe(false);
   });
 
-  it("bucket storage, chemin diplome/ → perm_adherents", () => {
+  it("bucket storage, chemin diplome/ → perm_diplomes", () => {
     const entraineur = { role: "entraineur" } as any;
     expect(hasStoragePermission(entraineur, "storage", "diplome/modele.png", "read", defaultRolePerms)).toBe(true);
   });

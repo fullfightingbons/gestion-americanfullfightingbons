@@ -295,7 +295,7 @@ function hasStoragePermission(
   }
   if (bucketName === "storage") {
     if (normalized.startsWith("diplome/") || normalized === "diplome") {
-      return hasPermission(user, "perm_adherents", mode, defaultRolePerms);
+      return hasPermission(user, "perm_diplomes", mode, defaultRolePerms);
     }
     if (normalized.startsWith("branding/") || normalized === "branding") {
       return hasPermission(user, "perm_administration", mode, defaultRolePerms);

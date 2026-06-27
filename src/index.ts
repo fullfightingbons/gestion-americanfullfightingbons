@@ -77,12 +77,12 @@ const DB_TABLE_PERMISSIONS: Record<string, { read: string; write: string }> = {
   audit_logs: { read: 'perm_administration', write: 'perm_administration' },
   club_info: { read: 'perm_administration', write: 'perm_administration' },
   comptes_bancaires: { read: 'perm_banque', write: 'perm_banque' },
-  diplomes: { read: 'perm_adherents', write: 'perm_adherents' },
+  diplomes: { read: 'perm_diplomes', write: 'perm_diplomes' },
   exercices: { read: 'perm_comptabilite', write: 'perm_comptabilite' },
   factures: { read: 'perm_facturation', write: 'perm_facturation' },
-  feedback_campaigns: { read: 'perm_administration', write: 'perm_administration' },
-  feedback_recipients: { read: 'perm_administration', write: 'perm_administration' },
-  feedback_responses: { read: 'perm_administration', write: 'perm_administration' },
+  feedback_campaigns: { read: 'perm_feedback', write: 'perm_feedback' },
+  feedback_recipients: { read: 'perm_feedback', write: 'perm_feedback' },
+  feedback_responses: { read: 'perm_feedback', write: 'perm_feedback' },
   inscriptions_publiques: { read: 'perm_administration', write: 'perm_administration' },
   journal_comptable: { read: 'perm_comptabilite', write: 'perm_comptabilite' },
   transactions: { read: 'perm_banque', write: 'perm_banque' },
@@ -90,11 +90,11 @@ const DB_TABLE_PERMISSIONS: Record<string, { read: string; write: string }> = {
 };
 
 const DB_DEFAULT_ROLE_PERMS: PermissionMatrix = {
-  admin: { perm_adherents: 'write', perm_banque: 'write', perm_comptabilite: 'write', perm_achats: 'write', perm_facturation: 'write', perm_administration: 'write' },
-  tresorier: { perm_adherents: 'write', perm_banque: 'write', perm_comptabilite: 'write', perm_achats: 'write', perm_facturation: 'write', perm_administration: 'none' },
-  secretaire: { perm_adherents: 'write', perm_banque: 'none', perm_comptabilite: 'none', perm_achats: 'none', perm_facturation: 'none', perm_administration: 'none' },
-  entraineur: { perm_adherents: 'read', perm_banque: 'none', perm_comptabilite: 'none', perm_achats: 'none', perm_facturation: 'none', perm_administration: 'none' },
-  membre: { perm_adherents: 'none', perm_banque: 'none', perm_comptabilite: 'none', perm_achats: 'none', perm_facturation: 'none', perm_administration: 'none' },
+  admin: { perm_adherents: 'write', perm_banque: 'write', perm_comptabilite: 'write', perm_achats: 'write', perm_facturation: 'write', perm_administration: 'write', perm_diplomes: 'write', perm_feedback: 'write', perm_services: 'write' },
+  tresorier: { perm_adherents: 'write', perm_banque: 'write', perm_comptabilite: 'write', perm_achats: 'write', perm_facturation: 'write', perm_administration: 'none', perm_diplomes: 'read', perm_feedback: 'none', perm_services: 'none' },
+  secretaire: { perm_adherents: 'write', perm_banque: 'none', perm_comptabilite: 'none', perm_achats: 'none', perm_facturation: 'none', perm_administration: 'none', perm_diplomes: 'write', perm_feedback: 'none', perm_services: 'none' },
+  entraineur: { perm_adherents: 'read', perm_banque: 'none', perm_comptabilite: 'none', perm_achats: 'none', perm_facturation: 'none', perm_administration: 'none', perm_diplomes: 'read', perm_feedback: 'none', perm_services: 'none' },
+  membre: { perm_adherents: 'none', perm_banque: 'none', perm_comptabilite: 'none', perm_achats: 'none', perm_facturation: 'none', perm_administration: 'none', perm_diplomes: 'none', perm_feedback: 'none', perm_services: 'none' },
 };
 
 const PUBLIC_CLUB_INFO_KEYS = new Set(['nom', 'logo', 'email', 'telephone', 'adresse', 'siret', 'diplome_signature_url', 'diplome_layouts']);
