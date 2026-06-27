@@ -61,6 +61,7 @@ const ALL_TABS = [
 {id:'comptabilite', icon:'📊',label:'Comptabilité',  perm:'perm_comptabilite'},
 {id:'achat',        icon:'🛒',label:'Achats',         perm:'perm_achats'},
 {id:'facture',      icon:'💸',label:'Ventes',        perm:'perm_facturation'},
+{id:'feedback',     icon:'💬',label:'Feedback',      perm:'perm_administration'},
 {id:'administration',icon:'⚙️',label:'Administration',perm:'perm_administration'},
 ];
 const PERM_META = [
@@ -185,16 +186,17 @@ const D = {
     diplomeTemplatesError:'',
     diplomeLayouts:{},
     diplomes:[],
+    feedbackCampaigns:[], feedbackRecipients:[], feedbackResponses:[],
     rolePerms: JSON.parse(JSON.stringify(DEFAULT_ROLE_PERMS)),
-    loaded:{core:false,dashboard:false,adherents:false,banque:false,comptabilite:false,achat:false,facture:false,administration:false,diplomesArchive:false},
+    loaded:{core:false,dashboard:false,adherents:false,banque:false,comptabilite:false,achat:false,facture:false,administration:false,diplomesArchive:false,feedback:false},
     loading:{},
 };
 const UI = {
   tab:'dashboard',
-  subTab:{banque:'comptes',compta:'journal',facture:'liste',achat:'liste',admin:'users'},
+  subTab:{banque:'comptes',compta:'journal',facture:'liste',achat:'liste',admin:'users',feedback:'liste'},
   modal:null, editObj:null, currentUser:null,
   notices:[],
-  search:{adherents:'',achats:'',factures:''},
+  search:{adherents:'',achats:'',factures:'',feedback:''},
   adhFilters:{statut:'',type:'',season:'current',special:''},
   adhSelected:{},
   adhSort:{key:'nom',dir:'asc'},
@@ -206,7 +208,7 @@ const UI = {
   dashPeriod:'6m',
   factureFilterStatus:'',
   budgetCats:{},
-  paging:{adherents:1,achats:1,factures:1,dons:1},
+  paging:{adherents:1,achats:1,factures:1,dons:1,feedback:1},
   bankAccountId:null,
   bankPreview:null,
   bankTxSearch:'',
@@ -221,6 +223,7 @@ const UI = {
   glFilter:'',
   glClassFilter:'',
   rapprMultiSel:{},
+  feedbackCampaignId:null,
 };
 let IMP = {
   adh:{raw:'',headers:[],rows:[],mapping:{},sep:';',importing:false},
@@ -508,6 +511,18 @@ async function loadTabData(tab, force=false){
         if(freshUser) UI.currentUser=normalizeUserRow(freshUser);
       }
       markLoaded('administration');
+      return;
+    }
+    if(tab==='feedback'){
+      const [campRes,recRes,repRes]=await Promise.all([
+        SB.from('feedback_campaigns').select('*').order('created_at',{ascending:false}),
+        SB.from('feedback_recipients').select('*').order('created_at',{ascending:false}),
+        SB.from('feedback_responses').select('*').order('submitted_at',{ascending:false}),
+      ]);
+      D.feedbackCampaigns=campRes.data||[];
+      D.feedbackRecipients=recRes.data||[];
+      D.feedbackResponses=repRes.data||[];
+      markLoaded('feedback');
       return;
     }
   })().finally(()=>{
@@ -1218,7 +1233,7 @@ function renderTabs(){
   if(!vis.find(t=>t.id===UI.tab)&&vis.length>0) UI.tab=vis[0].id;
 }
 function needsLoadedTab(tab){
-  return ['dashboard','adherents','diplomes','banque','comptabilite','achat','facture','administration'].includes(tab);
+  return ['dashboard','adherents','diplomes','banque','comptabilite','achat','facture','administration','feedback'].includes(tab);
 }
 async function ensureCurrentTabData(){
   const target=UI.tab==='diplomes'?'adherents':UI.tab;
@@ -1249,7 +1264,7 @@ function render(){
     c.innerHTML=`<div class="empty">Chargement de la rubrique…</div>`;
     return;
   }
-  const map={dashboard:vDashboard,services:vServices,adherents:vAdh,diplomes:vDiplomes,banque:vBanque,comptabilite:vCompta,achat:vAchat,facture:vFacture,administration:vAdmin};
+  const map={dashboard:vDashboard,services:vServices,adherents:vAdh,diplomes:vDiplomes,banque:vBanque,comptabilite:vCompta,achat:vAchat,facture:vFacture,feedback:vFeedback,administration:vAdmin};
   c.innerHTML=(map[UI.tab]||vAdh)();
   renderModal();
   updLogo();
@@ -4931,6 +4946,265 @@ function genRecu(id){
 }
 
 // ═══════════════════════════════════════════════════
+// FEEDBACK / ENQUÊTES
+// ═══════════════════════════════════════════════════
+
+function vFeedback(){
+  const sub=UI.subTab.feedback||'liste';
+  const camp=UI.feedbackCampaignId?D.feedbackCampaigns.find(c=>c.id===UI.feedbackCampaignId):null;
+  return`<div class="stabs">
+  <button class="stab ${sub==='liste'?'active':''}" onclick="showST('feedback','liste')">Campagnes</button>
+  ${camp?`<button class="stab ${sub==='detail'?'active':''}" onclick="showST('feedback','detail')">📊 ${esc(camp.titre)}</button>`:''}
+  </div>
+  ${sub==='detail'&&camp?vFeedbackDetail(camp):vFeedbackListe()}`;
+}
+
+function vFeedbackListe(){
+  const canWrite=hasPerm('perm_administration','write');
+  const q=(UI.search.feedback||'').toLowerCase();
+  const filtered=D.feedbackCampaigns.filter(c=>(c.titre+' '+(c.description||'')).toLowerCase().includes(q));
+  const {rows:f,totalPages}=paginateList(filtered,'feedback');
+  const total=D.feedbackCampaigns.length;
+  const actives=D.feedbackCampaigns.filter(c=>c.statut==='active').length;
+  const reponses=D.feedbackResponses.length;
+  return`<div class="view-head">
+  <div>
+  <div class="eyebrow">Communication adhérents</div>
+  <h2>Feedback & Enquêtes</h2>
+  <p>Créez des campagnes de retour d'expérience, invitez vos adhérents à répondre et analysez les résultats.</p>
+  </div>
+  ${canWrite?`<button class="btn primary" onclick="openModal('feedback_campaign')">+ Nouvelle campagne</button>`:''}
+  </div>
+  <div class="g4" style="margin-bottom:14px">
+  <div class="sc"><div class="v">${total}</div><div class="l">Campagnes</div></div>
+  <div class="sc"><div class="v vgo">${actives}</div><div class="l">Actives</div></div>
+  <div class="sc"><div class="v">${reponses}</div><div class="l">Réponses totales</div></div>
+  <div class="sc"><div class="v">${D.feedbackRecipients.filter(r=>r.repondu).length}</div><div class="l">Répondants</div></div>
+  </div>
+  <div class="toolbar">
+  <input style="flex:1;min-width:160px" placeholder="Rechercher une campagne…" value="${UI.search.feedback||''}" oninput="UI.search.feedback=this.value;render()">
+  <button class="btn" onclick="loadTabData('feedback',true).then(()=>render())">↺ Actualiser</button>
+  </div>
+  <div class="wrap"><table>
+  <thead><tr><th>Titre</th><th>Statut</th><th>Dates</th><th>Destinataires</th><th>Réponses</th><th>Taux</th><th></th></tr></thead>
+  <tbody>${f.map(c=>{
+    const recs=D.feedbackRecipients.filter(r=>r.campaign_id===c.id);
+    const reps=D.feedbackResponses.filter(r=>r.campaign_id===c.id);
+    const taux=recs.length?Math.round(reps.length/recs.length*100):0;
+    const badgeCls=c.statut==='active'?'bok':c.statut==='cloturee'?'bgray':'bwarn';
+    const badgeLbl=c.statut==='active'?'Active':c.statut==='cloturee'?'Clôturée':'Brouillon';
+    return`<tr>
+    <td><strong style="font-weight:500">${esc(c.titre)}</strong>${c.description?`<br><span style="font-size:11px;color:var(--txt2)">${esc(c.description)}</span>`:''}</td>
+    <td><span class="badge ${badgeCls}">${badgeLbl}</span></td>
+    <td style="font-size:12px">${c.date_debut?fd(c.date_debut):'—'} → ${c.date_fin?fd(c.date_fin):'—'}</td>
+    <td>${recs.length}</td>
+    <td>${reps.length}</td>
+    <td>${recs.length?`<strong>${taux}%</strong>`:'—'}</td>
+    <td style="white-space:nowrap">
+    <button class="btn sm" onclick="UI.feedbackCampaignId='${c.id}';showST('feedback','detail')">Détail</button>
+    ${canWrite?`<button class="btn sm" style="margin-left:4px" onclick="openModal('feedback_campaign','${c.id}')">Modifier</button>
+    ${c.statut==='brouillon'?`<button class="btn sm" style="margin-left:4px" onclick="activerCampagne('${c.id}')">▶ Lancer</button>`:''}
+    ${c.statut==='active'?`<button class="btn sm" style="margin-left:4px" onclick="cloturerCampagne('${c.id}')">⏹ Clôturer</button>`:''}
+    <button class="btn sm danger" style="margin-left:4px" onclick="delCampagne('${c.id}')">✕</button>`:''}
+    </td></tr>`;
+  }).join('')}
+  ${f.length===0?`<tr><td colspan="7" class="empty">Aucune campagne</td></tr>`:''}
+  </tbody></table></div>
+  ${renderPager('feedback',totalPages)}`;
+}
+
+function vFeedbackDetail(camp){
+  const canWrite=hasPerm('perm_administration','write');
+  const recs=D.feedbackRecipients.filter(r=>r.campaign_id===camp.id);
+  const reps=D.feedbackResponses.filter(r=>r.campaign_id===camp.id);
+  const taux=recs.length?Math.round(reps.length/recs.length*100):0;
+  let questions=[];
+  try{questions=camp.questions?JSON.parse(camp.questions):[];}catch(e){}
+  // Statistiques par question
+  const stats=questions.map(q=>{
+    const vals=reps.map(r=>{try{const p=JSON.parse(r.reponses);return p[q.id];}catch(e){return null;}}).filter(v=>v!=null);
+    if(q.type==='note'){
+      const avg=vals.length?vals.reduce((s,v)=>s+(+v),0)/vals.length:0;
+      return{...q,vals,avg:avg.toFixed(1),count:vals.length};
+    }
+    if(q.type==='oui_non'){
+      const oui=vals.filter(v=>v==='oui').length;
+      return{...q,vals,oui,non:vals.length-oui,count:vals.length};
+    }
+    if(q.type==='choix'){
+      const choixCounts={};
+      vals.forEach(v=>{choixCounts[v]=(choixCounts[v]||0)+1;});
+      return{...q,vals,choixCounts,count:vals.length};
+    }
+    return{...q,vals,count:vals.length};
+  });
+  const noteGlobale=reps.filter(r=>r.note_globale!=null);
+  const avgGlobale=noteGlobale.length?noteGlobale.reduce((s,r)=>s+(+r.note_globale),0)/noteGlobale.length:null;
+  return`<div class="view-head">
+  <div>
+  <div class="eyebrow">Feedback</div>
+  <h2>${esc(camp.titre)}</h2>
+  ${camp.description?`<p>${esc(camp.description)}</p>`:''}
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+  ${canWrite&&camp.statut==='brouillon'?`<button class="btn primary" onclick="activerCampagne('${camp.id}')">▶ Lancer la campagne</button>`:''}
+  ${canWrite&&camp.statut==='active'?`<button class="btn" onclick="ouvrirEnvoi('${camp.id}')">📨 Inviter des adhérents</button><button class="btn" onclick="cloturerCampagne('${camp.id}')">⏹ Clôturer</button>`:''}
+  <button class="btn" onclick="exportFeedbackCSV('${camp.id}')">⬇ Export CSV</button>
+  <button class="btn" onclick="showST('feedback','liste')">← Retour</button>
+  </div></div>
+  <div class="g4" style="margin-bottom:14px">
+  <div class="sc"><div class="v">${recs.length}</div><div class="l">Invités</div></div>
+  <div class="sc"><div class="v vgo">${reps.length}</div><div class="l">Réponses</div></div>
+  <div class="sc"><div class="v ${taux>=50?'vgo':''}">${recs.length?taux+'%':'—'}</div><div class="l">Taux réponse</div></div>
+  <div class="sc"><div class="v">${avgGlobale!=null?avgGlobale.toFixed(1)+' / 5':'—'}</div><div class="l">Note moyenne</div></div>
+  </div>
+  ${stats.length?`<div class="card" style="margin-bottom:14px"><h3 style="margin-bottom:14px">Résultats par question</h3>
+  ${stats.map(q=>`<div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--border)">
+  <div style="font-weight:500;margin-bottom:6px">${esc(q.texte)} <span style="font-size:11px;color:var(--txt2)">(${q.count} réponse${q.count>1?'s':''})</span></div>
+  ${q.type==='note'?`<div style="font-size:22px;font-weight:700;color:var(--primary)">${q.avg} / 5</div>`:
+    q.type==='oui_non'?`<div style="display:flex;gap:16px"><span class="badge bok">Oui : ${q.oui}</span><span class="badge bno">Non : ${q.non}</span></div>`:
+    q.type==='choix'&&q.choixCounts?`<div style="display:flex;gap:8px;flex-wrap:wrap">${Object.entries(q.choixCounts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<span class="badge bgray">${esc(k)} : ${v}</span>`).join('')}</div>`:
+    q.vals.length?`<ul style="margin:4px 0 0 16px;font-size:13px">${q.vals.slice(0,5).map(v=>`<li>${esc(String(v))}</li>`).join('')}${q.vals.length>5?`<li style="color:var(--txt2)">… et ${q.vals.length-5} autre(s)</li>`:''}</ul>`:'<span style="color:var(--txt2);font-size:12px">Aucune réponse</span>'}
+  </div>`).join('')}
+  </div>`:''}
+  ${reps.length?`<div class="card" style="margin-bottom:14px"><h3 style="margin-bottom:10px">Commentaires libres</h3>
+  ${reps.filter(r=>r.commentaire).slice(0,20).map(r=>`<div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">"${esc(r.commentaire)}"<span style="font-size:11px;color:var(--txt2);margin-left:8px">${fd(r.submitted_at)}</span></div>`).join('')}
+  ${reps.filter(r=>r.commentaire).length===0?'<div class="empty">Aucun commentaire libre</div>':''}
+  </div>`:''}
+  <div class="card"><h3 style="margin-bottom:10px">Destinataires (${recs.length})</h3>
+  <div class="wrap"><table><thead><tr><th>Nom</th><th>Email</th><th>Invité</th><th>Répondu</th><th></th></tr></thead>
+  <tbody>${recs.map(r=>`<tr>
+  <td>${esc(r.nom||'')} ${esc(r.prenom||'')}</td>
+  <td style="font-size:12px">${esc(r.email)}</td>
+  <td>${r.envoye?`<span class="badge bblue">${r.envoye_at?fd(r.envoye_at):'Oui'}</span>`:'<span class="badge bgray">Non</span>'}</td>
+  <td>${r.repondu?`<span class="badge bok">${r.repondu_at?fd(r.repondu_at):'Oui'}</span>`:'<span class="badge bgray">Non</span>'}</td>
+  <td>${canWrite?`<button class="btn sm danger" onclick="delRecipient('${r.id}')">✕</button>`:''}</td>
+  </tr>`).join('')}
+  ${recs.length===0?`<tr><td colspan="5" class="empty">Aucun destinataire</td></tr>`:''}
+  </tbody></table></div></div>`;
+}
+
+async function activerCampagne(id){
+  if(!confirm('Lancer cette campagne ? Les adhérents pourront être invités à répondre.')) return;
+  const {error}=await SB.from('feedback_campaigns').update({statut:'active',date_debut:new Date().toISOString(),updated_at:new Date().toISOString()}).eq('id',id);
+  if(error)return notify('error','Erreur : '+error.message,'Feedback');
+  const c=D.feedbackCampaigns.find(x=>x.id===id);
+  if(c){c.statut='active';c.date_debut=new Date().toISOString();}
+  notify('success','Campagne lancée.','Feedback');render();
+}
+
+async function cloturerCampagne(id){
+  if(!confirm('Clôturer cette campagne ? Elle ne pourra plus recevoir de réponses.')) return;
+  const {error}=await SB.from('feedback_campaigns').update({statut:'cloturee',date_fin:new Date().toISOString(),updated_at:new Date().toISOString()}).eq('id',id);
+  if(error)return notify('error','Erreur : '+error.message,'Feedback');
+  const c=D.feedbackCampaigns.find(x=>x.id===id);
+  if(c){c.statut='cloturee';c.date_fin=new Date().toISOString();}
+  notify('success','Campagne clôturée.','Feedback');render();
+}
+
+async function delCampagne(id){
+  if(!confirm('Supprimer cette campagne et toutes ses réponses ?')) return;
+  const {error}=await SB.from('feedback_campaigns').delete().eq('id',id);
+  if(error)return notify('error','Erreur : '+error.message,'Feedback');
+  D.feedbackCampaigns=D.feedbackCampaigns.filter(c=>c.id!==id);
+  D.feedbackRecipients=D.feedbackRecipients.filter(r=>r.campaign_id!==id);
+  D.feedbackResponses=D.feedbackResponses.filter(r=>r.campaign_id!==id);
+  if(UI.feedbackCampaignId===id){UI.feedbackCampaignId=null;showST('feedback','liste');}
+  notify('success','Campagne supprimée.','Feedback');render();
+}
+
+async function delRecipient(id){
+  if(!confirm('Retirer ce destinataire ?')) return;
+  const {error}=await SB.from('feedback_recipients').delete().eq('id',id);
+  if(error)return notify('error','Erreur : '+error.message,'Feedback');
+  D.feedbackRecipients=D.feedbackRecipients.filter(r=>r.id!==id);
+  notify('success','Destinataire retiré.','Feedback');render();
+}
+
+function ouvrirEnvoi(campaignId){
+  UI.feedbackCampaignId=campaignId;
+  openModal('feedback_invite');
+}
+
+async function saveFeedbackCampaign(id){
+  const g=n=>document.getElementById(n);
+  const titre=g('fc-titre').value.trim();
+  const description=g('fc-desc').value.trim();
+  const questionsRaw=g('fc-questions').value.trim();
+  if(!titre)return alert('Le titre est obligatoire.');
+  let questions=[];
+  if(questionsRaw){
+    try{questions=JSON.parse(questionsRaw);}catch(e){return alert('Format JSON des questions invalide.\n'+e.message);}
+  }
+  const d={titre,description,questions:JSON.stringify(questions),updated_at:new Date().toISOString()};
+  if(id){
+    const {error}=await SB.from('feedback_campaigns').update(d).eq('id',id);
+    if(error)return alert('Erreur : '+error.message);
+    const idx=D.feedbackCampaigns.findIndex(c=>c.id===id);
+    if(idx>=0)D.feedbackCampaigns[idx]={...D.feedbackCampaigns[idx],...d};
+  }else{
+    const payload={...d,id:crypto.randomUUID(),statut:'brouillon',created_by:UI.currentUser?.id||null,created_at:new Date().toISOString()};
+    const {data,error}=await SB.from('feedback_campaigns').insert(payload).select().single();
+    if(error)return alert('Erreur : '+error.message);
+    D.feedbackCampaigns.unshift(data);
+  }
+  closeModal();notify('success','Campagne enregistrée.','Feedback');render();
+}
+
+async function saveFeedbackInvite(){
+  const campaignId=UI.feedbackCampaignId;
+  if(!campaignId)return;
+  const emailsRaw=document.getElementById('fi-emails')?.value||'';
+  const fromAdh=document.getElementById('fi-all-adherents')?.checked;
+  let recipients=[];
+  if(fromAdh){
+    recipients=D.adherents.filter(a=>a.email&&a.statut==='Actif').map(a=>({email:a.email.trim().toLowerCase(),nom:a.nom||'',prenom:a.prenom||'',adherent_id:a.id}));
+  }else{
+    recipients=emailsRaw.split(/[\n,;]/).map(e=>e.trim()).filter(Boolean).map(e=>({email:e.toLowerCase(),nom:'',prenom:'',adherent_id:null}));
+  }
+  if(!recipients.length)return alert('Aucun destinataire valide.');
+  // Éviter les doublons avec les existants
+  const existing=new Set(D.feedbackRecipients.filter(r=>r.campaign_id===campaignId).map(r=>r.email));
+  const toAdd=recipients.filter(r=>!existing.has(r.email));
+  if(!toAdd.length)return alert('Tous ces emails sont déjà invités.');
+  const rows=toAdd.map(r=>({
+    id:crypto.randomUUID(),
+    campaign_id:campaignId,
+    adherent_id:r.adherent_id||null,
+    email:r.email,
+    nom:r.nom,
+    prenom:r.prenom,
+    token:crypto.randomUUID().replace(/-/g,''),
+    envoye:0,
+    repondu:0,
+    created_at:new Date().toISOString(),
+    updated_at:new Date().toISOString(),
+  }));
+  const {data,error}=await SB.from('feedback_recipients').insert(rows).select();
+  if(error)return alert('Erreur : '+error.message);
+  D.feedbackRecipients.push(...(data||rows));
+  closeModal();notify('success',`${toAdd.length} destinataire(s) ajouté(s).`,'Feedback');render();
+}
+
+function exportFeedbackCSV(campaignId){
+  const camp=D.feedbackCampaigns.find(c=>c.id===campaignId);
+  if(!camp)return;
+  const reps=D.feedbackResponses.filter(r=>r.campaign_id===campaignId);
+  let questions=[];
+  try{questions=camp.questions?JSON.parse(camp.questions):[];}catch(e){}
+  const headers=['Date réponse','Note globale','Commentaire',...questions.map(q=>q.texte)];
+  const rows=reps.map(r=>{
+    let parsed={};
+    try{parsed=JSON.parse(r.reponses);}catch(e){}
+    return[fd(r.submitted_at),r.note_globale||'',r.commentaire||'',...questions.map(q=>parsed[q.id]||'')];
+  });
+  const csv=[headers,...rows].map(row=>row.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';')).join('\n');
+  const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=`feedback_${camp.titre.replace(/\s+/g,'_')}.csv`;a.click();URL.revokeObjectURL(url);
+}
+
+// ═══════════════════════════════════════════════════
 // ADMINISTRATION
 // ═══════════════════════════════════════════════════
 function vAdmin(){
@@ -5709,6 +5983,40 @@ function renderModal(){
     </div>`;
   }
 
+  if(UI.modal==='feedback_campaign'){
+    const c=UI.editObj||{titre:'',description:'',questions:'[]'};
+    let questionsFormatted='';
+    try{questionsFormatted=JSON.stringify(JSON.parse(c.questions||'[]'),null,2);}catch(e){questionsFormatted=c.questions||'[]';}
+    html=`<div class="modal" style="max-width:620px"><h2>💬 ${UI.editObj?'Modifier la':'Nouvelle'} campagne</h2>
+    <div class="fg full"><label>Titre *</label><input id="fc-titre" value="${esc(c.titre||'')}" placeholder="Ex. Satisfaction fin de saison 2025-2026"></div>
+    <div class="fg full"><label>Description</label><textarea id="fc-desc" rows="2" placeholder="Décrivez l'objectif de cette enquête…">${esc(c.description||'')}</textarea></div>
+    <div class="fg full">
+    <label>Questions <span style="font-size:11px;font-weight:400;color:var(--txt2)">(JSON — chaque objet : id, texte, type: "texte"|"note"|"oui_non"|"choix", options?)</span></label>
+    <textarea id="fc-questions" rows="10" style="font-family:monospace;font-size:12px" placeholder='[\n  {"id":"q1","texte":"Comment évaluez-vous la saison ?","type":"note"},\n  {"id":"q2","texte":"Recommanderiez-vous le club ?","type":"oui_non"},\n  {"id":"q3","texte":"Vos commentaires libres","type":"texte"}\n]'>${esc(questionsFormatted)}</textarea>
+    </div>
+    <div class="modal-act">
+    <button class="btn" onclick="closeModal()">Annuler</button>
+    <button class="btn primary" onclick="saveFeedbackCampaign('${c.id||''}')">Enregistrer</button>
+    </div></div>`;
+  }else if(UI.modal==='feedback_invite'){
+    const camp=D.feedbackCampaigns.find(c=>c.id===UI.feedbackCampaignId);
+    const activeAdherents=D.adherents.filter(a=>a.email&&a.statut==='Actif');
+    html=`<div class="modal" style="max-width:500px"><h2>📨 Inviter des destinataires</h2>
+    ${camp?`<p style="margin-bottom:12px;font-size:13px;color:var(--txt2)">Campagne : <strong>${esc(camp.titre)}</strong></p>`:''}
+    <div class="fg full" style="margin-bottom:10px">
+    <label><input type="checkbox" id="fi-all-adherents" onchange="this.closest('.modal').querySelector('#fi-emails-wrap').style.display=this.checked?'none':'block'">
+     Inviter tous les adhérents actifs avec email (${activeAdherents.length} personnes)</label>
+    </div>
+    <div id="fi-emails-wrap" class="fg full">
+    <label>Emails (un par ligne, ou séparés par , ou ;)</label>
+    <textarea id="fi-emails" rows="6" placeholder="jean.dupont@mail.com&#10;marie.martin@mail.com"></textarea>
+    </div>
+    <div class="modal-act">
+    <button class="btn" onclick="closeModal()">Annuler</button>
+    <button class="btn primary" onclick="saveFeedbackInvite()">Ajouter les destinataires</button>
+    </div></div>`;
+  }
+
   if(!html) return;
   const div=document.createElement('div');
   div.className='modal-bg';div.innerHTML=html;
@@ -5767,7 +6075,7 @@ function openEcritureType(type){
 }
 
 function openModal(t,id){
-  const permMap={adh:'perm_adherents',compte:'perm_banque',ecr:'perm_comptabilite',achat:'perm_achats',user:'perm_administration',exo:'perm_comptabilite',exo_close:'perm_comptabilite'};
+  const permMap={adh:'perm_adherents',compte:'perm_banque',ecr:'perm_comptabilite',achat:'perm_achats',user:'perm_administration',exo:'perm_comptabilite',exo_close:'perm_comptabilite',feedback_campaign:'perm_administration',feedback_invite:'perm_administration'};
   if(permMap[t] && !requireWritePerm(permMap[t])) return;
   UI.modal=t;UI.editObj=null;
   if(id){
@@ -5776,6 +6084,7 @@ function openModal(t,id){
     if(t==='facture') UI.editObj=D.factures.find(f=>f.id===id);
     if(t==='user')  UI.editObj=D.users.find(u=>u.id===id);
     if(t==='exo_close') UI.editObj=D.exercices.find(e=>e.id===id);
+    if(t==='feedback_campaign') UI.editObj=D.feedbackCampaigns.find(c=>c.id===id);
   }
   renderModal();
 }
