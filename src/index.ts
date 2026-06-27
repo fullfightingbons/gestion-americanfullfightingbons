@@ -1,20 +1,16 @@
 /**
  * Worker Gestion AFFBC
  * Back-office : adhérents, comptabilité, achats, factures, diplômes.
- *
- * AFFBC_DB n'est actuellement plus utilisé par aucune route (cf. notes
- * "2026-06-27" plus bas) : le binding pointe d'ailleurs vers le même
- * database_id que DB (affbc-production), donc pas vers une base distincte
- * du worker inscription-americanfullfightingbons. Conservé dans Env/wrangler
- * en l'état pour ne pas casser une éventuelle réintroduction future d'une
- * synchronisation, mais à corriger (ou retirer) si non réutilisé.
  */
 
 export interface Env {
-  DB: D1Database;         // affbc-production (tables locales : adherents, journal_comptable, etc.)
-  AFFBC_DB: D1Database;   // actuellement non utilisé — voir note ci-dessus
+  DB: D1Database;              // affbc-production (tables locales : adherents, journal_comptable, etc.)
   ADMIN_PASSWORD: string;
-  BREVO_API_KEY?: string;
+  SESSION_SECRET: string;      // secret HMAC pour la signature des tokens JWT (wrangler secret put SESSION_SECRET)
+  PASSWORD_PEPPER: string;     // pepper PBKDF2 (wrangler secret put PASSWORD_PEPPER)
+  BREVO_API_KEY?: string;      // clé API Brevo pour l'envoi d'emails (wrangler secret put BREVO_API_KEY)
+  BREVO_FROM_EMAIL?: string;   // adresse expéditeur Brevo (wrangler secret put BREVO_FROM_EMAIL)
+  BREVO_FROM_NAME?: string;    // nom expéditeur Brevo (wrangler secret put BREVO_FROM_NAME)
   ASSETS: Fetcher;
   R2_STORAGE?: R2Bucket;
   R2_PDF?: R2Bucket;
@@ -38,7 +34,20 @@ function err(message: string, status = 400): Response {
   return json({ error: message }, status);
 }
 
-async function requireAuth(request: Request, env: Env): Promise<boolean> { const auth=request.headers.get('Authorization')??''; const token=auth.replace(/^Bearer\s+/i,'').trim(); if(!token) return false; const payload= await parseSessionToken(token,env as any); return !!payload && Number(payload.expiresAt)>Date.now(); }
+async function requireAuth(request: Request, env: Env): Promise<boolean> {
+  const auth = request.headers.get('Authorization') ?? '';
+  const token = auth.replace(/^Bearer\s+/i, '').trim();
+  if (!token) return false;
+  const payload = await parseSessionToken(token, env as any);
+  if (!payload || Number(payload.expiresAt) <= Date.now()) return false;
+  // Vérifier que le token n'a pas été révoqué (liste noire dans admin_sessions)
+  const revoked = await env.DB
+    .prepare(`SELECT token FROM admin_sessions WHERE token = ? AND expires_at > datetime('now') LIMIT 1`)
+    .bind(`__revoked__${token}`)
+    .first();
+  if (revoked) return false;
+  return true;
+}
 
 // ─── /api/bootstrap & /api/db/:table — allowlist et permissions ─────────────
 // Reconstruit après une régression (cf. historique git) qui avait fait
@@ -526,22 +535,196 @@ export default {
       const emailNormalized = String(body?.email || '').trim().toLowerCase();
       const user= await env.DB.prepare(`SELECT * FROM utilisateurs WHERE LOWER(TRIM(email))=? AND (actif=1 OR actif IS NULL)`).bind(emailNormalized).first<any>();
       if(!user) return err('Utilisateur introuvable',401);
-      const check= await verifyPassword(body.password,user.mot_de_passe,env as any,'pbkdf2_sha256',2000000,/^[a-f0-9]{64}$/i);
+      const check= await verifyPassword(body.password,user.mot_de_passe,env as any,'pbkdf2_sha256',100000,/^[a-f0-9]{64}$/i);
       if(!check.valid) return err('Email ou mot de passe incorrect',401);
       const token= await createSessionToken({userId:user.id,expiresAt:Date.now()+86400000,pwdStamp:user.password_changed_at||''},env as any);
-      return json({token,user:{id:user.id,prenom:user.prenom,nom:user.nom,email:user.email,role:user.role}})
+      return json({token,user:{id:user.id,prenom:user.prenom,nom:user.nom,email:user.email,role:user.role,must_change_password:user.must_change_password||0}})
     }
 
-    // POST /api/admin/logout
-    if (method === 'POST' && path === '/api/admin/logout') {
+    // GET /api/auth/session — vérifie un token Bearer et retourne l'utilisateur courant.
+    // Appelé au chargement de la page pour restaurer une session persistée en localStorage.
+    if (method === 'GET' && path === '/api/auth/session') {
+      const user = await getCurrentUserFromBearer(request, env);
+      if (!user) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+      return json({
+        data: {
+          user: {
+            id: user.id, prenom: user.prenom, nom: user.nom,
+            email: user.email, role: user.role,
+            must_change_password: user.must_change_password || 0,
+          },
+        },
+        error: null,
+      });
+    }
+
+    // POST /api/auth/password — changement du mot de passe utilisateur connecté.
+    // Vérifie l'ancien mot de passe avant d'appliquer le nouveau ; révoque la session
+    // courante afin que les autres onglets/appareils soient déconnectés.
+    if (method === 'POST' && path === '/api/auth/password') {
+      const user = await getCurrentUserFromBearer(request, env);
+      if (!user) return err('Unauthorized', 401);
+
+      const body = await request.json<{ currentPassword?: string; nextPassword?: string }>();
+      if (!body?.currentPassword || !body?.nextPassword) {
+        return err('currentPassword et nextPassword sont requis', 400);
+      }
+      if (String(body.nextPassword).length < 8) {
+        return err('Le nouveau mot de passe doit faire au moins 8 caractères', 400);
+      }
+
+      const check = await verifyPassword(
+        body.currentPassword, user.mot_de_passe, env as any,
+        'pbkdf2_sha256', 100000, /^[a-f0-9]{64}$/i,
+      );
+      if (!check.valid) return err('Mot de passe actuel incorrect', 401);
+
+      const newHash = await hashPassword(body.nextPassword, env as any, 'pbkdf2_sha256', 100000);
+      const now = new Date().toISOString();
+      await env.DB
+        .prepare(`UPDATE utilisateurs SET mot_de_passe=?, password_changed_at=?, must_change_password=0, updated_at=? WHERE id=?`)
+        .bind(newHash, now, now, user.id)
+        .run();
+
+      return json({ data: { ok: true }, error: null });
+    }
+
+    // POST /api/email/send — envoi d'email transactionnel via Brevo.
+    // Utilisé pour : envoi de diplôme, relance de paiement, envoi de facture.
+    if (method === 'POST' && path === '/api/email/send') {
+      const user = await getCurrentUserFromBearer(request, env);
+      if (!user) return err('Unauthorized', 401);
+
+      if (!env.BREVO_API_KEY) {
+        return err('Service email non configuré (BREVO_API_KEY manquant)', 503);
+      }
+
+      const body = await request.json<{
+        to: Array<{ email: string; name?: string }>;
+        subject: string;
+        html: string;
+        attachments?: Array<{ name: string; content: string; type?: string }>;
+      }>();
+
+      if (!body?.to?.length || !body.subject || !body.html) {
+        return err('Champs requis : to (tableau), subject, html', 400);
+      }
+
+      const fromEmail = env.BREVO_FROM_EMAIL || 'noreply@americanfullfightingbons.fr';
+      const fromName  = env.BREVO_FROM_NAME  || 'AFFBC — Gestion du club';
+
+      const brevoPayload: Record<string, unknown> = {
+        sender:      { email: fromEmail, name: fromName },
+        to:          body.to,
+        subject:     body.subject,
+        htmlContent: body.html,
+      };
+      if (body.attachments?.length) {
+        brevoPayload.attachment = body.attachments.map((a) => ({
+          name:    a.name,
+          content: a.content,  // base64
+          type:    a.type || 'application/octet-stream',
+        }));
+      }
+
+      const brevoRes = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+          'api-key':      env.BREVO_API_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(brevoPayload),
+      });
+
+      if (!brevoRes.ok) {
+        const detail = await brevoRes.text().catch(() => '');
+        console.error('[email/send] Brevo error', brevoRes.status, detail);
+        return err(`Échec envoi email (Brevo ${brevoRes.status})`, 502);
+      }
+      return json({ data: { ok: true }, error: null });
+    }
+
+    // POST /api/admin/restore — restauration complète de la base depuis un export JSON.
+    // OPÉRATION DESTRUCTIVE : protégée par le mot de passe admin en plus du token Bearer.
+    // Le frontend envoie { confirmText, adherents:[], achats:[], ... }.
+    if (method === 'POST' && path === '/api/admin/restore') {
+      const user = await getCurrentUserFromBearer(request, env);
+      if (!user) return err('Unauthorized', 401);
+      if (String(user.role || '') !== 'admin') return err('Réservé aux administrateurs', 403);
+
+      const body = await request.json<Record<string, unknown>>();
+      if (String(body?.confirmText || '').trim().toUpperCase() !== 'RESTAURER') {
+        return err('Confirmation invalide (attendu : RESTAURER)', 400);
+      }
+
+      // Vérification mot de passe admin en plus du Bearer
+      const adminPwd = String(body?.adminPassword || '');
+      if (!adminPwd) return err('adminPassword requis pour la restauration', 400);
+      const encoder = new TextEncoder();
+      const a = encoder.encode(adminPwd);
+      const b = encoder.encode(env.ADMIN_PASSWORD);
+      let same = a.length === b.length;
+      for (let i = 0; i < Math.min(a.length, b.length); i++) { if (a[i] !== b[i]) same = false; }
+      if (!same) return err('Mot de passe admin incorrect', 401);
+
+      // Tables restaurables (dans l'ordre pour respecter les FK)
+      const RESTORE_ORDER: string[] = [
+        'exercices', 'adherents', 'comptes_bancaires', 'transactions',
+        'journal_comptable', 'achats', 'factures', 'diplomes',
+        'feedback_campaigns', 'feedback_recipients', 'feedback_responses',
+        'inscriptions_publiques', 'club_info',
+      ];
+
+      for (const table of RESTORE_ORDER) {
+        const rows = body[table];
+        if (!Array.isArray(rows) || !rows.length) continue;
+        if (!DB_TABLES.has(table)) continue;
+
+        // Vide la table puis réinsère
+        await env.DB.prepare(`DELETE FROM ${dbQuoteIdentifier(table)}`).run();
+
+        for (const row of rows as Record<string, unknown>[]) {
+          const cols = Object.keys(row);
+          if (!cols.length) continue;
+          const colsSql = cols.map(dbQuoteIdentifier).join(', ');
+          const placeholders = cols.map(() => '?').join(', ');
+          const values = cols.map((c) => dbNormalizeValue(row[c]));
+          await env.DB
+            .prepare(`INSERT OR IGNORE INTO ${dbQuoteIdentifier(table)} (${colsSql}) VALUES (${placeholders})`)
+            .bind(...values)
+            .run();
+        }
+      }
+
+      return json({ data: { ok: true }, error: null });
+    }
+    }
+
+    // POST /api/admin/logout  (sessions admin legacy — clé UUID stockée en base)
+    // POST /api/auth/logout   (sessions utilisateur — JWT HMAC ; on les place en liste noire
+    //                          en réutilisant la table admin_sessions avec type='jwt')
+    if (method === 'POST' && (path === '/api/admin/logout' || path === '/api/auth/logout')) {
       const auth = request.headers.get('Authorization') ?? '';
       const token = auth.replace(/^Bearer\s+/i, '').trim();
       if (token) {
+        // On tente de supprimer le token s'il était stocké (sessions admin UUID),
+        // ET on l'inscrit en liste noire pour invalider les JWT signés avant expiration.
         await env.DB
           .prepare(`DELETE FROM admin_sessions WHERE token = ?`)
           .bind(token)
           .run();
+        // Insère le token en liste noire (type jwt) avec une expiration = maintenant + 25h
+        // pour couvrir la durée de vie maximale d'un token (24h + marge).
+        const blacklistExpiry = new Date(Date.now() + 25 * 3600 * 1000).toISOString();
+        await env.DB
+          .prepare(`INSERT OR IGNORE INTO admin_sessions (token, expires_at, created_at) VALUES (?, ?, datetime('now'))`)
+          .bind(`__revoked__${token}`, blacklistExpiry)
+          .run();
       }
+      // Purge des entrées expirées
+      await env.DB
+        .prepare(`DELETE FROM admin_sessions WHERE expires_at < datetime('now')`)
+        .run();
       return json({ ok: true });
     }
 
@@ -574,10 +757,12 @@ export default {
     const publicApiRoutes = new Set([
   "/api/admin/login",
   "/api/admin/reset-password",
+  "/api/admin/logout",
   "/api/auth/login",
+  "/api/auth/logout",
   "/api/auth/session",
   "/api/health",
-  "/api/version"
+  "/api/version",
 ]);
 
 if (path.startsWith("/api/") && !publicApiRoutes.has(path)) {

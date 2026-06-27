@@ -176,7 +176,9 @@ const ECR_FIELDS = [
 // STATE
 // ═══════════════════════════════════════════════════
 let SB = null;
-let AUTH_TOKEN = null; // token JWT Bearer pour les appels API
+let AUTH_TOKEN = (() => {
+  try { return localStorage.getItem('affbc_token') || null; } catch(e) { return null; }
+})(); // token JWT Bearer pour les appels API (persisté en localStorage)
 const D = {
   adherents:[], comptes:[], journal:[], achats:[], factures:[],
   publicRegistrations:[],
@@ -879,11 +881,11 @@ function clearSession(){
   const headers = {};
   if(AUTH_TOKEN) headers['Authorization'] = 'Bearer ' + AUTH_TOKEN;
   AUTH_TOKEN = null;
-  return fetch(apiUrl('/admin/logout'),{
-    method:'POST',
-    headers,
-    cache:'no-store'
-  }).catch(function(){});
+  try { localStorage.removeItem('affbc_token'); } catch(e) {}
+  // Appel les deux routes pour couvrir sessions admin (UUID) et JWT utilisateur
+  const logoutAdmin = fetch(apiUrl('/admin/logout'),{method:'POST',headers,cache:'no-store'}).catch(function(){});
+  const logoutUser  = fetch(apiUrl('/auth/logout'), {method:'POST',headers,cache:'no-store'}).catch(function(){});
+  return Promise.all([logoutAdmin, logoutUser]);
 }
 
 function buildStorageObjectUrl(bucket,path){  const base=bucket==='fullfighting-pdf'    ? '/api/storage/fullfighting-pdf'    : '/api/storage/storage';
@@ -1105,7 +1107,10 @@ async function doLogin(){
     return;
   }
   document.getElementById('login-err').style.display='none';
-  if(data.token) AUTH_TOKEN = data.token;
+  if(data.token){
+    AUTH_TOKEN = data.token;
+    try { localStorage.setItem('affbc_token', data.token); } catch(e) {}
+  }
   UI.currentUser=normalizeUserRow(data.user||data);
   resetLoadedData();
   document.getElementById('login-screen').style.display='none';
