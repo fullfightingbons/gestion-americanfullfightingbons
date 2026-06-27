@@ -1023,7 +1023,9 @@ function createCloudflareClient(){
           async upload(path,file,options={}){
             const formData=new FormData();
             formData.append("file",file);
-            const res=await fetch(apiUrl(`/storage/${bucket}/upload?path=${encodeURIComponent(path)}`),{method:"POST",body:formData,credentials:"same-origin"});
+            const headers={};
+            if(AUTH_TOKEN) headers['Authorization']='Bearer '+AUTH_TOKEN;
+            const res=await fetch(apiUrl(`/storage/${bucket}/upload?path=${encodeURIComponent(path)}`),{method:"POST",headers,body:formData,credentials:"same-origin"});
             const payload=await res.json();
             return res.ok?{data:payload?.data,error:null}:{data:null,error:payload?.error||{message:"Upload failed"}};
           },
@@ -1031,7 +1033,9 @@ function createCloudflareClient(){
             return {data:{publicUrl:buildStorageObjectUrl(bucket,path)}};
           },
           async list(prefix='',options={}){
-            const res2=await fetch(apiUrl(`/storage/${bucket}/list?prefix=${encodeURIComponent(prefix)}`),{credentials:"same-origin"});
+            const headers={};
+            if(AUTH_TOKEN) headers['Authorization']='Bearer '+AUTH_TOKEN;
+            const res2=await fetch(apiUrl(`/storage/${bucket}/list?prefix=${encodeURIComponent(prefix)}`),{headers,credentials:"same-origin"});
             const payload2=await res2.json();
             return res2.ok?{data:payload2?.data||[],error:null}:{data:[],error:payload2?.error};
           },

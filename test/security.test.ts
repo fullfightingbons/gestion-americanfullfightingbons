@@ -222,12 +222,25 @@ describe("isPublicStorageObject", () => {
     expect(isPublicStorageObject("storage", "/branding/logo.png")).toBe(true);
   });
 
-  it("ne considère pas les autres chemins de storage comme publics", () => {
-    expect(isPublicStorageObject("storage", "diplome/modele.png")).toBe(false);
-    expect(isPublicStorageObject("storage", "club-assets/signature/x.png")).toBe(false);
+  it("considère les modèles de diplômes (storage/diplome/) comme publics", () => {
+    // Chargés via <img src=...> et fetch() sans en-tête Authorization côté
+    // frontend (vignettes + aperçu canvas de l'onglet Diplômes) : il est
+    // impossible d'y joindre un Bearer token, donc ils doivent être publics.
+    // Ce ne sont que des images de fond génériques, sans donnée personnelle.
+    expect(isPublicStorageObject("storage", "diplome/modele.png")).toBe(true);
+    expect(isPublicStorageObject("storage", "diplome")).toBe(true);
+  });
+
+  it("considère les assets d'identité visuelle du club (storage/club-assets/) comme publics", () => {
+    expect(isPublicStorageObject("storage", "club-assets/signature/x.png")).toBe(true);
+  });
+
+  it("ne considère pas un chemin non listé comme public", () => {
+    expect(isPublicStorageObject("storage", "autre-dossier/fichier.png")).toBe(false);
   });
 
   it("ne considère jamais fullfighting-pdf comme public, même sous un chemin similaire", () => {
     expect(isPublicStorageObject("fullfighting-pdf", "branding/x.pdf")).toBe(false);
+    expect(isPublicStorageObject("fullfighting-pdf", "diplome/x.pdf")).toBe(false);
   });
 });

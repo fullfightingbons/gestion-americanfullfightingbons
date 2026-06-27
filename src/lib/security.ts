@@ -307,7 +307,18 @@ function hasStoragePermission(
 
 function isPublicStorageObject(bucketName: string, key: string): boolean {
   const normalized = String(key || "").replace(/^\/+/, "");
-  return bucketName === "storage" && normalized.startsWith("branding/");
+  if (bucketName !== "storage") return false;
+  // Ces préfixes ne contiennent que des images décoratives ou d'identité
+  // visuelle du club (modèles de diplômes vierges, logo, signature) : aucune
+  // donnée personnelle d'adhérent. Ils doivent rester publics en lecture car
+  // ils sont chargés via <img src=...> et fetch() sans en-tête Authorization
+  // (impossible à ajouter sur une balise <img>), notamment pour les
+  // vignettes et l'aperçu canvas de l'onglet Diplômes.
+  return (
+    normalized.startsWith("branding/") ||
+    normalized.startsWith("diplome/") || normalized === "diplome" ||
+    normalized.startsWith("club-assets/") || normalized === "club-assets"
+  );
 }
 
 export {
