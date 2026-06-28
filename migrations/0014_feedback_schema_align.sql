@@ -19,9 +19,17 @@
 -- Stratégie : ajouter les colonnes manquantes avec des valeurs par défaut
 -- cohérentes. Les colonnes en double (title/titre, status/statut) coexisteront ;
 -- le code n'écrit et ne lit que les nouvelles.
+--
+-- ⚠️ INCIDENT DU 2026-06-28 : 1ère tentative de déploiement échouée avec
+-- "duplicate column name: titre" → la colonne "titre" existe déjà en
+-- production sur feedback_campaigns (vraisemblablement ajoutée par une
+-- exécution antérieure de cette même migration, ou manuellement). Ligne
+-- retirée ci-dessous. Si une AUTRE colonne provoque encore un
+-- "duplicate column name" au prochain déploiement, retirer sa ligne
+-- ALTER TABLE correspondante de la même façon avant de ré-appliquer.
 
 -- feedback_campaigns : colonnes manquantes
-ALTER TABLE feedback_campaigns ADD COLUMN titre       TEXT NOT NULL DEFAULT '';
+-- titre : retirée, voir incident du 2026-06-28 ci-dessus (déjà présente en prod)
 ALTER TABLE feedback_campaigns ADD COLUMN description TEXT NOT NULL DEFAULT '';
 ALTER TABLE feedback_campaigns ADD COLUMN statut      TEXT NOT NULL DEFAULT 'brouillon';
 ALTER TABLE feedback_campaigns ADD COLUMN date_debut  TEXT;
