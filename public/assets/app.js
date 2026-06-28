@@ -5090,15 +5090,19 @@ function vFeedbackDetail(camp){
   ${reps.filter(r=>r.commentaire).length===0?'<div class="empty">Aucun commentaire libre</div>':''}
   </div>`:''}
   <div class="card"><h3 style="margin-bottom:10px">Destinataires (${recs.length})</h3>
-  <div class="wrap"><table><thead><tr><th>Nom</th><th>Email</th><th>Invité</th><th>Répondu</th><th></th></tr></thead>
-  <tbody>${recs.map(r=>`<tr>
+  <div class="wrap"><table><thead><tr><th>Nom</th><th>Email</th><th>Lien</th><th>Invité</th><th>Répondu</th><th></th></tr></thead>
+  <tbody>${recs.map(r=>{
+    const link=`${window.location.origin}/feedback.html?token=${r.token}`;
+    return`<tr>
   <td>${esc(r.nom||'')} ${esc(r.prenom||'')}</td>
   <td style="font-size:12px">${esc(r.email)}</td>
+  <td>${!r.repondu?`<input type="text" readonly value="${esc(link)}" onclick="this.select()" style="width:220px;font-size:11px;font-family:monospace;padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg2)" title="Cliquer pour sélectionner, puis Ctrl+C">`:`<span style="font-size:11px;color:var(--txt2)">— déjà répondu —</span>`}</td>
   <td>${r.envoye?`<span class="badge bblue">${r.envoye_at?fd(r.envoye_at):'Oui'}</span>`:'<span class="badge bgray">Non</span>'}</td>
   <td>${r.repondu?`<span class="badge bok">${r.repondu_at?fd(r.repondu_at):'Oui'}</span>`:'<span class="badge bgray">Non</span>'}</td>
-  <td style="white-space:nowrap">${!r.repondu?`<button class="btn sm" onclick="copyFeedbackLink('${r.id}')" title="Copier le lien du questionnaire pour le transmettre manuellement (SMS, WhatsApp…)">🔗 Copier le lien</button>`:''}${canWrite?`<button class="btn sm danger" style="margin-left:4px" onclick="delRecipient('${r.id}')">✕</button>`:''}</td>
-  </tr>`).join('')}
-  ${recs.length===0?`<tr><td colspan="5" class="empty">Aucun destinataire</td></tr>`:''}
+  <td style="white-space:nowrap">${!r.repondu?`<button class="btn sm" onclick="copyFeedbackLink('${r.id}')" title="Copier le lien dans le presse-papier">🔗 Copier</button>`:''}${canWrite?`<button class="btn sm danger" style="margin-left:4px" onclick="delRecipient('${r.id}')">✕</button>`:''}</td>
+  </tr>`;
+  }).join('')}
+  ${recs.length===0?`<tr><td colspan="6" class="empty">Aucun destinataire</td></tr>`:''}
   </tbody></table></div></div>`;
 }
 
