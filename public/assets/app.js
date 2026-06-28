@@ -5013,7 +5013,7 @@ function vFeedbackListe(){
   <p>Les campagnes sont créées <strong>automatiquement</strong> à la clôture de chaque exercice et envoyées par email à tous les adhérents de la saison. Chaque adhérent reçoit un lien personnel unique vers le questionnaire.</p>
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-  <a class="btn" href="${esc(publicUrl)}" target="_blank" rel="noopener" title="Ouvrir le questionnaire public (sans token = page d'erreur attendue)">🔗 Questionnaire public</a>
+  <a class="btn" href="${window.location.origin}/feedback.html?token=__preview__" target="_blank" rel="noopener" title="Prévisualiser le questionnaire tel que le voient les adhérents">👁 Prévisualiser le questionnaire</a>
   <button class="btn" onclick="loadTabData('feedback',true).then(()=>render())">↺ Actualiser</button>
   </div>
   </div>
