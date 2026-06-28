@@ -49,12 +49,28 @@
 -- date_debut  : retirée (confirmé déjà présente)
 -- date_fin    : retirée (présumée déjà présente, retrait préventif)
 -- created_by  : retirée (présumée déjà présente, retrait préventif)
-
--- Initialiser titre/statut depuis les colonnes existantes pour les lignes déjà présentes
-UPDATE feedback_campaigns SET titre  = COALESCE(NULLIF(titre,''),  title,  '') WHERE titre  = '';
-UPDATE feedback_campaigns SET statut = COALESCE(NULLIF(statut,''), status, 'brouillon') WHERE statut = 'brouillon';
-
--- feedback_responses : submitted_at retirée (présumée déjà présente, retrait préventif)
--- On l'initialise depuis created_at pour les réponses déjà enregistrées, si la
--- colonne submitted_at existe déjà (ce que l'on présume désormais).
-UPDATE feedback_responses SET submitted_at = created_at WHERE submitted_at IS NULL;
+--
+-- ⚠️ CORRECTIF DU 2026-06-28 (suite à un nouvel incident) : les 3 UPDATE de
+-- backfill ci-dessous référençaient les colonnes legacy "title", "status" et
+-- "created_at" (sur feedback_responses) en partant du principe qu'elles
+-- existent forcément en prod (cf. historique ci-dessus). Or, en l'absence de
+-- ces colonnes — ce qui est systématiquement le cas sur une base neuve
+-- (CI, local d'un nouveau contributeur, nouvelle installation) puisqu'aucune
+-- migration versionnée ne les crée — SQLite échoue immédiatement avec
+-- "no such column: title", ce qui bloque `wrangler d1 migrations apply`
+-- pour TOUT le monde, pas seulement pour la prod historique concernée.
+--
+-- Ces UPDATE n'étaient qu'un backfill ponctuel et non bloquant pour le
+-- fonctionnement de l'application (le code n'écrit et ne lit que titre/
+-- statut/submitted_at, jamais title/status/created_at). Ils ont donc été
+-- retirés de cette migration versionnée. Si la base de production possède
+-- réellement ces colonnes legacy avec des données à rapatrier, exécuter
+-- ponctuellement et manuellement (hors pipeline de migrations) :
+--
+--   UPDATE feedback_campaigns SET titre  = COALESCE(NULLIF(titre,''),  title,  '')               WHERE titre  = '';
+--   UPDATE feedback_campaigns SET statut = COALESCE(NULLIF(statut,''), status, 'brouillon')       WHERE statut = 'brouillon';
+--   UPDATE feedback_responses SET submitted_at = created_at                                       WHERE submitted_at IS NULL;
+--
+-- en vérifiant au préalable l'existence des colonnes avec :
+--   SELECT name FROM pragma_table_info('feedback_campaigns');
+--   SELECT name FROM pragma_table_info('feedback_responses');

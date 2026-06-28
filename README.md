@@ -30,22 +30,23 @@ npm run seedLocalD1   # applique les migrations sur la base D1 locale
 npm run dev            # wrangler dev
 ```
 
-> ⚠️ **Piège connu — migrations feedback sur base vierge.** La séquence
+> ℹ️ **Historique — migrations feedback sur base vierge (corrigé).** La séquence
 > `0010_feedback.sql` → `0013_feedback_completion.sql` → `0014_feedback_schema_align.sql`
 > encode l'historique organique réel de la production (tables `feedback_*`
 > créées manuellement hors-migration avant que 0010 n'existe, avec un schéma
-> divergent — voir les commentaires en tête de chacun de ces fichiers). Cette
-> séquence s'applique sans erreur sur la production, mais **`0014` échoue sur
-> une base totalement vierge** (`duplicate column name: titre`), car toutes
-> les colonnes qu'elle tente d'ajouter existent déjà à ce stade quand on
-> repart de zéro (créées directement par `0010`/`0013`).
+> divergent — voir les commentaires en tête de chacun de ces fichiers).
 >
-> Ces migrations ne doivent **pas** être modifiées après coup (elles sont déjà
-> appliquées en prod). Si `seedLocalD1` échoue sur ce point précis lors d'un
-> premier seed local, la solution la plus simple est de retirer
-> temporairement `0014_feedback_schema_align.sql` du dossier `migrations/`
-> avant de lancer le seed local, puis de le restaurer ensuite (il ne sera de
-> toute façon jamais nécessaire sur une base qui démarre vierge).
+> `0014_feedback_schema_align.sql` contenait à l'origine des `UPDATE` de
+> backfill référençant des colonnes legacy (`title`, `status`, `created_at`)
+> supposées toujours présentes en prod. Sur une base vierge (CI, premier
+> `seedLocalD1`, nouvelle installation), ces colonnes n'existent pas et la
+> migration échouait avec `no such column: title`. Ces `UPDATE` ont été
+> retirés de la migration versionnée (non bloquants pour l'application, qui
+> ne lit/écrit que `titre`/`statut`/`submitted_at`) — voir le commentaire en
+> tête de `0014_feedback_schema_align.sql` pour la requête de backfill
+> manuelle à exécuter ponctuellement si la prod historique en a réellement
+> besoin. `seedLocalD1` et le CI s'exécutent désormais sans erreur sur une
+> base vierge, sans manipulation particulière.
 
 ## Déploiement
 
