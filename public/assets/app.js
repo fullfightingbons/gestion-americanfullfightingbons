@@ -5066,7 +5066,7 @@ function vFeedbackDetail(camp){
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
   ${canWrite&&camp.statut==='brouillon'?`<button class="btn primary" onclick="activerCampagne('${camp.id}')">▶ Lancer la campagne</button>`:''}
-  ${canWrite&&camp.statut==='active'?`<button class="btn" onclick="ouvrirEnvoi('${camp.id}')">📨 Inviter des adhérents</button><button class="btn" onclick="cloturerCampagne('${camp.id}')">⏹ Clôturer</button>`:''}
+  ${canWrite&&camp.statut==='active'?`<button class="btn" onclick="ouvrirEnvoi('${camp.id}')">📨 Inviter des adhérents</button><button class="btn" onclick="envoyerInvitesEnAttente('${camp.id}')">📤 Envoyer les invitations en attente</button><button class="btn" onclick="cloturerCampagne('${camp.id}')">⏹ Clôturer</button>`:''}
   <button class="btn" onclick="exportFeedbackCSV('${camp.id}')">⬇ Export CSV</button>
   <button class="btn" onclick="showST('feedback','liste')">← Retour</button>
   </div></div>
@@ -5142,6 +5142,17 @@ async function delRecipient(id){
 function ouvrirEnvoi(campaignId){
   UI.feedbackCampaignId=campaignId;
   openModal('feedback_invite');
+}
+
+async function envoyerInvitesEnAttente(campaignId){
+  const enAttente=D.feedbackRecipients.filter(r=>r.campaign_id===campaignId&&!r.envoye).length;
+  if(!enAttente)return alert('Aucune invitation en attente : tous les destinataires ont déjà reçu leur email.');
+  if(!confirm(`Envoyer l'invitation par email à ${enAttente} destinataire(s) en attente ?`))return;
+  const {data,error}=await apiRequest('/feedback/send-pending',{method:'POST',body:JSON.stringify({campaign_id:campaignId})});
+  if(error)return alert('Erreur : '+error.message);
+  await loadTabData('feedback',true);
+  notify('success',`${data.sent} email(s) envoyé(s)${data.failed?`, ${data.failed} échec(s)`:''}.`,'Feedback');
+  render();
 }
 
 async function saveFeedbackCampaign(id){
