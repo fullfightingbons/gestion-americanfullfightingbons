@@ -155,7 +155,7 @@ function dbHasPermission(user: Record<string, any>, permKey: string, mode: 'read
   return level === 'write';
 }
 
-async function handleDbApi(request: Request, env: Env, table: string): Promise<Response> {
+async function handleDbApi(request: Request, env: Env, table: string, ctx: ExecutionContext, origin: string): Promise<Response> {
   if (!DB_TABLES.has(table)) return err('Table inconnue', 404);
 
   const user = await getCurrentUserFromBearer(request, env);
@@ -266,6 +266,25 @@ async function handleDbApi(request: Request, env: Env, table: string): Promise<R
       const sql = `UPDATE ${dbQuoteIdentifier(table)} SET ${setSql}${whereSql} RETURNING *`;
       const { results } = await env.DB.prepare(sql).bind(...setValues, ...whereParams).all();
       const rows = results || [];
+
+      // ── Déclencheur automatique : fin de saison ────────────────────────
+      // Quand un exercice passe à statut='cloture' (clôture comptable réelle,
+      // cf. finalizeExoClose côté front), on lance en arrière-plan la
+      // campagne de feedback de fin de saison pour tous les adhérents
+      // rattachés à cet exercice. ctx.waitUntil évite de faire attendre la
+      // réponse de clôture pendant l'envoi des emails.
+      if (table === 'exercices') {
+        for (const r of rows as Record<string, any>[]) {
+          if (r?.statut === 'cloture' && r?.id) {
+            ctx.waitUntil(
+              triggerEndOfSeasonFeedback(env, String(r.id), origin).catch((e) =>
+                console.error('[feedback:auto]', e instanceof Error ? e.message : String(e))
+              )
+            );
+          }
+        }
+      }
+
       return json({ data: body?.single ? (rows[0] ?? null) : rows, error: null });
     }
 
@@ -391,6 +410,321 @@ async function handleStorageApi(request: Request, env: Env, bucketName: string, 
   return err('Method Not Allowed', 405);
 }
 
+// ─── Feedback de fin de saison ───────────────────────────────────────────────
+// Tables : feedback_campaigns / feedback_recipients / feedback_responses
+// (migrations/0010_feedback.sql + migrations/0013_feedback_completion.sql).
+//
+// ⚠️ Le schéma réel de ces tables en production a déjà posé deux incidents
+// documentés dans 0010_feedback.sql (colonnes manquantes découvertes a
+// posteriori). Le code ci-dessous suppose le schéma cible décrit dans
+// 0013_feedback_completion.sql (et déjà utilisé par public/assets/app.js :
+// envoye, envoye_at, repondu, repondu_at, token, reponses, note_globale,
+// commentaire). Si une de ces colonnes manque encore réellement en
+// production, les requêtes ci-dessous échoueront avec une erreur SQL
+// explicite "no such column" — appliquez d'abord 0013, voir IMPLEMENTATION.
+//
+// Principe : quand un exercice (= une saison) passe à statut='cloture' via
+// finalizeExoClose() côté front, handleDbApi() (ci-dessus) déclenche
+// triggerEndOfSeasonFeedback() en arrière-plan. Cette fonction :
+//   1. crée une campagne pour cet exercice si elle n'existe pas déjà,
+//   2. recense tous les adhérents rattachés à cet exercice (exercice_id),
+//   3. crée les destinataires manquants (token unique par adhérent),
+//   4. envoie l'email d'invitation à ceux pas encore "envoye".
+// Comme la requête sur `adherents` se fait au moment de l'envoi, la liste
+// est automatiquement à jour : un adhérent supprimé n'y est plus, un
+// nouvel inscrit de la saison y est automatiquement inclus.
+
+async function sendBrevoEmail(
+  env: Env,
+  opts: { to: Array<{ email: string; name?: string }>; subject: string; html: string }
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!env.BREVO_API_KEY) {
+    return { ok: false, error: 'BREVO_API_KEY manquant' };
+  }
+  const fromEmail = env.BREVO_FROM_EMAIL || 'noreply@americanfullfightingbons.fr';
+  const fromName = env.BREVO_FROM_NAME || 'AFFBC — Gestion du club';
+
+  const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: { 'api-key': env.BREVO_API_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sender: { email: fromEmail, name: fromName },
+      to: opts.to,
+      subject: opts.subject,
+      htmlContent: opts.html,
+    }),
+  });
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    return { ok: false, error: `Brevo ${res.status}: ${detail}` };
+  }
+  return { ok: true };
+}
+
+// Questionnaire par défaut utilisé pour la campagne de fin de saison
+// auto-créée. Modifiable ensuite depuis l'admin (onglet Feedback → Modifier),
+// le champ `questions` étant du JSON libre interprété par le front
+// (types reconnus : "note" 1-5, "oui_non", "choix" avec `options`, "texte").
+function defaultEndOfSeasonQuestions(): Array<Record<string, unknown>> {
+  return [
+    { id: 'q_cours_qualite', texte: 'Qualité pédagogique des cours', type: 'note' },
+    { id: 'q_cours_niveau', texte: 'Le niveau des cours était...', type: 'choix', options: ['Trop facile', 'Bien adapté', 'Trop difficile'] },
+    { id: 'q_cours_variete', texte: 'Variété des séances (technique, cardio, sparring...)', type: 'note' },
+    { id: 'q_horaires', texte: 'Les horaires des créneaux te convenaient ?', type: 'oui_non' },
+    { id: 'q_coach_qualite', texte: "Qualité de l'encadrement", type: 'note' },
+    { id: 'q_coach_dispo', texte: 'Disponibilité et écoute des coachs', type: 'note' },
+    { id: 'q_ambiance', texte: 'Ambiance générale au club', type: 'note' },
+    { id: 'q_evenements', texte: 'As-tu participé aux événements du club (galas, stages, sorties) ?', type: 'oui_non' },
+    { id: 'q_equipements', texte: 'État des équipements et des locaux', type: 'note' },
+    { id: 'q_communication', texte: 'Clarté des infos et communication du club', type: 'note' },
+    { id: 'q_reinscription', texte: 'Penses-tu te réinscrire la saison prochaine ?', type: 'choix', options: ['Oui', 'Hésitant', 'Non'] },
+    { id: 'q_amelioration', texte: "Qu'est-ce qu'on pourrait améliorer pour la saison prochaine ?", type: 'texte' },
+  ];
+}
+
+function feedbackInviteEmailHtml(opts: { prenom: string; seasonLabel: string; link: string }): string {
+  return `
+  <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;">
+    <h2 style="color:#b3001b;">On a besoin de ton avis 🥊</h2>
+    <p>Salut ${opts.prenom || ''},</p>
+    <p>La saison <strong>${opts.seasonLabel}</strong> se termine. Aide-nous à préparer la prochaine en répondant à ce questionnaire (5 minutes environ) :</p>
+    <p style="text-align:center;margin:24px 0;">
+      <a href="${opts.link}" style="background:#b3001b;color:#fff;padding:12px 24px;border-radius:4px;text-decoration:none;font-weight:bold;">Répondre au questionnaire</a>
+    </p>
+    <p>Merci pour ta saison à nos côtés 👊</p>
+    <p>L'équipe AFFBC</p>
+  </div>`;
+}
+
+async function triggerEndOfSeasonFeedback(
+  env: Env,
+  exerciceId: string,
+  origin: string
+): Promise<{ campaignId: string; invited: number; sent: number; failed: number }> {
+  const exercice = await env.DB
+    .prepare(`SELECT id, libelle FROM exercices WHERE id = ?`)
+    .bind(exerciceId)
+    .first<{ id: string; libelle: string }>();
+  const seasonLabel = exercice?.libelle || exerciceId;
+
+  // 1. Récupère ou crée la campagne liée à cet exercice.
+  let campaign = await env.DB
+    .prepare(`SELECT id FROM feedback_campaigns WHERE exercice_id = ?`)
+    .bind(exerciceId)
+    .first<{ id: string }>();
+
+  let campaignId: string;
+  if (campaign?.id) {
+    campaignId = campaign.id;
+  } else {
+    campaignId = crypto.randomUUID();
+    await env.DB
+      .prepare(
+        `INSERT INTO feedback_campaigns (id, titre, description, questions, statut, exercice_id, date_debut, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'active', ?, datetime('now'), datetime('now'), datetime('now'))`
+      )
+      .bind(
+        campaignId,
+        `Bilan de saison — ${seasonLabel}`,
+        `Questionnaire envoyé automatiquement à la clôture de l'exercice ${seasonLabel}.`,
+        JSON.stringify(defaultEndOfSeasonQuestions()),
+        exerciceId
+      )
+      .run();
+  }
+
+  // 2. Adhérents de cet exercice (cohorte = "qui a fait cette saison",
+  //    indépendamment de leur statut actuel — y compris ceux qui ne se
+  //    réinscrivent pas, dont l'avis est précieux).
+  const { results: members } = await env.DB
+    .prepare(`SELECT id, nom, prenom, email FROM adherents WHERE exercice_id = ? AND email IS NOT NULL AND email != ''`)
+    .bind(exerciceId)
+    .all<{ id: string; nom: string; prenom: string; email: string }>();
+
+  // 3. Crée les destinataires manquants (dédoublonnage par email dans la campagne).
+  const { results: existingRows } = await env.DB
+    .prepare(`SELECT email FROM feedback_recipients WHERE campaign_id = ?`)
+    .bind(campaignId)
+    .all<{ email: string }>();
+  const existingEmails = new Set((existingRows || []).map((r) => String(r.email).toLowerCase()));
+
+  let invited = 0;
+  for (const m of members || []) {
+    const emailNorm = String(m.email).trim().toLowerCase();
+    if (existingEmails.has(emailNorm)) continue;
+    await env.DB
+      .prepare(
+        `INSERT INTO feedback_recipients (id, campaign_id, adherent_id, email, nom, prenom, token, envoye, repondu, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, datetime('now'), datetime('now'))`
+      )
+      .bind(crypto.randomUUID(), campaignId, m.id, emailNorm, m.nom || '', m.prenom || '', crypto.randomUUID().replace(/-/g, ''))
+      .run();
+    existingEmails.add(emailNorm);
+    invited++;
+  }
+
+  // 4. Envoie l'invitation à tous les destinataires de cette campagne pas
+  //    encore "envoye" (couvre à la fois les nouveaux et ceux qui auraient
+  //    été ajoutés manuellement sans recevoir d'email).
+  const { results: pending } = await env.DB
+    .prepare(`SELECT id, email, nom, prenom, token FROM feedback_recipients WHERE campaign_id = ? AND envoye = 0`)
+    .bind(campaignId)
+    .all<{ id: string; email: string; nom: string; prenom: string; token: string }>();
+
+  let sent = 0;
+  let failed = 0;
+  for (const recipient of pending || []) {
+    const link = `${origin}/feedback.html?token=${recipient.token}`;
+    const result = await sendBrevoEmail(env, {
+      to: [{ email: recipient.email, name: [recipient.prenom, recipient.nom].filter(Boolean).join(' ') }],
+      subject: `Ton avis sur la saison ${seasonLabel} — American Full Fighting Bons`,
+      html: feedbackInviteEmailHtml({ prenom: recipient.prenom, seasonLabel, link }),
+    });
+    if (result.ok) {
+      await env.DB
+        .prepare(`UPDATE feedback_recipients SET envoye = 1, envoye_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`)
+        .bind(recipient.id)
+        .run();
+      sent++;
+    } else {
+      console.error('[feedback:auto] échec envoi à', recipient.email, result.error);
+      failed++;
+    }
+  }
+
+  return { campaignId, invited, sent, failed };
+}
+
+// ─── /api/public/feedback — accès public par token (sans session admin) ────
+// GET  : récupère la campagne + les questions pour affichage du formulaire.
+// POST : enregistre une réponse. Aucune des deux routes n'exige de Bearer
+// token : l'accès est entièrement scopé par le `token` individuel généré
+// pour chaque destinataire (feedback_recipients.token), jamais par une
+// permission admin. C'est volontaire : ce sont des adhérents, pas des
+// utilisateurs internes de l'application de gestion.
+
+async function handlePublicFeedbackGet(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const token = url.searchParams.get('token') || '';
+  if (!token) return err('Paramètre token manquant', 400);
+
+  const recipient = await env.DB
+    .prepare(`SELECT id, campaign_id, nom, prenom, repondu FROM feedback_recipients WHERE token = ?`)
+    .bind(token)
+    .first<{ id: string; campaign_id: string; nom: string; prenom: string; repondu: number }>();
+  if (!recipient) return err('Lien invalide ou expiré', 404);
+
+  const campaign = await env.DB
+    .prepare(`SELECT id, titre, description, questions, statut FROM feedback_campaigns WHERE id = ?`)
+    .bind(recipient.campaign_id)
+    .first<{ id: string; titre: string; description: string; questions: string; statut: string }>();
+  if (!campaign) return err('Campagne introuvable', 404);
+
+  let questions: unknown[] = [];
+  try { questions = JSON.parse(campaign.questions || '[]'); } catch { questions = []; }
+
+  return json({
+    data: {
+      campaign: { titre: campaign.titre, description: campaign.description, statut: campaign.statut },
+      recipient: { nom: recipient.nom, prenom: recipient.prenom, alreadyResponded: !!recipient.repondu },
+      questions,
+    },
+    error: null,
+  });
+}
+
+async function handlePublicFeedbackSubmit(request: Request, env: Env): Promise<Response> {
+  let body: { token?: string; reponses?: Record<string, unknown>; note_globale?: number; commentaire?: string };
+  try { body = await request.json(); } catch { return err('JSON invalide', 400); }
+
+  const token = body?.token || '';
+  if (!token) return err('Paramètre token manquant', 400);
+
+  const recipient = await env.DB
+    .prepare(`SELECT id, campaign_id, repondu FROM feedback_recipients WHERE token = ?`)
+    .bind(token)
+    .first<{ id: string; campaign_id: string; repondu: number }>();
+  if (!recipient) return err('Lien invalide ou expiré', 404);
+  if (recipient.repondu) return err('Cette réponse a déjà été enregistrée', 409);
+
+  const campaign = await env.DB
+    .prepare(`SELECT statut FROM feedback_campaigns WHERE id = ?`)
+    .bind(recipient.campaign_id)
+    .first<{ statut: string }>();
+  if (!campaign || campaign.statut !== 'active') return err('Cette campagne n\'accepte plus de réponses', 410);
+
+  const noteGlobale = body.note_globale != null && body.note_globale !== ('' as unknown) ? Number(body.note_globale) : null;
+
+  await env.DB
+    .prepare(
+      `INSERT INTO feedback_responses (id, campaign_id, recipient_id, reponses, note_globale, commentaire, submitted_at)
+       VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`
+    )
+    .bind(
+      crypto.randomUUID(),
+      recipient.campaign_id,
+      recipient.id,
+      JSON.stringify(body.reponses || {}),
+      noteGlobale,
+      body.commentaire || null
+    )
+    .run();
+
+  await env.DB
+    .prepare(`UPDATE feedback_recipients SET repondu = 1, repondu_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`)
+    .bind(recipient.id)
+    .run();
+
+  return json({ data: { ok: true }, error: null });
+}
+
+async function handleSendPendingInvites(request: Request, env: Env, origin: string): Promise<Response> {
+  const user = await getCurrentUserFromBearer(request, env);
+  if (!user) return err('Unauthorized', 401);
+  const rolePerms = await getRolePerms(env);
+  if (!dbHasPermission(user, 'perm_feedback', 'write', rolePerms)) return err('Permission refusée', 403);
+
+  let body: { campaign_id?: string };
+  try { body = await request.json(); } catch { return err('JSON invalide', 400); }
+  const campaignId = body?.campaign_id;
+  if (!campaignId) return err('Paramètre campaign_id manquant', 400);
+
+  const campaign = await env.DB
+    .prepare(`SELECT id, titre FROM feedback_campaigns WHERE id = ?`)
+    .bind(campaignId)
+    .first<{ id: string; titre: string }>();
+  if (!campaign) return err('Campagne introuvable', 404);
+
+  const { results: pending } = await env.DB
+    .prepare(`SELECT id, email, nom, prenom, token FROM feedback_recipients WHERE campaign_id = ? AND envoye = 0`)
+    .bind(campaignId)
+    .all<{ id: string; email: string; nom: string; prenom: string; token: string }>();
+
+  let sent = 0;
+  let failed = 0;
+  for (const recipient of pending || []) {
+    const link = `${origin}/feedback.html?token=${recipient.token}`;
+    const result = await sendBrevoEmail(env, {
+      to: [{ email: recipient.email, name: [recipient.prenom, recipient.nom].filter(Boolean).join(' ') }],
+      subject: `${campaign.titre} — American Full Fighting Bons`,
+      html: feedbackInviteEmailHtml({ prenom: recipient.prenom, seasonLabel: campaign.titre, link }),
+    });
+    if (result.ok) {
+      await env.DB
+        .prepare(`UPDATE feedback_recipients SET envoye = 1, envoye_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`)
+        .bind(recipient.id)
+        .run();
+      sent++;
+    } else {
+      console.error('[feedback:manual] échec envoi à', recipient.email, result.error);
+      failed++;
+    }
+  }
+
+  return json({ data: { sent, failed, total: (pending || []).length }, error: null });
+}
+
 // NOTE : syncInscriptionsValidees(env) a été retirée le 2026-06-27. Elle
 // synchronisait les inscriptions HelloAsso validées vers un schéma legacy
 // (tables membres / ecritures_compta / ventes_inscription / sync_log) jamais
@@ -410,7 +744,7 @@ async function handleStorageApi(request: Request, env: Env, bucketName: string, 
 // ─── Handler principal ───────────────────────────────────────────────────────
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
     const method = request.method.toUpperCase();
@@ -453,7 +787,14 @@ export default {
     const dbMatch = path.match(/^\/api\/db\/([A-Za-z0-9_]+)$/);
     if (dbMatch) {
       if (method !== 'POST') return err('Method Not Allowed', 405);
-      return await handleDbApi(request, env, dbMatch[1]);
+      return await handleDbApi(request, env, dbMatch[1], ctx, url.origin);
+    }
+
+    // ── /api/public/feedback — accès adhérent par token, sans session admin ─
+    if (path === '/api/public/feedback') {
+      if (method === 'GET') return await handlePublicFeedbackGet(request, env);
+      if (method === 'POST') return await handlePublicFeedbackSubmit(request, env);
+      return err('Method Not Allowed', 405);
     }
 
     // ── /api/storage/:bucket/* ───────────────────────────────────────────
@@ -598,6 +939,14 @@ export default {
         .run();
 
       return json({ data: { ok: true }, error: null });
+    }
+
+    // POST /api/feedback/send-pending — envoi manuel (admin) des invitations
+    // en attente d'une campagne (recipients ajoutés à la main, envoye=0).
+    // L'envoi automatique à la clôture d'exercice passe lui par
+    // triggerEndOfSeasonFeedback(), déclenché depuis handleDbApi.
+    if (method === 'POST' && path === '/api/feedback/send-pending') {
+      return await handleSendPendingInvites(request, env, url.origin);
     }
 
     // POST /api/email/send — envoi d'email transactionnel via Brevo.
