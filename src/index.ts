@@ -474,27 +474,27 @@ function defaultEndOfSeasonQuestions(): Array<Record<string, unknown>> {
   //   4. Recueillir des idées d'amélioration concrètes
   return [
     // ── Cours & pédagogie ─────────────────────────────────────────────────
-    { id: 'q_cours_qualite',  texte: 'Qualité pédagogique des cours',                                       type: 'note' },
-    { id: 'q_cours_variete',  texte: 'Variété des séances (technique, cardio, sparring, self-défense…)',    type: 'note' },
-    { id: 'q_cours_niveau',   texte: 'Le niveau des cours était adapté à ta progression ?',                 type: 'choix', options: ['Trop facile', 'Bien adapté', 'Trop difficile'] },
-    { id: 'q_horaires',       texte: 'Les horaires et créneaux te convenaient ?',                            type: 'oui_non' },
-    { id: 'q_horaires_manq',  texte: 'Un créneau te manquait ? Lequel ?',                                   type: 'texte' },
+    { id: 'q_cours_qualite',     texte: "Qualité pédagogique des cours",                                                       type: 'note' },
+    { id: 'q_cours_variete',     texte: "Variété des séances (technique, cardio, sparring, self-défense…)",              type: 'note' },
+    { id: 'q_cours_niveau',      texte: "Le niveau des cours était adapté à ta progression ?",                                 type: 'choix', options: ['Trop facile', 'Bien adapté', 'Trop difficile'] },
+    { id: 'q_horaires',          texte: "Les horaires et créneaux te convenaient ?",                                            type: 'oui_non' },
+    { id: 'q_horaires_manq',     texte: "Un créneau te manquait ? Lequel ?",                                                   type: 'texte' },
     // ── Encadrement ──────────────────────────────────────────────────────
-    { id: 'q_coach_qualite',  texte: 'Qualité de l'encadrement (enseignement, corrections, suivi)',        type: 'note' },
-    { id: 'q_coach_dispo',    texte: 'Disponibilité et écoute des coachs en dehors des cours',              type: 'note' },
-    { id: 'q_securite',       texte: 'Tu t'es senti·e en sécurité pendant les entraînements ?',            type: 'oui_non' },
+    { id: 'q_coach_qualite',     texte: "Qualité de l'encadrement (enseignement, corrections, suivi)",                        type: 'note' },
+    { id: 'q_coach_dispo',       texte: "Disponibilité et écoute des coachs en dehors des cours",                              type: 'note' },
+    { id: 'q_securite',          texte: "Tu t'es senti·e en sécurité pendant les entraînements ?",                             type: 'oui_non' },
     // ── Vie du club ───────────────────────────────────────────────────────
-    { id: 'q_ambiance',       texte: 'Ambiance générale et esprit du club',                                  type: 'note' },
-    { id: 'q_accueil',        texte: 'Qualité de l'accueil (nouveaux membres, retours de blessure…)',      type: 'note' },
-    { id: 'q_equipements',    texte: 'État des équipements et des locaux',                                   type: 'note' },
-    { id: 'q_communication',  texte: 'Clarté des informations et communication du club',                     type: 'note' },
-    { id: 'q_evenements',     texte: 'As-tu participé aux événements du club (galas, stages, compétitions, sorties) ?', type: 'oui_non' },
-    { id: 'q_evenements_sat', texte: 'Si oui, en as-tu été satisfait·e ?',                                  type: 'choix', options: ['Très satisfait·e', 'Satisfait·e', 'Déçu·e', 'N'a pas participé'] },
+    { id: 'q_ambiance',          texte: "Ambiance générale et esprit du club",                                                  type: 'note' },
+    { id: 'q_accueil',           texte: "Qualité de l'accueil (nouveaux membres, retours de blessure…)",                 type: 'note' },
+    { id: 'q_equipements',       texte: "État des équipements et des locaux",                                                   type: 'note' },
+    { id: 'q_communication',     texte: "Clarté des informations et communication du club",                                     type: 'note' },
+    { id: 'q_evenements',        texte: "As-tu participé aux événements du club (galas, stages, compétitions, sorties) ?",    type: 'oui_non' },
+    { id: 'q_evenements_sat',    texte: "Si oui, en as-tu été satisfait·e ?",                                                  type: 'choix', options: ["Très satisfait·e", "Satisfait·e", "Déçu·e", "N'a pas participé"] },
     // ── Réinscription & suggestions ───────────────────────────────────────
-    { id: 'q_reinscription',  texte: 'Penses-tu te réinscrire la saison prochaine ?',                       type: 'choix', options: ['Oui', 'Probablement', 'Hésitant·e', 'Non'] },
-    { id: 'q_reinscription_non', texte: 'Si tu n'es pas sûr·e de te réinscrire, qu'est-ce qui t'en empêche ?', type: 'texte' },
-    { id: 'q_recommande',     texte: 'Recommanderais-tu le club à un proche ?',                             type: 'choix', options: ['Oui, sans hésitation', 'Oui, avec quelques réserves', 'Non'] },
-    { id: 'q_amelioration',   texte: 'Qu'est-ce qu'on pourrait améliorer pour la saison prochaine ?',    type: 'texte' },
+    { id: 'q_reinscription',     texte: "Penses-tu te réinscrire la saison prochaine ?",                                       type: 'choix', options: ['Oui', 'Probablement', 'Hésitant·e', 'Non'] },
+    { id: 'q_reinscription_non', texte: "Si tu n'es pas sûr·e de te réinscrire, qu'est-ce qui t'en empêche ?",               type: 'texte' },
+    { id: 'q_recommande',        texte: "Recommanderais-tu le club à un proche ?",                                             type: 'choix', options: ["Oui, sans hésitation", "Oui, avec quelques réserves", 'Non'] },
+    { id: 'q_amelioration',      texte: "Qu'est-ce qu'on pourrait améliorer pour la saison prochaine ?",                     type: 'texte' },
   ];
 }
 
