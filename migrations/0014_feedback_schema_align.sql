@@ -31,11 +31,18 @@
 -- ⚠️ INCIDENT DU 2026-06-28 (suite) : 2e tentative échouée avec
 -- "duplicate column name: description" → même cause, colonne déjà présente.
 -- Ligne retirée ci-dessous également.
+--
+-- ⚠️ INCIDENT DU 2026-06-28 (suite) : 3e tentative échouée avec
+-- "duplicate column name: statut" → même cause, colonne déjà présente.
+-- Ligne retirée ci-dessous également. À ce stade (3 colonnes sur 3 déjà
+-- en doublon), il est très probable que date_debut/date_fin/created_by le
+-- soient aussi — mais on continue à les retirer une par une seulement au vu
+-- d'une erreur réelle constatée, par choix exprès (voir échanges du dépôt).
 
 -- feedback_campaigns : colonnes manquantes
 -- titre       : retirée, voir incident ci-dessus (déjà présente en prod)
 -- description : retirée, voir incident ci-dessus (déjà présente en prod)
-ALTER TABLE feedback_campaigns ADD COLUMN statut      TEXT NOT NULL DEFAULT 'brouillon';
+-- statut      : retirée, voir incident ci-dessus (déjà présente en prod)
 ALTER TABLE feedback_campaigns ADD COLUMN date_debut  TEXT;
 ALTER TABLE feedback_campaigns ADD COLUMN date_fin    TEXT;
 ALTER TABLE feedback_campaigns ADD COLUMN created_by  TEXT;
