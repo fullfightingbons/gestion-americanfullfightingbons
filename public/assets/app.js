@@ -4967,68 +4967,208 @@ function genRecu(id){
 // FEEDBACK / ENQUÊTES
 // ═══════════════════════════════════════════════════
 
+// ─── Questions fixes du questionnaire de fin de saison ───────────────────────
+// Miroir de defaultEndOfSeasonQuestions() dans src/index.ts et de feedback.html.
+// Utilisées pour l'affichage des libellés dans les synthèses sans avoir à parser
+// le JSON stocké en base (qui peut varier selon la version de création).
+const FEEDBACK_QUESTIONS_REF=[
+  {id:'q_cours_qualite',  texte:'Qualité pédagogique des cours',                                          type:'note'},
+  {id:'q_cours_niveau',   texte:'Le niveau des cours était...',                                            type:'choix', options:['Trop facile','Bien adapté','Trop difficile']},
+  {id:'q_cours_variete',  texte:'Variété des séances (technique, cardio, sparring...)',                    type:'note'},
+  {id:'q_horaires',       texte:'Les horaires des créneaux te convenaient ?',                              type:'oui_non'},
+  {id:'q_coach_qualite',  texte:"Qualité de l'encadrement",                                               type:'note'},
+  {id:'q_coach_dispo',    texte:'Disponibilité et écoute des coachs',                                     type:'note'},
+  {id:'q_ambiance',       texte:'Ambiance générale au club',                                               type:'note'},
+  {id:'q_evenements',     texte:'As-tu participé aux événements du club (galas, stages, sorties) ?',      type:'oui_non'},
+  {id:'q_equipements',    texte:'État des équipements et des locaux',                                      type:'note'},
+  {id:'q_communication',  texte:'Clarté des infos et communication du club',                               type:'note'},
+  {id:'q_reinscription',  texte:'Penses-tu te réinscrire la saison prochaine ?',                          type:'choix', options:['Oui','Hésitant','Non']},
+  {id:'q_amelioration',   texte:"Qu'est-ce qu'on pourrait améliorer pour la saison prochaine ?",          type:'texte'},
+];
+
 function vFeedback(){
   const sub=UI.subTab.feedback||'liste';
   const camp=UI.feedbackCampaignId?D.feedbackCampaigns.find(c=>c.id===UI.feedbackCampaignId):null;
   return`<div class="stabs">
-  <button class="stab ${sub==='liste'?'active':''}" onclick="showST('feedback','liste')">Campagnes</button>
+  <button class="stab ${sub==='liste'?'active':''}" onclick="showST('feedback','liste')">Saisons</button>
+  <button class="stab ${sub==='synthese'?'active':''}" onclick="showST('feedback','synthese')">📈 Synthèse globale</button>
   ${camp?`<button class="stab ${sub==='detail'?'active':''}" onclick="showST('feedback','detail')">📊 ${esc(camp.titre)}</button>`:''}
   </div>
-  ${sub==='detail'&&camp?vFeedbackDetail(camp):vFeedbackListe()}`;
+  ${sub==='synthese'?vFeedbackSynthese():sub==='detail'&&camp?vFeedbackDetail(camp):vFeedbackListe()}`;
 }
 
 function vFeedbackListe(){
   const canWrite=hasPerm('perm_feedback','write');
-  const q=(UI.search.feedback||'').toLowerCase();
-  const filtered=D.feedbackCampaigns.filter(c=>(c.titre+' '+(c.description||'')).toLowerCase().includes(q));
-  const {rows:f,totalPages}=paginateList(filtered,'feedback');
   const total=D.feedbackCampaigns.length;
   const actives=D.feedbackCampaigns.filter(c=>c.statut==='active').length;
   const reponses=D.feedbackResponses.length;
+  const tauxGlobal=D.feedbackRecipients.length?Math.round(D.feedbackRecipients.filter(r=>r.repondu).length/D.feedbackRecipients.length*100):0;
+  const publicUrl=`${window.location.origin}/feedback.html`;
+  // Tri par date décroissante
+  const sorted=[...D.feedbackCampaigns].sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
   return`<div class="view-head">
   <div>
-  <div class="eyebrow">Communication adhérents</div>
-  <h2>Feedback & Enquêtes</h2>
-  <p>Créez des campagnes de retour d'expérience, invitez vos adhérents à répondre et analysez les résultats.</p>
+  <div class="eyebrow">Retours adhérents</div>
+  <h2>Feedback de fin de saison</h2>
+  <p>Les campagnes sont créées <strong>automatiquement</strong> à la clôture de chaque exercice et envoyées par email à tous les adhérents de la saison. Chaque adhérent reçoit un lien personnel unique vers le questionnaire.</p>
   </div>
-  ${canWrite?`<button class="btn primary" onclick="openModal('feedback_campaign')">+ Nouvelle campagne</button>`:''}
-  </div>
-  <div class="g4" style="margin-bottom:14px">
-  <div class="sc"><div class="v">${total}</div><div class="l">Campagnes</div></div>
-  <div class="sc"><div class="v vgo">${actives}</div><div class="l">Actives</div></div>
-  <div class="sc"><div class="v">${reponses}</div><div class="l">Réponses totales</div></div>
-  <div class="sc"><div class="v">${D.feedbackRecipients.filter(r=>r.repondu).length}</div><div class="l">Répondants</div></div>
-  </div>
-  <div class="toolbar">
-  <input style="flex:1;min-width:160px" placeholder="Rechercher une campagne…" value="${UI.search.feedback||''}" oninput="UI.search.feedback=this.value;render()">
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+  <a class="btn" href="${esc(publicUrl)}" target="_blank" rel="noopener" title="Ouvrir le questionnaire public (sans token = page d'erreur attendue)">🔗 Questionnaire public</a>
   <button class="btn" onclick="loadTabData('feedback',true).then(()=>render())">↺ Actualiser</button>
   </div>
+  </div>
+  <div class="g4" style="margin-bottom:14px">
+  <div class="sc"><div class="v">${total}</div><div class="l">Saisons</div></div>
+  <div class="sc"><div class="v vgo">${actives}</div><div class="l">Active(s)</div></div>
+  <div class="sc"><div class="v">${reponses}</div><div class="l">Réponses totales</div></div>
+  <div class="sc"><div class="v ${tauxGlobal>=50?'vgo':''}">${D.feedbackRecipients.length?tauxGlobal+'%':'—'}</div><div class="l">Taux global</div></div>
+  </div>
+  <div class="card" style="margin-bottom:14px;padding:14px 16px;background:rgba(var(--gold-rgb,212,172,84),.08);border:1px solid rgba(var(--gold-rgb,212,172,84),.25)">
+  <p style="font-size:13px;color:var(--txt2);margin:0">
+  💡 <strong>Fonctionnement automatique :</strong> à la clôture d'un exercice (onglet Comptabilité → Exercices), une campagne de feedback est créée et les emails sont envoyés automatiquement à tous les adhérents de cet exercice ayant une adresse email.
+  Aucune action manuelle n'est nécessaire.
+  </p>
+  </div>
   <div class="wrap"><table>
-  <thead><tr><th>Titre</th><th>Statut</th><th>Dates</th><th>Destinataires</th><th>Réponses</th><th>Taux</th><th></th></tr></thead>
-  <tbody>${f.map(c=>{
+  <thead><tr><th>Saison</th><th>Statut</th><th>Envoyé</th><th>Réponses</th><th>Taux</th><th>Note moy.</th><th></th></tr></thead>
+  <tbody>${sorted.map(c=>{
     const recs=D.feedbackRecipients.filter(r=>r.campaign_id===c.id);
     const reps=D.feedbackResponses.filter(r=>r.campaign_id===c.id);
     const taux=recs.length?Math.round(reps.length/recs.length*100):0;
+    const notes=reps.filter(r=>r.note_globale!=null);
+    const avg=notes.length?(notes.reduce((s,r)=>s+(+r.note_globale),0)/notes.length).toFixed(1):null;
     const badgeCls=c.statut==='active'?'bok':c.statut==='cloturee'?'bgray':'bwarn';
     const badgeLbl=c.statut==='active'?'Active':c.statut==='cloturee'?'Clôturée':'Brouillon';
     return`<tr>
     <td><strong style="font-weight:500">${esc(c.titre)}</strong>${c.description?`<br><span style="font-size:11px;color:var(--txt2)">${esc(c.description)}</span>`:''}</td>
     <td><span class="badge ${badgeCls}">${badgeLbl}</span></td>
-    <td style="font-size:12px">${c.date_debut?fd(c.date_debut):'—'} → ${c.date_fin?fd(c.date_fin):'—'}</td>
-    <td>${recs.length}</td>
+    <td style="font-size:12px">${recs.filter(r=>r.envoye).length} / ${recs.length} invités</td>
     <td>${reps.length}</td>
     <td>${recs.length?`<strong>${taux}%</strong>`:'—'}</td>
+    <td>${avg?`<strong style="color:var(--primary)">${avg} / 5</strong>`:'—'}</td>
     <td style="white-space:nowrap">
     <button class="btn sm" onclick="UI.feedbackCampaignId='${c.id}';showST('feedback','detail')">Détail</button>
-    ${canWrite?`<button class="btn sm" style="margin-left:4px" onclick="openModal('feedback_campaign','${c.id}')">Modifier</button>
-    ${c.statut==='brouillon'?`<button class="btn sm" style="margin-left:4px" onclick="activerCampagne('${c.id}')">▶ Lancer</button>`:''}
-    ${c.statut==='active'?`<button class="btn sm" style="margin-left:4px" onclick="cloturerCampagne('${c.id}')">⏹ Clôturer</button>`:''}
-    <button class="btn sm danger" style="margin-left:4px" onclick="delCampagne('${c.id}')">✕</button>`:''}
+    ${canWrite&&c.statut==='active'?`<button class="btn sm" style="margin-left:4px" onclick="ouvrirEnvoi('${c.id}')">📨 Inviter</button><button class="btn sm" style="margin-left:4px" onclick="envoyerInvitesEnAttente('${c.id}')">📤 Envoyer</button><button class="btn sm" style="margin-left:4px" onclick="cloturerCampagne('${c.id}')">⏹ Clôturer</button>`:''}
+    ${canWrite&&c.statut==='brouillon'?`<button class="btn sm" style="margin-left:4px" onclick="activerCampagne('${c.id}')">▶ Lancer</button>`:''}
+    ${canWrite?`<button class="btn sm danger" style="margin-left:4px" onclick="delCampagne('${c.id}')">✕</button>`:''}
     </td></tr>`;
   }).join('')}
-  ${f.length===0?`<tr><td colspan="7" class="empty">Aucune campagne</td></tr>`:''}
-  </tbody></table></div>
-  ${renderPager('feedback',totalPages)}`;
+  ${sorted.length===0?`<tr><td colspan="7" class="empty">Aucune campagne — elles apparaîtront ici à la clôture de chaque exercice</td></tr>`:''}
+  </tbody></table></div>`;
+}
+
+// ─── Synthèse inter-saisons ───────────────────────────────────────────────────
+function vFeedbackSynthese(){
+  const cloturees=D.feedbackCampaigns.filter(c=>c.statut==='cloturee'||c.statut==='active');
+  if(!cloturees.length) return`<div class="empty" style="padding:48px 20px;text-align:center">Aucune donnée disponible — la synthèse apparaîtra une fois les premières réponses reçues.</div>`;
+
+  // Pour chaque saison, calculer les stats sur chaque question de note
+  const NOTE_QS=FEEDBACK_QUESTIONS_REF.filter(q=>q.type==='note');
+  const CHOIX_QS=FEEDBACK_QUESTIONS_REF.filter(q=>q.type==='choix');
+  const OUINON_QS=FEEDBACK_QUESTIONS_REF.filter(q=>q.type==='oui_non');
+
+  const saisons=cloturees.map(c=>{
+    const reps=D.feedbackResponses.filter(r=>r.campaign_id===c.id);
+    const recs=D.feedbackRecipients.filter(r=>r.campaign_id===c.id);
+    const taux=recs.length?Math.round(reps.length/recs.length*100):0;
+    const notes=reps.filter(r=>r.note_globale!=null);
+    const avgGlobal=notes.length?(notes.reduce((s,r)=>s+(+r.note_globale),0)/notes.length):null;
+
+    const qStats={};
+    FEEDBACK_QUESTIONS_REF.forEach(q=>{
+      const vals=reps.map(r=>{try{const p=JSON.parse(r.reponses||'{}');return p[q.id]??null;}catch{return null;}}).filter(v=>v!=null);
+      if(q.type==='note'){
+        qStats[q.id]=vals.length?+(vals.reduce((s,v)=>s+(+v),0)/vals.length).toFixed(2):null;
+      } else if(q.type==='oui_non'){
+        const oui=vals.filter(v=>v==='oui').length;
+        qStats[q.id]={oui,non:vals.length-oui,total:vals.length};
+      } else if(q.type==='choix'){
+        const counts={};
+        vals.forEach(v=>{counts[v]=(counts[v]||0)+1;});
+        qStats[q.id]={counts,total:vals.length};
+      }
+    });
+    const commentaires=reps.filter(r=>r.commentaire&&r.commentaire.trim()).map(r=>r.commentaire.trim());
+    return{id:c.id,titre:c.titre,reponses:reps.length,invites:recs.length,taux,avgGlobal,qStats,commentaires,statut:c.statut};
+  }).sort((a,b)=>a.titre.localeCompare(b.titre));
+
+  // Barres de progression (note/5)
+  function noteBar(val){
+    if(val==null) return'<span style="color:var(--txt2);font-size:12px">—</span>';
+    const pct=Math.round(val/5*100);
+    const col=val>=4?'var(--green,#2d9948)':val>=3?'var(--gold-d,#b8903a)':'var(--red,#b3001b)';
+    return`<div style="display:flex;align-items:center;gap:6px">
+    <div style="flex:1;height:8px;border-radius:4px;background:var(--border);overflow:hidden"><div style="height:100%;width:${pct}%;background:${col};border-radius:4px"></div></div>
+    <span style="font-size:12px;font-weight:600;min-width:28px">${val.toFixed(1)}</span></div>`;
+  }
+
+  // Tableau de bord inter-saisons pour les questions de note
+  const noteTableRows=NOTE_QS.map(q=>`
+    <tr>
+    <td style="font-size:12px">${esc(q.texte)}</td>
+    ${saisons.map(s=>`<td style="min-width:110px">${noteBar(s.qStats[q.id])}</td>`).join('')}
+    </tr>`).join('');
+
+  // Évolution note globale + taux
+  const globalRows=`
+    <tr><td style="font-size:12px;font-weight:600">Note globale</td>${saisons.map(s=>`<td>${noteBar(s.avgGlobal)}</td>`).join('')}</tr>
+    <tr><td style="font-size:12px;font-weight:600">Taux de réponse</td>${saisons.map(s=>`<td><span style="font-size:13px;font-weight:600">${s.invites?s.taux+'%':'—'}</span></td>`).join('')}</tr>
+    <tr><td style="font-size:12px">Réponses / invités</td>${saisons.map(s=>`<td style="font-size:12px;color:var(--txt2)">${s.reponses} / ${s.invites}</td>`).join('')}</tr>`;
+
+  // Choix
+  const choixBlocs=CHOIX_QS.map(q=>{
+    const allOpts=q.options||[];
+    return`<div style="margin-bottom:18px">
+    <div style="font-size:13px;font-weight:600;margin-bottom:8px">${esc(q.texte)}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
+    ${saisons.map(s=>{
+      const st=s.qStats[q.id];
+      if(!st||!st.total) return`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 12px"><div style="font-size:11px;font-weight:600;color:var(--txt2);margin-bottom:6px">${esc(s.titre)}</div><div style="font-size:12px;color:var(--txt2)">Aucune réponse</div></div>`;
+      return`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 12px">
+      <div style="font-size:11px;font-weight:600;color:var(--txt2);margin-bottom:6px">${esc(s.titre)}</div>
+      ${allOpts.map(opt=>{const n=st.counts[opt]||0;const pct=Math.round(n/st.total*100);return`<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="font-size:11px;min-width:80px">${esc(opt)}</span><div style="flex:1;height:6px;border-radius:3px;background:var(--border)"><div style="height:100%;width:${pct}%;background:var(--primary);border-radius:3px"></div></div><span style="font-size:11px;font-weight:600;min-width:32px">${pct}%</span></div>`;}).join('')}
+      </div>`;
+    }).join('')}
+    </div></div>`;
+  }).join('');
+
+  // Oui/Non
+  const ouiNonBlocs=OUINON_QS.map(q=>{
+    return`<div style="margin-bottom:18px">
+    <div style="font-size:13px;font-weight:600;margin-bottom:8px">${esc(q.texte)}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+    ${saisons.map(s=>{
+      const st=s.qStats[q.id];
+      if(!st||!st.total) return`<div class="sc"><div class="v" style="font-size:14px">—</div><div class="l">${esc(s.titre)}</div></div>`;
+      const pct=Math.round(st.oui/st.total*100);
+      return`<div class="sc"><div class="v ${pct>=70?'vgo':pct>=40?'':''}" style="font-size:14px">${pct}%<span style="font-size:10px;font-weight:400"> oui</span></div><div class="l">${esc(s.titre)}</div></div>`;
+    }).join('')}
+    </div></div>`;
+  }).join('');
+
+  // Derniers commentaires (toutes saisons, 10 max)
+  const allComments=saisons.flatMap(s=>s.commentaires.map(c=>({texte:c,saison:s.titre}))).slice(0,10);
+
+  return`<div class="view-head"><div>
+  <div class="eyebrow">Analyse</div>
+  <h2>Synthèse inter-saisons</h2>
+  <p>Vue consolidée des retours sur toutes les saisons clôturées.</p>
+  </div></div>
+
+  <div class="card" style="margin-bottom:14px;overflow-x:auto">
+  <h3 style="margin-bottom:12px">Vue d'ensemble par saison</h3>
+  <table style="min-width:100%">
+  <thead><tr><th style="text-align:left;font-size:12px">Indicateur</th>${saisons.map(s=>`<th style="font-size:12px;min-width:110px">${esc(s.titre)}</th>`).join('')}</tr></thead>
+  <tbody>${globalRows}${noteTableRows}</tbody>
+  </table></div>
+
+  ${CHOIX_QS.length?`<div class="card" style="margin-bottom:14px"><h3 style="margin-bottom:14px">Questions à choix multiples</h3>${choixBlocs}</div>`:''}
+  ${OUINON_QS.length?`<div class="card" style="margin-bottom:14px"><h3 style="margin-bottom:14px">Questions Oui / Non</h3>${ouiNonBlocs}</div>`:''}
+
+  ${allComments.length?`<div class="card" style="margin-bottom:14px">
+  <h3 style="margin-bottom:10px">Derniers commentaires libres</h3>
+  ${allComments.map(c=>`<div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">"${esc(c.texte)}"<span style="font-size:11px;color:var(--txt2);margin-left:8px">${esc(c.saison)}</span></div>`).join('')}
+  </div>`:''}`;
 }
 
 function vFeedbackDetail(camp){
@@ -5036,11 +5176,11 @@ function vFeedbackDetail(camp){
   const recs=D.feedbackRecipients.filter(r=>r.campaign_id===camp.id);
   const reps=D.feedbackResponses.filter(r=>r.campaign_id===camp.id);
   const taux=recs.length?Math.round(reps.length/recs.length*100):0;
-  let questions=[];
-  try{questions=camp.questions?JSON.parse(camp.questions):[];}catch(e){}
+  // Toujours utiliser les questions de référence pour l'affichage
+  const questions=FEEDBACK_QUESTIONS_REF;
   // Statistiques par question
   const stats=questions.map(q=>{
-    const vals=reps.map(r=>{try{const p=JSON.parse(r.reponses);return p[q.id];}catch(e){return null;}}).filter(v=>v!=null);
+    const vals=reps.map(r=>{try{const p=JSON.parse(r.reponses||'{}');return p[q.id]??null;}catch{return null;}}).filter(v=>v!=null);
     if(q.type==='note'){
       const avg=vals.length?vals.reduce((s,v)=>s+(+v),0)/vals.length:0;
       return{...q,vals,avg:avg.toFixed(1),count:vals.length};
@@ -5060,7 +5200,7 @@ function vFeedbackDetail(camp){
   const avgGlobale=noteGlobale.length?noteGlobale.reduce((s,r)=>s+(+r.note_globale),0)/noteGlobale.length:null;
   return`<div class="view-head">
   <div>
-  <div class="eyebrow">Feedback</div>
+  <div class="eyebrow">Feedback saison</div>
   <h2>${esc(camp.titre)}</h2>
   ${camp.description?`<p>${esc(camp.description)}</p>`:''}
   </div>
@@ -5176,25 +5316,16 @@ async function saveFeedbackCampaign(id){
   const g=n=>document.getElementById(n);
   const titre=g('fc-titre').value.trim();
   const description=g('fc-desc').value.trim();
-  const questionsRaw=g('fc-questions').value.trim();
   if(!titre)return alert('Le titre est obligatoire.');
-  let questions=[];
-  if(questionsRaw){
-    try{questions=JSON.parse(questionsRaw);}catch(e){return alert('Format JSON des questions invalide.\n'+e.message);}
-  }
-  const d={titre,description,questions:JSON.stringify(questions),updated_at:new Date().toISOString()};
+  // Les questions sont fixes (FEEDBACK_QUESTIONS_REF) — seuls titre et description sont modifiables.
+  const d={titre,description,updated_at:new Date().toISOString()};
   if(id){
     const {error}=await SB.from('feedback_campaigns').update(d).eq('id',id);
-    if(error)return alert('Erreur : '+error.message);
+    if(error)return alert('Erreur : '+error.message);
     const idx=D.feedbackCampaigns.findIndex(c=>c.id===id);
     if(idx>=0)D.feedbackCampaigns[idx]={...D.feedbackCampaigns[idx],...d};
-  }else{
-    const payload={...d,id:crypto.randomUUID(),statut:'brouillon',created_by:UI.currentUser?.id||null,created_at:new Date().toISOString()};
-    const {data,error}=await SB.from('feedback_campaigns').insert(payload).select().single();
-    if(error)return alert('Erreur : '+error.message);
-    D.feedbackCampaigns.unshift(data);
   }
-  closeModal();notify('success','Campagne enregistrée.','Feedback');render();
+  closeModal();notify('success','Campagne mise à jour.','Feedback');render();
 }
 
 async function saveFeedbackInvite(){
@@ -6030,16 +6161,14 @@ function renderModal(){
   }
 
   if(UI.modal==='feedback_campaign'){
-    const c=UI.editObj||{titre:'',description:'',questions:'[]'};
-    let questionsFormatted='';
-    try{questionsFormatted=JSON.stringify(JSON.parse(c.questions||'[]'),null,2);}catch(e){questionsFormatted=c.questions||'[]';}
-    html=`<div class="modal" style="max-width:620px"><h2>💬 ${UI.editObj?'Modifier la':'Nouvelle'} campagne</h2>
-    <div class="fg full"><label>Titre *</label><input id="fc-titre" value="${esc(c.titre||'')}" placeholder="Ex. Satisfaction fin de saison 2025-2026"></div>
-    <div class="fg full"><label>Description</label><textarea id="fc-desc" rows="2" placeholder="Décrivez l'objectif de cette enquête…">${esc(c.description||'')}</textarea></div>
-    <div class="fg full">
-    <label>Questions <span style="font-size:11px;font-weight:400;color:var(--txt2)">(JSON — chaque objet : id, texte, type: "texte"|"note"|"oui_non"|"choix", options?)</span></label>
-    <textarea id="fc-questions" rows="10" style="font-family:monospace;font-size:12px" placeholder='[\n  {"id":"q1","texte":"Comment évaluez-vous la saison ?","type":"note"},\n  {"id":"q2","texte":"Recommanderiez-vous le club ?","type":"oui_non"},\n  {"id":"q3","texte":"Vos commentaires libres","type":"texte"}\n]'>${esc(questionsFormatted)}</textarea>
-    </div>
+    // Le modal "Nouvelle campagne" n'est plus exposé (les campagnes sont auto).
+    // On le conserve uniquement pour la modification du titre/description
+    // d'une campagne existante si l'admin le souhaite.
+    const c=UI.editObj||{titre:'',description:''};
+    html=`<div class="modal" style="max-width:500px"><h2>💬 Modifier la campagne</h2>
+    <p style="font-size:13px;color:var(--txt2);margin-bottom:16px">Les questions sont fixes et définies dans le questionnaire de fin de saison. Seul le titre et la description sont modifiables ici.</p>
+    <div class="fg full"><label>Titre *</label><input id="fc-titre" value="${esc(c.titre||'')}" placeholder="Ex. Bilan saison 2025-2026"></div>
+    <div class="fg full"><label>Description</label><textarea id="fc-desc" rows="3" placeholder="Objectif ou contexte de cette campagne…">${esc(c.description||'')}</textarea></div>
     <div class="modal-act">
     <button class="btn" onclick="closeModal()">Annuler</button>
     <button class="btn primary" onclick="saveFeedbackCampaign('${c.id||''}')">Enregistrer</button>
