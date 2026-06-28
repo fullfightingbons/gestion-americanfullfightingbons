@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Ton avis — American Full Fighting Bons</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="/assets/styles.css">
+<style>
+  /* Styles propres à cette page publique — le reste vient de /assets/styles.css */
+  body{padding:24px 16px}
+  .fb-wrap{max-width:640px;margin:0 auto}
+  .fb-head{background:rgba(255,253,249,.97);border-radius:24px;padding:32px 28px;text-align:center;box-shadow:var(--shadow);margin-bottom:18px}
+  .fb-head .logo-wrap{width:72px;height:72px;margin:0 auto 14px;border-radius:20px}
+  .fb-head h1{font-family:"Oswald",sans-serif;font-size:26px;letter-spacing:.02em;margin-bottom:8px;color:var(--txt)}
+  .fb-head p{color:var(--txt2);font-size:13.5px;line-height:1.6}
+  .fb-card{background:var(--bg);border:1px solid var(--brd);border-radius:22px;padding:20px 22px;margin-bottom:14px;box-shadow:var(--shadow-sm)}
+  .fb-q-label{font-weight:600;font-size:14px;margin-bottom:12px;color:var(--txt)}
+  .fb-choices{display:flex;flex-wrap:wrap;gap:8px}
+  .fb-choice{position:relative}
+  .fb-choice input{position:absolute;opacity:0;pointer-events:none}
+  .fb-choice label{display:block;cursor:pointer;padding:9px 16px;border:1px solid var(--brd2);border-radius:999px;background:rgba(255,255,255,.7);font-size:13px;color:var(--txt);transition:all .15s;user-select:none}
+  .fb-choice input:checked + label{background:linear-gradient(135deg,var(--red),#8f2a20);color:#fff;border-color:var(--red-d)}
+  .fb-choice input:focus-visible + label{outline:2px solid var(--gold);outline-offset:2px}
+  .fb-note .fb-choice label{min-width:42px;text-align:center;font-family:"Oswald",sans-serif}
+  .fb-scale-labels{display:flex;justify-content:space-between;color:var(--txt2);font-size:11.5px;margin-top:6px}
+  .fb-submit-zone{text-align:center;padding:18px 0 8px}
+  .fb-status{margin-top:12px;font-size:13px}
+  .fb-status[data-state="error"]{color:var(--red-d)}
+  .fb-status[data-state="success"]{color:#1e7e34}
+  .fb-loading,.fb-error,.fb-done{text-align:center;padding:48px 20px;color:var(--txt2)}
+  .fb-done h2{font-family:"Oswald",sans-serif;color:var(--gold-d);font-size:24px;margin-bottom:10px}
+  .fb-hidden{display:none}
+</style>
+</head>
+<body>
+
+<div class="fb-wrap">
+  <div class="fb-head">
+    <div class="logo-wrap"><img src="/assets/Logo_1_nnoir_copie-removebg-preview.png" alt="Logo AFFBC" onerror="this.style.display='none'"></div>
+    <h1>Ton avis compte</h1>
+    <p>Quelques minutes pour nous aider à préparer la prochaine saison.</p>
+  </div>
+
+  <div id="fb-loading" class="fb-loading">Chargement du questionnaire…</div>
+  <div id="fb-error" class="fb-error fb-hidden"></div>
+  <div id="fb-done" class="fb-done fb-hidden">
+    <h2>Merci pour ce retour 🥊</h2>
+    <p>Ton avis va nous aider à préparer une belle saison prochaine.</p>
+  </div>
+
+  <form id="fb-form" class="fb-hidden"></form>
+</div>
+
+<script>
+(function(){
+  var params = new URLSearchParams(window.location.search);
+  var token = params.get('token') || '';
+
+  var elLoading = document.getElementById('fb-loading');
+  var elError = document.getElementById('fb-error');
+  var elDone = document.getElementById('fb-done');
+  var elForm = document.getElementById('fb-form');
+
+  function showError(msg){
+    elLoading.classList.add('fb-hidden');
+    elError.textContent = msg;
+    elError.classList.remove('fb-hidden');
+  }
+
+  if(!token){
+    showError('Lien invalide : aucun token fourni. Utilise le lien reçu par email.');
+    return;
+  }
+
+  fetch('/api/public/feedback?token=' + encodeURIComponent(token))
+    .then(function(r){ return r.json().then(function(body){ return {ok:r.ok, body:body}; }); })
+    .then(function(res){
+      if(!res.ok || res.body.error){
+        showError(res.body && res.body.error ? res.body.error : 'Impossible de charger le questionnaire.');
+        return;
+      }
+      var data = res.body.data;
+      if(data.recipient && data.recipient.alreadyResponded){
+        elLoading.classList.add('fb-hidden');
+        elDone.classList.remove('fb-hidden');
+        elDone.querySelector('p').textContent = 'Tu as déjà répondu à ce questionnaire — merci encore !';
+        return;
+      }
+      if(data.campaign && data.campaign.statut !== 'active'){
+        showError('Ce questionnaire n\'est plus ouvert aux réponses.');
+        return;
+      }
+      renderForm(data);
+    })
+    .catch(function(){ showError('Erreur de connexion. Réessaie dans un instant.'); });
+
+  function fieldBlock(innerHtml){
+    var div = document.createElement('div');
+    div.className = 'fb-card';
+    div.innerHTML = innerHtml;
+    return div;
+  }
+
+  function renderChoices(name, options, extraClass){
+    var html = '<div class="fb-choices' + (extraClass ? ' ' + extraClass : '') + '">';
+    options.forEach(function(opt, i){
+      var id = name + '-' + i;
+      html += '<span class="fb-choice"><input type="radio" name="' + name + '" id="' + id + '" value="' + escAttr(opt.value) + '">' +
+              '<label for="' + id + '">' + escHtml(opt.label) + '</label></span>';
+    });
+    html += '</div>';
+    return html;
+  }
+
+  function escHtml(s){ return String(s == null ? '' : s).replace(/[&<>]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; }); }
+  function escAttr(s){ return escHtml(s).replace(/"/g, '&quot;'); }
+
+  function renderForm(data){
+    var questions = Array.isArray(data.questions) ? data.questions : [];
+    var prenom = (data.recipient && data.recipient.prenom) || '';
+
+    var html = '';
+    if(data.campaign && data.campaign.description){
+      html += '<div class="fb-card"><p style="color:var(--txt2);font-size:13px">' + escHtml(data.campaign.description) + '</p></div>';
+    }
+
+    questions.forEach(function(q){
+      var label = '<div class="fb-q-label">' + escHtml(q.texte || '') + '</div>';
+      if(q.type === 'note'){
+        var opts = [1,2,3,4,5].map(function(n){ return {value:n, label:String(n)}; });
+        html += '<div class="fb-card fb-note">' + label + renderChoices('q_' + q.id, opts) +
+                '<div class="fb-scale-labels"><span>Pas convaincu</span><span>Excellent</span></div></div>';
+      } else if(q.type === 'oui_non'){
+        html += '<div class="fb-card">' + label + renderChoices('q_' + q.id, [{value:'oui',label:'Oui'},{value:'non',label:'Non'}]) + '</div>';
+      } else if(q.type === 'choix' && Array.isArray(q.options)){
+        var choiceOpts = q.options.map(function(o){ return {value:o, label:o}; });
+        html += '<div class="fb-card">' + label + renderChoices('q_' + q.id, choiceOpts, 'fb-cols-1') + '</div>';
+      } else {
+        html += '<div class="fb-card">' + label + '<textarea name="q_' + q.id + '" rows="3" placeholder="Ta réponse (facultatif)"></textarea></div>';
+      }
+    });
+
+    // Note globale + commentaire (colonnes dédiées de feedback_responses)
+    var globalOpts = [1,2,3,4,5].map(function(n){ return {value:n, label:String(n)}; });
+    html += '<div class="fb-card fb-note"><div class="fb-q-label">Au global, sur 5, comment notes-tu cette saison ?</div>' +
+            renderChoices('note_globale', globalOpts) +
+            '<div class="fb-scale-labels"><span>Pas convaincu</span><span>Excellent</span></div></div>';
+    html += '<div class="fb-card"><div class="fb-q-label">Un mot pour l\'équipe ? (facultatif)</div>' +
+            '<textarea name="commentaire" rows="3"></textarea></div>';
+
+    html += '<div class="fb-submit-zone"><button type="submit" class="btn primary" id="fb-submit-btn">Envoyer mon avis</button>' +
+            '<p id="fb-status" class="fb-status"></p></div>';
+
+    elForm.innerHTML = html;
+    elLoading.classList.add('fb-hidden');
+    elForm.classList.remove('fb-hidden');
+
+    elForm.addEventListener('submit', function(e){
+      e.preventDefault();
+      var submitBtn = document.getElementById('fb-submit-btn');
+      var statusEl = document.getElementById('fb-status');
+      submitBtn.disabled = true;
+      statusEl.textContent = 'Envoi en cours…';
+      statusEl.removeAttribute('data-state');
+
+      var formData = new FormData(elForm);
+      var reponses = {};
+      questions.forEach(function(q){
+        var v = formData.get('q_' + q.id);
+        if(v != null && v !== '') reponses[q.id] = v;
+      });
+      var payload = {
+        token: token,
+        reponses: reponses,
+        note_globale: formData.get('note_globale') || null,
+        commentaire: formData.get('commentaire') || ''
+      };
+
+      fetch('/api/public/feedback', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+      })
+        .then(function(r){ return r.json().then(function(body){ return {ok:r.ok, body:body}; }); })
+        .then(function(res){
+          if(!res.ok || res.body.error){
+            statusEl.textContent = 'Oups : ' + (res.body && res.body.error ? res.body.error : 'erreur inconnue') + '. Réessaie.';
+            statusEl.setAttribute('data-state', 'error');
+            submitBtn.disabled = false;
+            return;
+          }
+          elForm.classList.add('fb-hidden');
+          elDone.classList.remove('fb-hidden');
+          window.scrollTo({top:0, behavior:'smooth'});
+        })
+        .catch(function(){
+          statusEl.textContent = 'Erreur de connexion. Réessaie dans un instant.';
+          statusEl.setAttribute('data-state', 'error');
+          submitBtn.disabled = false;
+        });
+    });
+  }
+})();
+</script>
+</body>
+</html>
