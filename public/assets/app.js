@@ -5096,7 +5096,7 @@ function vFeedbackDetail(camp){
   <td style="font-size:12px">${esc(r.email)}</td>
   <td>${r.envoye?`<span class="badge bblue">${r.envoye_at?fd(r.envoye_at):'Oui'}</span>`:'<span class="badge bgray">Non</span>'}</td>
   <td>${r.repondu?`<span class="badge bok">${r.repondu_at?fd(r.repondu_at):'Oui'}</span>`:'<span class="badge bgray">Non</span>'}</td>
-  <td>${canWrite?`<button class="btn sm danger" onclick="delRecipient('${r.id}')">✕</button>`:''}</td>
+  <td style="white-space:nowrap">${!r.repondu?`<button class="btn sm" onclick="copyFeedbackLink('${r.id}')" title="Copier le lien du questionnaire pour le transmettre manuellement (SMS, WhatsApp…)">🔗 Copier le lien</button>`:''}${canWrite?`<button class="btn sm danger" style="margin-left:4px" onclick="delRecipient('${r.id}')">✕</button>`:''}</td>
   </tr>`).join('')}
   ${recs.length===0?`<tr><td colspan="5" class="empty">Aucun destinataire</td></tr>`:''}
   </tbody></table></div></div>`;
@@ -5137,6 +5137,19 @@ async function delRecipient(id){
   if(error)return notify('error','Erreur : '+error.message,'Feedback');
   D.feedbackRecipients=D.feedbackRecipients.filter(r=>r.id!==id);
   notify('success','Destinataire retiré.','Feedback');render();
+}
+
+async function copyFeedbackLink(recipientId){
+  const r=D.feedbackRecipients.find(x=>x.id===recipientId);
+  if(!r)return;
+  const link=`${window.location.origin}/feedback.html?token=${r.token}`;
+  try{
+    await navigator.clipboard.writeText(link);
+    notify('success','Lien copié — à transmettre par SMS, WhatsApp, etc.','Feedback');
+  }catch(e){
+    // Fallback si l'API clipboard est indisponible (contexte non sécurisé, permission refusée…)
+    window.prompt('Copiez ce lien :',link);
+  }
 }
 
 function ouvrirEnvoi(campaignId){

@@ -120,7 +120,6 @@
 
   function renderForm(data){
     var questions = Array.isArray(data.questions) ? data.questions : [];
-    var prenom = (data.recipient && data.recipient.prenom) || '';
 
     var html = '';
     if(data.campaign && data.campaign.description){

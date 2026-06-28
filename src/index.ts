@@ -483,11 +483,11 @@ function defaultEndOfSeasonQuestions(): Array<Record<string, unknown>> {
   ];
 }
 
-function feedbackInviteEmailHtml(opts: { prenom: string; seasonLabel: string; link: string }): string {
+function feedbackInviteEmailHtml(opts: { seasonLabel: string; link: string }): string {
   return `
   <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;">
     <h2 style="color:#b3001b;">On a besoin de ton avis 🥊</h2>
-    <p>Salut ${opts.prenom || ''},</p>
+    <p>Salut,</p>
     <p>La saison <strong>${opts.seasonLabel}</strong> se termine. Aide-nous à préparer la prochaine en répondant à ce questionnaire (5 minutes environ) :</p>
     <p style="text-align:center;margin:24px 0;">
       <a href="${opts.link}" style="background:#b3001b;color:#fff;padding:12px 24px;border-radius:4px;text-decoration:none;font-weight:bold;">Répondre au questionnaire</a>
@@ -567,19 +567,23 @@ async function triggerEndOfSeasonFeedback(
   // 4. Envoie l'invitation à tous les destinataires de cette campagne pas
   //    encore "envoye" (couvre à la fois les nouveaux et ceux qui auraient
   //    été ajoutés manuellement sans recevoir d'email).
+  //    On ne sélectionne ni nom ni prenom : l'email d'invitation reste
+  //    volontairement générique (cf. anonymat des réponses — inutile de
+  //    dépendre d'une colonne dont la présence sur feedback_recipients n'est
+  //    pas garantie sur tous les environnements).
   const { results: pending } = await env.DB
-    .prepare(`SELECT id, email, nom, prenom, token FROM feedback_recipients WHERE campaign_id = ? AND envoye = 0`)
+    .prepare(`SELECT id, email, token FROM feedback_recipients WHERE campaign_id = ? AND envoye = 0`)
     .bind(campaignId)
-    .all<{ id: string; email: string; nom: string; prenom: string; token: string }>();
+    .all<{ id: string; email: string; token: string }>();
 
   let sent = 0;
   let failed = 0;
   for (const recipient of pending || []) {
     const link = `${origin}/feedback.html?token=${recipient.token}`;
     const result = await sendBrevoEmail(env, {
-      to: [{ email: recipient.email, name: [recipient.prenom, recipient.nom].filter(Boolean).join(' ') }],
+      to: [{ email: recipient.email }],
       subject: `Ton avis sur la saison ${seasonLabel} — American Full Fighting Bons`,
-      html: feedbackInviteEmailHtml({ prenom: recipient.prenom, seasonLabel, link }),
+      html: feedbackInviteEmailHtml({ seasonLabel, link }),
     });
     if (result.ok) {
       await env.DB
@@ -610,9 +614,9 @@ async function handlePublicFeedbackGet(request: Request, env: Env): Promise<Resp
   if (!token) return err('Paramètre token manquant', 400);
 
   const recipient = await env.DB
-    .prepare(`SELECT id, campaign_id, nom, prenom, repondu FROM feedback_recipients WHERE token = ?`)
+    .prepare(`SELECT id, campaign_id, repondu FROM feedback_recipients WHERE token = ?`)
     .bind(token)
-    .first<{ id: string; campaign_id: string; nom: string; prenom: string; repondu: number }>();
+    .first<{ id: string; campaign_id: string; repondu: number }>();
   if (!recipient) return err('Lien invalide ou expiré', 404);
 
   const campaign = await env.DB
@@ -627,7 +631,7 @@ async function handlePublicFeedbackGet(request: Request, env: Env): Promise<Resp
   return json({
     data: {
       campaign: { titre: campaign.titre, description: campaign.description, statut: campaign.statut },
-      recipient: { nom: recipient.nom, prenom: recipient.prenom, alreadyResponded: !!recipient.repondu },
+      recipient: { alreadyResponded: !!recipient.repondu },
       questions,
     },
     error: null,
@@ -656,15 +660,20 @@ async function handlePublicFeedbackSubmit(request: Request, env: Env): Promise<R
 
   const noteGlobale = body.note_globale != null && body.note_globale !== ('' as unknown) ? Number(body.note_globale) : null;
 
+  // Anonymat réel : on enregistre la réponse SANS aucun lien traçable vers le
+  // destinataire (recipient_id = NULL). Le statut "a répondu" / la date de
+  // réponse sont mis à jour côté feedback_recipients séparément, pour
+  // permettre le suivi du taux de réponse et les relances — mais il est
+  // techniquement impossible, même pour un administrateur, de relier une
+  // réponse précise à la personne qui l'a soumise.
   await env.DB
     .prepare(
       `INSERT INTO feedback_responses (id, campaign_id, recipient_id, reponses, note_globale, commentaire, submitted_at)
-       VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`
+       VALUES (?, ?, NULL, ?, ?, ?, datetime('now'))`
     )
     .bind(
       crypto.randomUUID(),
       recipient.campaign_id,
-      recipient.id,
       JSON.stringify(body.reponses || {}),
       noteGlobale,
       body.commentaire || null
@@ -697,18 +706,18 @@ async function handleSendPendingInvites(request: Request, env: Env, origin: stri
   if (!campaign) return err('Campagne introuvable', 404);
 
   const { results: pending } = await env.DB
-    .prepare(`SELECT id, email, nom, prenom, token FROM feedback_recipients WHERE campaign_id = ? AND envoye = 0`)
+    .prepare(`SELECT id, email, token FROM feedback_recipients WHERE campaign_id = ? AND envoye = 0`)
     .bind(campaignId)
-    .all<{ id: string; email: string; nom: string; prenom: string; token: string }>();
+    .all<{ id: string; email: string; token: string }>();
 
   let sent = 0;
   let failed = 0;
   for (const recipient of pending || []) {
     const link = `${origin}/feedback.html?token=${recipient.token}`;
     const result = await sendBrevoEmail(env, {
-      to: [{ email: recipient.email, name: [recipient.prenom, recipient.nom].filter(Boolean).join(' ') }],
+      to: [{ email: recipient.email }],
       subject: `${campaign.titre} — American Full Fighting Bons`,
-      html: feedbackInviteEmailHtml({ prenom: recipient.prenom, seasonLabel: campaign.titre, link }),
+      html: feedbackInviteEmailHtml({ seasonLabel: campaign.titre, link }),
     });
     if (result.ok) {
       await env.DB

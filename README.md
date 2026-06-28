@@ -30,6 +30,23 @@ npm run seedLocalD1   # applique les migrations sur la base D1 locale
 npm run dev            # wrangler dev
 ```
 
+> ⚠️ **Piège connu — migrations feedback sur base vierge.** La séquence
+> `0010_feedback.sql` → `0013_feedback_completion.sql` → `0014_feedback_schema_align.sql`
+> encode l'historique organique réel de la production (tables `feedback_*`
+> créées manuellement hors-migration avant que 0010 n'existe, avec un schéma
+> divergent — voir les commentaires en tête de chacun de ces fichiers). Cette
+> séquence s'applique sans erreur sur la production, mais **`0014` échoue sur
+> une base totalement vierge** (`duplicate column name: titre`), car toutes
+> les colonnes qu'elle tente d'ajouter existent déjà à ce stade quand on
+> repart de zéro (créées directement par `0010`/`0013`).
+>
+> Ces migrations ne doivent **pas** être modifiées après coup (elles sont déjà
+> appliquées en prod). Si `seedLocalD1` échoue sur ce point précis lors d'un
+> premier seed local, la solution la plus simple est de retirer
+> temporairement `0014_feedback_schema_align.sql` du dossier `migrations/`
+> avant de lancer le seed local, puis de le restaurer ensuite (il ne sera de
+> toute façon jamais nécessaire sur une base qui démarre vierge).
+
 ## Déploiement
 
 ```bash
@@ -37,7 +54,7 @@ npm run check    # typecheck + dry-run
 npm run deploy    # wrangler deploy (applique aussi les migrations distantes)
 ```
 
-Le déploiement est piloté par `.github/workflows/deploy.yml` (CI GitHub Actions).
+Le déploiement est piloté par `.github/workflows/check.yml` (CI GitHub Actions : typecheck + build + tests, puis déploiement automatique sur push vers `main`).
 
 ## Tests
 
