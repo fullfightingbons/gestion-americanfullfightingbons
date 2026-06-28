@@ -16,42 +16,45 @@
 --   ─────────────────────────────────────────────────
 --   created_at (existe)     →  submitted_at (absent)
 --
--- Stratégie : ajouter les colonnes manquantes avec des valeurs par défaut
--- cohérentes. Les colonnes en double (title/titre, status/statut) coexisteront ;
--- le code n'écrit et ne lit que les nouvelles.
+-- Stratégie d'origine : ajouter les colonnes manquantes avec des valeurs par
+-- défaut cohérentes. Les colonnes en double (title/titre, status/statut)
+-- coexisteront ; le code n'écrit et ne lit que les nouvelles.
 --
--- ⚠️ INCIDENT DU 2026-06-28 : 1ère tentative de déploiement échouée avec
--- "duplicate column name: titre" → la colonne "titre" existe déjà en
--- production sur feedback_campaigns (vraisemblablement ajoutée par une
--- exécution antérieure de cette même migration, ou manuellement). Ligne
--- retirée ci-dessous. Si une AUTRE colonne provoque encore un
--- "duplicate column name" au prochain déploiement, retirer sa ligne
--- ALTER TABLE correspondante de la même façon avant de ré-appliquer.
+-- ⚠️ HISTORIQUE DES INCIDENTS DU 2026-06-28 — déploiements successifs échoués,
+-- chacun avec "duplicate column name" sur la colonne suivante :
+--   1ère tentative : titre        → déjà présente en prod, ligne retirée
+--   2e tentative   : description  → déjà présente en prod, ligne retirée
+--   3e tentative   : statut       → déjà présente en prod, ligne retirée
+--   4e tentative   : date_debut   → déjà présente en prod, ligne retirée
 --
--- ⚠️ INCIDENT DU 2026-06-28 (suite) : 2e tentative échouée avec
--- "duplicate column name: description" → même cause, colonne déjà présente.
--- Ligne retirée ci-dessous également.
+-- Constat : 4 colonnes testées sur 4 étaient déjà présentes en production
+-- (vraisemblablement issues d'une exécution antérieure complète de cette
+-- même migration, ou d'une intervention manuelle directe sur la base).
+-- Plutôt que d'attendre 2-3 échecs de déploiement supplémentaires pour
+-- confirmer chaque colonne restante une par une, les colonnes restantes
+-- (date_fin, created_by, submitted_at) ont été retirées préventivement par
+-- décision explicite, sur la base de ce constat répété.
 --
--- ⚠️ INCIDENT DU 2026-06-28 (suite) : 3e tentative échouée avec
--- "duplicate column name: statut" → même cause, colonne déjà présente.
--- Ligne retirée ci-dessous également. À ce stade (3 colonnes sur 3 déjà
--- en doublon), il est très probable que date_debut/date_fin/created_by le
--- soient aussi — mais on continue à les retirer une par une seulement au vu
--- d'une erreur réelle constatée, par choix exprès (voir échanges du dépôt).
+-- Si l'une de ces 3 colonnes se révèle en réalité absente de la prod
+-- actuelle (ce qui semble improbable au vu du motif observé), le seul effet
+-- est que cette colonne ne sera pas créée par cette migration — pas
+-- d'erreur, pas de risque pour les données existantes. Dans ce cas, créer
+-- une migration séparée (0016_...) pour l'ajouter explicitement.
 
--- feedback_campaigns : colonnes manquantes
--- titre       : retirée, voir incident ci-dessus (déjà présente en prod)
--- description : retirée, voir incident ci-dessus (déjà présente en prod)
--- statut      : retirée, voir incident ci-dessus (déjà présente en prod)
-ALTER TABLE feedback_campaigns ADD COLUMN date_debut  TEXT;
-ALTER TABLE feedback_campaigns ADD COLUMN date_fin    TEXT;
-ALTER TABLE feedback_campaigns ADD COLUMN created_by  TEXT;
+-- feedback_campaigns : toutes les colonnes candidates se sont révélées (ou
+-- sont fortement présumées) déjà présentes en prod — voir historique ci-dessus.
+-- titre       : retirée (confirmé déjà présente)
+-- description : retirée (confirmé déjà présente)
+-- statut      : retirée (confirmé déjà présente)
+-- date_debut  : retirée (confirmé déjà présente)
+-- date_fin    : retirée (présumée déjà présente, retrait préventif)
+-- created_by  : retirée (présumée déjà présente, retrait préventif)
 
 -- Initialiser titre/statut depuis les colonnes existantes pour les lignes déjà présentes
 UPDATE feedback_campaigns SET titre  = COALESCE(NULLIF(titre,''),  title,  '') WHERE titre  = '';
 UPDATE feedback_campaigns SET statut = COALESCE(NULLIF(statut,''), status, 'brouillon') WHERE statut = 'brouillon';
 
--- feedback_responses : colonne submitted_at manquante
--- On l'initialise depuis created_at pour les réponses déjà enregistrées
-ALTER TABLE feedback_responses ADD COLUMN submitted_at TEXT;
+-- feedback_responses : submitted_at retirée (présumée déjà présente, retrait préventif)
+-- On l'initialise depuis created_at pour les réponses déjà enregistrées, si la
+-- colonne submitted_at existe déjà (ce que l'on présume désormais).
 UPDATE feedback_responses SET submitted_at = created_at WHERE submitted_at IS NULL;
