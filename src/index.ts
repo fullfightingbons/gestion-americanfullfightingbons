@@ -467,20 +467,50 @@ async function sendBrevoEmail(
 // le champ `questions` étant du JSON libre interprété par le front
 // (types reconnus : "note" 1-5, "oui_non", "choix" avec `options`, "texte").
 function defaultEndOfSeasonQuestions(): Array<Record<string, unknown>> {
+  // Questionnaire de fin de saison — objectifs :
+  //   1. Évaluer la qualité des cours et de l'encadrement
+  //   2. Mesurer la satisfaction globale
+  //   3. Anticiper les réinscriptions
+  //   4. Recueillir des idées d'amélioration concrètes
   return [
-    { id: 'q_cours_qualite', texte: 'Qualité pédagogique des cours', type: 'note' },
-    { id: 'q_cours_niveau', texte: 'Le niveau des cours était...', type: 'choix', options: ['Trop facile', 'Bien adapté', 'Trop difficile'] },
-    { id: 'q_cours_variete', texte: 'Variété des séances (technique, cardio, sparring...)', type: 'note' },
-    { id: 'q_horaires', texte: 'Les horaires des créneaux te convenaient ?', type: 'oui_non' },
-    { id: 'q_coach_qualite', texte: "Qualité de l'encadrement", type: 'note' },
-    { id: 'q_coach_dispo', texte: 'Disponibilité et écoute des coachs', type: 'note' },
-    { id: 'q_ambiance', texte: 'Ambiance générale au club', type: 'note' },
-    { id: 'q_evenements', texte: 'As-tu participé aux événements du club (galas, stages, sorties) ?', type: 'oui_non' },
-    { id: 'q_equipements', texte: 'État des équipements et des locaux', type: 'note' },
-    { id: 'q_communication', texte: 'Clarté des infos et communication du club', type: 'note' },
-    { id: 'q_reinscription', texte: 'Penses-tu te réinscrire la saison prochaine ?', type: 'choix', options: ['Oui', 'Hésitant', 'Non'] },
-    { id: 'q_amelioration', texte: "Qu'est-ce qu'on pourrait améliorer pour la saison prochaine ?", type: 'texte' },
+    // ── Cours & pédagogie ─────────────────────────────────────────────────
+    { id: 'q_cours_qualite',  texte: 'Qualité pédagogique des cours',                                       type: 'note' },
+    { id: 'q_cours_variete',  texte: 'Variété des séances (technique, cardio, sparring, self-défense…)',    type: 'note' },
+    { id: 'q_cours_niveau',   texte: 'Le niveau des cours était adapté à ta progression ?',                 type: 'choix', options: ['Trop facile', 'Bien adapté', 'Trop difficile'] },
+    { id: 'q_horaires',       texte: 'Les horaires et créneaux te convenaient ?',                            type: 'oui_non' },
+    { id: 'q_horaires_manq',  texte: 'Un créneau te manquait ? Lequel ?',                                   type: 'texte' },
+    // ── Encadrement ──────────────────────────────────────────────────────
+    { id: 'q_coach_qualite',  texte: 'Qualité de l'encadrement (enseignement, corrections, suivi)',        type: 'note' },
+    { id: 'q_coach_dispo',    texte: 'Disponibilité et écoute des coachs en dehors des cours',              type: 'note' },
+    { id: 'q_securite',       texte: 'Tu t'es senti·e en sécurité pendant les entraînements ?',            type: 'oui_non' },
+    // ── Vie du club ───────────────────────────────────────────────────────
+    { id: 'q_ambiance',       texte: 'Ambiance générale et esprit du club',                                  type: 'note' },
+    { id: 'q_accueil',        texte: 'Qualité de l'accueil (nouveaux membres, retours de blessure…)',      type: 'note' },
+    { id: 'q_equipements',    texte: 'État des équipements et des locaux',                                   type: 'note' },
+    { id: 'q_communication',  texte: 'Clarté des informations et communication du club',                     type: 'note' },
+    { id: 'q_evenements',     texte: 'As-tu participé aux événements du club (galas, stages, compétitions, sorties) ?', type: 'oui_non' },
+    { id: 'q_evenements_sat', texte: 'Si oui, en as-tu été satisfait·e ?',                                  type: 'choix', options: ['Très satisfait·e', 'Satisfait·e', 'Déçu·e', 'N'a pas participé'] },
+    // ── Réinscription & suggestions ───────────────────────────────────────
+    { id: 'q_reinscription',  texte: 'Penses-tu te réinscrire la saison prochaine ?',                       type: 'choix', options: ['Oui', 'Probablement', 'Hésitant·e', 'Non'] },
+    { id: 'q_reinscription_non', texte: 'Si tu n'es pas sûr·e de te réinscrire, qu'est-ce qui t'en empêche ?', type: 'texte' },
+    { id: 'q_recommande',     texte: 'Recommanderais-tu le club à un proche ?',                             type: 'choix', options: ['Oui, sans hésitation', 'Oui, avec quelques réserves', 'Non'] },
+    { id: 'q_amelioration',   texte: 'Qu'est-ce qu'on pourrait améliorer pour la saison prochaine ?',    type: 'texte' },
   ];
+}
+
+function feedbackReminderEmailHtml(opts: { seasonLabel: string; link: string }): string {
+  return `
+  <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;">
+    <h2 style="color:#b3001b;">Rappel — ton avis compte 🥊</h2>
+    <p>Salut,</p>
+    <p>On t'a envoyé un questionnaire sur la saison <strong>${opts.seasonLabel}</strong> il y a quelques jours. Si tu n'as pas encore eu le temps d'y répondre, c'est encore possible !</p>
+    <p>Cela prend environ 5 minutes et tes retours sont précieux pour préparer la prochaine saison :</p>
+    <p style="text-align:center;margin:24px 0;">
+      <a href="${opts.link}" style="background:#b3001b;color:#fff;padding:12px 24px;border-radius:4px;text-decoration:none;font-weight:bold;">Répondre au questionnaire</a>
+    </p>
+    <p>Merci d'avance pour ton retour 👊</p>
+    <p>L'équipe AFFBC</p>
+  </div>`;
 }
 
 function feedbackInviteEmailHtml(opts: { seasonLabel: string; link: string }): string {
@@ -658,6 +688,19 @@ async function handlePublicFeedbackSubmit(request: Request, env: Env): Promise<R
     .first<{ statut: string }>();
   if (!campaign || campaign.statut !== 'active') return err('Cette campagne n\'accepte plus de réponses', 410);
 
+  // Validation : taille des champs texte libres
+  const MAX_TEXT = 2000;
+  if (body.commentaire && body.commentaire.length > MAX_TEXT) {
+    return err(`Le commentaire ne doit pas dépasser ${MAX_TEXT} caractères`, 400);
+  }
+  if (body.reponses) {
+    for (const [key, val] of Object.entries(body.reponses)) {
+      if (typeof val === 'string' && val.length > MAX_TEXT) {
+        return err(`La réponse à la question "${key}" ne doit pas dépasser ${MAX_TEXT} caractères`, 400);
+      }
+    }
+  }
+
   const noteGlobale = body.note_globale != null && body.note_globale !== ('' as unknown) ? Number(body.note_globale) : null;
 
   // Anonymat réel : on enregistre la réponse SANS aucun lien traçable vers le
@@ -732,6 +775,49 @@ async function handleSendPendingInvites(request: Request, env: Env, origin: stri
   }
 
   return json({ data: { sent, failed, total: (pending || []).length }, error: null });
+}
+
+async function handleSendReminder(request: Request, env: Env, origin: string): Promise<Response> {
+  const user = await getCurrentUserFromBearer(request, env);
+  if (!user) return err('Unauthorized', 401);
+  const rolePerms = await getRolePerms(env);
+  if (!dbHasPermission(user, 'perm_feedback', 'write', rolePerms)) return err('Permission refusée', 403);
+
+  let body: { campaign_id?: string };
+  try { body = await request.json(); } catch { return err('JSON invalide', 400); }
+  const campaignId = body?.campaign_id;
+  if (!campaignId) return err('Paramètre campaign_id manquant', 400);
+
+  const campaign = await env.DB
+    .prepare(`SELECT id, titre FROM feedback_campaigns WHERE id = ?`)
+    .bind(campaignId)
+    .first<{ id: string; titre: string }>();
+  if (!campaign) return err('Campagne introuvable', 404);
+
+  // Destinataires ayant reçu l'invitation mais n'ayant pas encore répondu
+  const { results: toRemind } = await env.DB
+    .prepare(`SELECT id, email, token FROM feedback_recipients WHERE campaign_id = ? AND envoye = 1 AND repondu = 0`)
+    .bind(campaignId)
+    .all<{ id: string; email: string; token: string }>();
+
+  let sent = 0;
+  let failed = 0;
+  for (const recipient of toRemind || []) {
+    const link = `${origin}/feedback.html?token=${recipient.token}`;
+    const result = await sendBrevoEmail(env, {
+      to: [{ email: recipient.email }],
+      subject: `Rappel — ton avis sur la saison nous manque ! (${campaign.titre})`,
+      html: feedbackReminderEmailHtml({ seasonLabel: campaign.titre, link }),
+    });
+    if (result.ok) {
+      sent++;
+    } else {
+      console.error('[feedback:reminder] échec relance à', recipient.email, result.error);
+      failed++;
+    }
+  }
+
+  return json({ data: { sent, failed, total: (toRemind || []).length }, error: null });
 }
 
 // NOTE : syncInscriptionsValidees(env) a été retirée le 2026-06-27. Elle
@@ -956,6 +1042,12 @@ export default {
     // triggerEndOfSeasonFeedback(), déclenché depuis handleDbApi.
     if (method === 'POST' && path === '/api/feedback/send-pending') {
       return await handleSendPendingInvites(request, env, url.origin);
+    }
+
+    // POST /api/feedback/send-reminder — relance les destinataires qui ont
+    // reçu l'invitation (envoye=1) mais n'ont pas encore répondu (repondu=0).
+    if (method === 'POST' && path === '/api/feedback/send-reminder') {
+      return await handleSendReminder(request, env, url.origin);
     }
 
     // POST /api/email/send — envoi d'email transactionnel via Brevo.

@@ -4971,19 +4971,32 @@ function genRecu(id){
 // Miroir de defaultEndOfSeasonQuestions() dans src/index.ts et de feedback.html.
 // Utilisées pour l'affichage des libellés dans les synthèses sans avoir à parser
 // le JSON stocké en base (qui peut varier selon la version de création).
+// Miroir exact de defaultEndOfSeasonQuestions() dans src/index.ts.
+// Utilisé pour l'affichage des libellés dans les synthèses quand les questions
+// réelles d'une campagne ne sont pas disponibles (rétrocompat).
 const FEEDBACK_QUESTIONS_REF=[
-  {id:'q_cours_qualite',  texte:'Qualité pédagogique des cours',                                          type:'note'},
-  {id:'q_cours_niveau',   texte:'Le niveau des cours était...',                                            type:'choix', options:['Trop facile','Bien adapté','Trop difficile']},
-  {id:'q_cours_variete',  texte:'Variété des séances (technique, cardio, sparring...)',                    type:'note'},
-  {id:'q_horaires',       texte:'Les horaires des créneaux te convenaient ?',                              type:'oui_non'},
-  {id:'q_coach_qualite',  texte:"Qualité de l'encadrement",                                               type:'note'},
-  {id:'q_coach_dispo',    texte:'Disponibilité et écoute des coachs',                                     type:'note'},
-  {id:'q_ambiance',       texte:'Ambiance générale au club',                                               type:'note'},
-  {id:'q_evenements',     texte:'As-tu participé aux événements du club (galas, stages, sorties) ?',      type:'oui_non'},
-  {id:'q_equipements',    texte:'État des équipements et des locaux',                                      type:'note'},
-  {id:'q_communication',  texte:'Clarté des infos et communication du club',                               type:'note'},
-  {id:'q_reinscription',  texte:'Penses-tu te réinscrire la saison prochaine ?',                          type:'choix', options:['Oui','Hésitant','Non']},
-  {id:'q_amelioration',   texte:"Qu'est-ce qu'on pourrait améliorer pour la saison prochaine ?",          type:'texte'},
+  // Cours & pédagogie
+  {id:'q_cours_qualite',     texte:'Qualité pédagogique des cours',                                                       type:'note'},
+  {id:'q_cours_variete',     texte:'Variété des séances (technique, cardio, sparring, self-défense…)',                    type:'note'},
+  {id:'q_cours_niveau',      texte:'Le niveau des cours était adapté à ta progression ?',                                 type:'choix', options:['Trop facile','Bien adapté','Trop difficile']},
+  {id:'q_horaires',          texte:'Les horaires et créneaux te convenaient ?',                                            type:'oui_non'},
+  {id:'q_horaires_manq',     texte:'Un créneau te manquait ? Lequel ?',                                                   type:'texte'},
+  // Encadrement
+  {id:'q_coach_qualite',     texte:"Qualité de l'encadrement (enseignement, corrections, suivi)",                         type:'note'},
+  {id:'q_coach_dispo',       texte:'Disponibilité et écoute des coachs en dehors des cours',                              type:'note'},
+  {id:'q_securite',          texte:"Tu t'es senti·e en sécurité pendant les entraînements ?",                             type:'oui_non'},
+  // Vie du club
+  {id:'q_ambiance',          texte:"Ambiance générale et esprit du club",                                                 type:'note'},
+  {id:'q_accueil',           texte:"Qualité de l'accueil (nouveaux membres, retours de blessure…)",                      type:'note'},
+  {id:'q_equipements',       texte:'État des équipements et des locaux',                                                  type:'note'},
+  {id:'q_communication',     texte:'Clarté des informations et communication du club',                                    type:'note'},
+  {id:'q_evenements',        texte:'As-tu participé aux événements du club (galas, stages, compétitions, sorties) ?',    type:'oui_non'},
+  {id:'q_evenements_sat',    texte:'Si oui, en as-tu été satisfait·e ?',                                                  type:'choix', options:['Très satisfait·e','Satisfait·e','Déçu·e',"N'a pas participé"]},
+  // Réinscription & suggestions
+  {id:'q_reinscription',     texte:'Penses-tu te réinscrire la saison prochaine ?',                                       type:'choix', options:['Oui','Probablement','Hésitant·e','Non']},
+  {id:'q_reinscription_non', texte:"Si tu n'es pas sûr·e de te réinscrire, qu'est-ce qui t'en empêche ?",               type:'texte'},
+  {id:'q_recommande',        texte:'Recommanderais-tu le club à un proche ?',                                             type:'choix', options:['Oui, sans hésitation','Oui, avec quelques réserves','Non']},
+  {id:'q_amelioration',      texte:"Qu'est-ce qu'on pourrait améliorer pour la saison prochaine ?",                      type:'texte'},
 ];
 
 function vFeedback(){
@@ -5176,8 +5189,10 @@ function vFeedbackDetail(camp){
   const recs=D.feedbackRecipients.filter(r=>r.campaign_id===camp.id);
   const reps=D.feedbackResponses.filter(r=>r.campaign_id===camp.id);
   const taux=recs.length?Math.round(reps.length/recs.length*100):0;
-  // Toujours utiliser les questions de référence pour l'affichage
-  const questions=FEEDBACK_QUESTIONS_REF;
+  // Utiliser les questions réelles de la campagne (stockées en JSON dans camp.questions),
+  // avec fallback sur FEEDBACK_QUESTIONS_REF pour rétrocompatibilité.
+  let questions=FEEDBACK_QUESTIONS_REF;
+  try{if(camp.questions){const q=JSON.parse(camp.questions);if(Array.isArray(q)&&q.length)questions=q;}}catch(e){}
   // Statistiques par question
   const stats=questions.map(q=>{
     const vals=reps.map(r=>{try{const p=JSON.parse(r.reponses||'{}');return p[q.id]??null;}catch{return null;}}).filter(v=>v!=null);
@@ -5206,7 +5221,7 @@ function vFeedbackDetail(camp){
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
   ${canWrite&&camp.statut==='brouillon'?`<button class="btn primary" onclick="activerCampagne('${camp.id}')">▶ Lancer la campagne</button>`:''}
-  ${canWrite&&camp.statut==='active'?`<button class="btn" onclick="ouvrirEnvoi('${camp.id}')">📨 Inviter des adhérents</button><button class="btn" onclick="envoyerInvitesEnAttente('${camp.id}')">📤 Envoyer les invitations en attente</button><button class="btn" onclick="cloturerCampagne('${camp.id}')">⏹ Clôturer</button>`:''}
+  ${canWrite&&camp.statut==='active'?(()=>{const nonRepondants=recs.filter(r=>r.envoye&&!r.repondu).length;return`<button class="btn" onclick="ouvrirEnvoi('${camp.id}')">📨 Inviter des adhérents</button><button class="btn" onclick="envoyerInvitesEnAttente('${camp.id}')">📤 Envoyer les invitations en attente</button>${nonRepondants?`<button class="btn bwarn" onclick="relancerNonRepondants('${camp.id}',${nonRepondants})">📣 Relancer (${nonRepondants})</button>`:''}<button class="btn" onclick="cloturerCampagne('${camp.id}')">⏹ Clôturer</button>`;})():''}
   <button class="btn" onclick="exportFeedbackCSV('${camp.id}')">⬇ Export CSV</button>
   <button class="btn" onclick="showST('feedback','liste')">← Retour</button>
   </div></div>
@@ -5219,10 +5234,10 @@ function vFeedbackDetail(camp){
   ${stats.length?`<div class="card" style="margin-bottom:14px"><h3 style="margin-bottom:14px">Résultats par question</h3>
   ${stats.map(q=>`<div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--border)">
   <div style="font-weight:500;margin-bottom:6px">${esc(q.texte)} <span style="font-size:11px;color:var(--txt2)">(${q.count} réponse${q.count>1?'s':''})</span></div>
-  ${q.type==='note'?`<div style="font-size:22px;font-weight:700;color:var(--primary)">${q.avg} / 5</div>`:
-    q.type==='oui_non'?`<div style="display:flex;gap:16px"><span class="badge bok">Oui : ${q.oui}</span><span class="badge bno">Non : ${q.non}</span></div>`:
-    q.type==='choix'&&q.choixCounts?`<div style="display:flex;gap:8px;flex-wrap:wrap">${Object.entries(q.choixCounts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<span class="badge bgray">${esc(k)} : ${v}</span>`).join('')}</div>`:
-    q.vals.length?`<ul style="margin:4px 0 0 16px;font-size:13px">${q.vals.slice(0,5).map(v=>`<li>${esc(String(v))}</li>`).join('')}${q.vals.length>5?`<li style="color:var(--txt2)">… et ${q.vals.length-5} autre(s)</li>`:''}</ul>`:'<span style="color:var(--txt2);font-size:12px">Aucune réponse</span>'}
+  ${q.type==='note'?(()=>{const pct=Math.round(q.avg/5*100);const col=q.avg>=4?'var(--green,#2d9948)':q.avg>=3?'var(--gold-d,#b8903a)':'var(--red,#b3001b)';return`<div style="display:flex;align-items:center;gap:10px"><div style="flex:1;height:10px;border-radius:5px;background:var(--border);overflow:hidden"><div style="height:100%;width:${pct}%;background:${col};border-radius:5px"></div></div><span style="font-size:18px;font-weight:700;color:${col};min-width:40px">${q.avg} / 5</span></div>`;})():
+    q.type==='oui_non'?(()=>{const pct=q.count?Math.round(q.oui/q.count*100):0;return`<div style="display:flex;align-items:center;gap:12px"><span class="badge bok">Oui : ${q.oui} (${pct}%)</span><span class="badge bno">Non : ${q.non} (${100-pct}%)</span></div>`;})():
+    q.type==='choix'&&q.choixCounts?`<div style="display:flex;gap:8px;flex-wrap:wrap">${Object.entries(q.choixCounts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<span class="badge bgray">${esc(k)} : ${v} (${q.count?Math.round(v/q.count*100):0}%)</span>`).join('')}</div>`:
+    q.vals.length?`<ul style="margin:4px 0 0 16px;font-size:13px">${q.vals.map(v=>`<li style="padding:2px 0">${esc(String(v))}</li>`).join('')}</ul>`:'<span style="color:var(--txt2);font-size:12px">Aucune réponse</span>'}
   </div>`).join('')}
   </div>`:''}
   ${reps.length?`<div class="card" style="margin-bottom:14px"><h3 style="margin-bottom:10px">Commentaires libres</h3>
@@ -5299,6 +5314,15 @@ async function copyFeedbackLink(recipientId){
 function ouvrirEnvoi(campaignId){
   UI.feedbackCampaignId=campaignId;
   openModal('feedback_invite');
+}
+
+async function relancerNonRepondants(campaignId, count){
+  if(!confirm(`Envoyer un email de rappel à ${count} destinataire(s) qui n'ont pas encore répondu ?`))return;
+  const {data,error}=await apiRequest('/feedback/send-reminder',{method:'POST',body:JSON.stringify({campaign_id:campaignId})});
+  if(error)return alert('Erreur : '+error.message);
+  await loadTabData('feedback',true);
+  notify('success',`${data.sent} rappel(s) envoyé(s)${data.failed?`, ${data.failed} échec(s)`:''}.`,'Feedback');
+  render();
 }
 
 async function envoyerInvitesEnAttente(campaignId){

@@ -80,18 +80,28 @@
         statut:'active'
       },
       questions:[
-        {id:'q_cours_qualite', texte:'Qualité pédagogique des cours',                                         type:'note'},
-        {id:'q_cours_niveau',  texte:'Le niveau des cours était...',                                           type:'choix', options:['Trop facile','Bien adapté','Trop difficile']},
-        {id:'q_cours_variete', texte:'Variété des séances (technique, cardio, sparring...)',                   type:'note'},
-        {id:'q_horaires',      texte:'Les horaires des créneaux te convenaient ?',                             type:'oui_non'},
-        {id:'q_coach_qualite', texte:"Qualité de l'encadrement",                                              type:'note'},
-        {id:'q_coach_dispo',   texte:'Disponibilité et écoute des coachs',                                    type:'note'},
-        {id:'q_ambiance',      texte:'Ambiance générale au club',                                             type:'note'},
-        {id:'q_evenements',    texte:'As-tu participé aux événements du club (galas, stages, sorties) ?',     type:'oui_non'},
-        {id:'q_equipements',   texte:'État des équipements et des locaux',                                    type:'note'},
-        {id:'q_communication', texte:'Clarté des infos et communication du club',                             type:'note'},
-        {id:'q_reinscription', texte:'Penses-tu te réinscrire la saison prochaine ?',                        type:'choix', options:['Oui','Hésitant','Non']},
-        {id:'q_amelioration',  texte:"Qu'est-ce qu'on pourrait améliorer pour la saison prochaine ?",        type:'texte'},
+        // Cours & pédagogie
+        {id:'q_cours_qualite',     texte:'Qualité pédagogique des cours',                                                      type:'note'},
+        {id:'q_cours_variete',     texte:'Variété des séances (technique, cardio, sparring, self-défense…)',                   type:'note'},
+        {id:'q_cours_niveau',      texte:'Le niveau des cours était adapté à ta progression ?',                                type:'choix', options:['Trop facile','Bien adapté','Trop difficile']},
+        {id:'q_horaires',          texte:'Les horaires et créneaux te convenaient ?',                                           type:'oui_non'},
+        {id:'q_horaires_manq',     texte:'Un créneau te manquait ? Lequel ?',                                                  type:'texte'},
+        // Encadrement
+        {id:'q_coach_qualite',     texte:"Qualité de l'encadrement (enseignement, corrections, suivi)",                        type:'note'},
+        {id:'q_coach_dispo',       texte:'Disponibilité et écoute des coachs en dehors des cours',                             type:'note'},
+        {id:'q_securite',          texte:"Tu t'es senti·e en sécurité pendant les entraînements ?",                            type:'oui_non'},
+        // Vie du club
+        {id:'q_ambiance',          texte:"Ambiance générale et esprit du club",                                                type:'note'},
+        {id:'q_accueil',           texte:"Qualité de l'accueil (nouveaux membres, retours de blessure…)",                     type:'note'},
+        {id:'q_equipements',       texte:'État des équipements et des locaux',                                                 type:'note'},
+        {id:'q_communication',     texte:'Clarté des informations et communication du club',                                   type:'note'},
+        {id:'q_evenements',        texte:'As-tu participé aux événements du club (galas, stages, compétitions, sorties) ?',   type:'oui_non'},
+        {id:'q_evenements_sat',    texte:"Si oui, en as-tu été satisfait·e ?",                                                 type:'choix', options:["Très satisfait·e","Satisfait·e","Déçu·e","N'a pas participé"]},
+        // Réinscription & suggestions
+        {id:'q_reinscription',     texte:'Penses-tu te réinscrire la saison prochaine ?',                                      type:'choix', options:['Oui','Probablement','Hésitant·e','Non']},
+        {id:'q_reinscription_non', texte:"Si tu n'es pas sûr·e de te réinscrire, qu'est-ce qui t'en empêche ?",              type:'texte'},
+        {id:'q_recommande',        texte:'Recommanderais-tu le club à un proche ?',                                            type:'choix', options:['Oui, sans hésitation','Oui, avec quelques réserves','Non']},
+        {id:'q_amelioration',      texte:"Qu'est-ce qu'on pourrait améliorer pour la saison prochaine ?",                     type:'texte'},
       ],
       recipient:{alreadyResponded:false}
     }, true);
@@ -172,7 +182,7 @@
         var choiceOpts = q.options.map(function(o){ return {value:o, label:o}; });
         html += '<div class="fb-card">' + label + renderChoices('q_' + q.id, choiceOpts, 'fb-cols-1') + '</div>';
       } else {
-        html += '<div class="fb-card">' + label + '<textarea name="q_' + q.id + '" rows="3" placeholder="Ta réponse (facultatif)"></textarea></div>';
+        html += '<div class="fb-card">' + label + '<textarea name="q_' + q.id + '" rows="3" maxlength="2000" placeholder="Ta réponse (facultatif) — 2000 caractères max."></textarea></div>';
       }
     });
 
@@ -182,7 +192,7 @@
             renderChoices('note_globale', globalOpts) +
             '<div class="fb-scale-labels"><span>Pas convaincu</span><span>Excellent</span></div></div>';
     html += '<div class="fb-card"><div class="fb-q-label">Un mot pour l\'équipe ? (facultatif)</div>' +
-            '<textarea name="commentaire" rows="3"></textarea></div>';
+            '<textarea name="commentaire" rows="3" maxlength="2000" placeholder="Un mot pour l\'équipe (facultatif) — 2000 caractères max."></textarea></div>';
 
     html += '<div class="fb-submit-zone"><button type="submit" class="btn primary" id="fb-submit-btn">Envoyer mon avis</button>' +
             '<p id="fb-status" class="fb-status"></p></div>';
@@ -202,6 +212,15 @@
       }
       var submitBtn = document.getElementById('fb-submit-btn');
       var statusEl = document.getElementById('fb-status');
+
+      // Validation minimale : la note globale est requise
+      var noteGlobaleVal = new FormData(elForm).get('note_globale');
+      if (!noteGlobaleVal) {
+        statusEl.textContent = 'Merci de donner au moins une note globale à la saison avant d\'envoyer.';
+        statusEl.setAttribute('data-state', 'error');
+        return;
+      }
+
       submitBtn.disabled = true;
       statusEl.textContent = 'Envoi en cours…';
       statusEl.removeAttribute('data-state');
