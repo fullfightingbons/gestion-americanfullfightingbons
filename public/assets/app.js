@@ -413,7 +413,7 @@ function markLoaded(key,value=true){
 }
 
 function resetLoadedData(){
-  D.loaded={core:false,dashboard:false,adherents:false,banque:false,comptabilite:false,achat:false,facture:false,administration:false};
+  D.loaded={core:false,dashboard:false,adherents:false,banque:false,comptabilite:false,achat:false,facture:false,administration:false,diplomesArchive:false,feedback:false};
   D.loading={};
 }
 
@@ -6465,7 +6465,8 @@ async function validerAchat(id){
   const commentaire=window.prompt(`Valider ${nom} ?\n\nCommentaire de validation (facultatif) :`);
   if(commentaire===null) return; // annulé
   const notes=(achat?.notes?achat.notes+'\n':'')+(commentaire?`[Validé le ${td()} par ${UI.currentUser?.prenom||'?'} : ${commentaire}]`:`[Validé le ${td()} par ${UI.currentUser?.prenom||'?'}]`);
-  await SB.from('achats').update({statut:'valide',notes,updated_at:new Date().toISOString()}).eq('id',id);
+  const {error:valErr}=await SB.from('achats').update({statut:'valide',notes,updated_at:new Date().toISOString()}).eq('id',id);
+  if(valErr) return alert('Erreur lors de la validation : '+valErr.message);
   if(achat){
     achat.statut='valide';
     achat.notes=notes;
@@ -6562,8 +6563,8 @@ async function finalizeExoClose(id){
     try{
       await deleteJournalPiecePrefix(prefix);
       await insertJournalRows([
-        {date_op:exo.date_fin||td(),piece:`${prefix}-RES1`,compte:diag.resultat>=0?'1200 - Résultat de l exercice excédent':'1290 - Résultat de l exercice déficit',libelle:`Clôture résultat - ${exo.libelle}`,debit:diag.resultat>=0?Math.abs(diag.resultat):0,credit:diag.resultat<0?Math.abs(diag.resultat):0,exercice_id:exo.id},
-                              {date_op:exo.date_fin||td(),piece:`${prefix}-RES2`,compte:'1060 - Réserves',libelle:`Affectation résultat - ${exo.libelle}`,debit:diag.resultat<0?Math.abs(diag.resultat):0,credit:diag.resultat>=0?Math.abs(diag.resultat):0,exercice_id:exo.id}
+        {id:crypto.randomUUID(),date_op:exo.date_fin||td(),piece:`${prefix}-RES1`,compte:diag.resultat>=0?'1200 - Résultat de l exercice excédent':'1290 - Résultat de l exercice déficit',libelle:`Clôture résultat - ${exo.libelle}`,debit:diag.resultat>=0?Math.abs(diag.resultat):0,credit:diag.resultat<0?Math.abs(diag.resultat):0,exercice_id:exo.id,created_at:new Date().toISOString()},
+                              {id:crypto.randomUUID(),date_op:exo.date_fin||td(),piece:`${prefix}-RES2`,compte:'1060 - Réserves',libelle:`Affectation résultat - ${exo.libelle}`,debit:diag.resultat<0?Math.abs(diag.resultat):0,credit:diag.resultat>=0?Math.abs(diag.resultat):0,exercice_id:exo.id,created_at:new Date().toISOString()}
       ]);
     }catch(error){
       return alert('Erreur lors du report du résultat : '+error.message);
@@ -6588,7 +6589,8 @@ async function saveClub(){
   if(!requireWritePerm('perm_administration')) return;
   const g=n=>document.getElementById(n)?.value||'';
   const ups=[{cle:'nom',valeur:g('ci-nom')},{cle:'adresse',valeur:g('ci-adr')},{cle:'telephone',valeur:g('ci-tel')},{cle:'email',valeur:g('ci-email')},{cle:'siret',valeur:g('ci-siret')},{cle:'ape',valeur:g('ci-ape')}];
-  await SB.from('club_info').upsert(ups,{onConflict:'cle'});
+  const {error:clubErr}=await SB.from('club_info').upsert(ups,{onConflict:'cle'});
+  if(clubErr) return alert('Erreur lors de la sauvegarde : '+clubErr.message);
   ups.forEach(u=>D.clubInfo[u.cle]=u.valeur);
   document.getElementById('hdr-nom').textContent=D.clubInfo.nom;
   alert('Infos club sauvegardées !');
@@ -7308,7 +7310,8 @@ async function toutRappr(){
   const ids=D.comptes.flatMap(c=>(c.transactions||[]).filter(t=>!t.rapproche).map(t=>t.id));
   if(!ids.length) return;
   if(!confirm(`Rapprocher les ${ids.length} transaction(s) restantes sans vérification ?`)) return;
-  await SB.from('transactions').update({rapproche:true}).in('id',ids);
+  const {error}=await SB.from('transactions').update({rapproche:true}).in('id',ids);
+  if(error) return notify('error','Erreur lors du rapprochement groupé : '+error.message,'Rapprochement');
   D.comptes.forEach(c=>(c.transactions||[]).forEach(t=>{t.rapproche=true}));
   notify('success', `${ids.length} transaction(s) rapprochées.`, 'Rapprochement');
   render();
