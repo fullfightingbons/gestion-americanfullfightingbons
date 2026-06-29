@@ -2217,7 +2217,7 @@ function vAdh(){
     const docs=getAdherentDocuments(a.id);
     return `<tr class="${adhStatus(a)==='expire'?'adh-expire':adhStatus(a)==='soon'?'adh-soon':'adh-valid'}">
     ${canWrite?`<td><input type="checkbox" style="width:auto" ${UI.adhSelected[a.id]?'checked':''} onchange="toggleAdhSelect('${a.id}')"></td>`:''}
-    <td><strong style="font-weight:500">${a.nom} ${a.prenom}</strong>${a.ville?`<br><span style="font-size:10px;color:var(--txt2)">${a.ville}</span>`:''}</td>
+    <td><strong style="font-weight:500">${esc(a.nom)} ${esc(a.prenom)}</strong>${a.ville?`<br><span style="font-size:10px;color:var(--txt2)">${esc(a.ville)}</span>`:''}</td>
     <td><span class="badge bgray">${a.discipline||'Club'}</span></td>
     <td>${bdg(a.certificat)}</td><td>${bdg(a.droit_image)}</td>
     <td>${bdg(a.pass_region)}${+a.montant_pass_region>0?` <span style="font-size:11px;color:var(--gold-d)">+${(+a.montant_pass_region).toFixed(0)}€</span>`:''}</td>
@@ -2948,7 +2948,7 @@ function vDiplomes(){
   <div class="fg" style="margin-bottom:12px">
   <label>Adhérent</label>
   <select onchange="UI.diplome.adherentId=this.value;render()">
-  ${adhList.map(a=>`<option value="${a.id}" ${UI.diplome.adherentId===a.id?'selected':''}>${a.nom} ${a.prenom}${a.couleur_ceinture?` — ${a.couleur_ceinture}`:''}</option>`).join('')}
+  ${adhList.map(a=>`<option value="${a.id}" ${UI.diplome.adherentId===a.id?'selected':''}>${esc(a.nom)} ${esc(a.prenom)}${a.couleur_ceinture?` — ${esc(a.couleur_ceinture)}`:''}</option>`).join('')}
   </select>
   </div>
   <div class="g2">
@@ -4556,7 +4556,7 @@ function vFacListe(){
     const tot=(f.lignes||[]).reduce((s,l)=>s+(+l.qte||0)*(+l.pu||0),0);
     return`<tr>
     <td><strong style="font-weight:500">${f.numero}</strong></td>
-    <td>${fd(f.date_op)}</td><td>${f.destinataire||''}</td><td>${f.objet||''}</td>
+    <td>${fd(f.date_op)}</td><td>${esc(f.destinataire||'')}</td><td>${esc(f.objet||'')}</td>
     <td><strong>${tot.toFixed(2)} €</strong></td>
     <td><span class="badge ${factureStatusBadge(f.statut)}">${f.statut}</span>${f.statut==='Payée'&&f.date_paiement?`<br><span style="font-size:10px;color:var(--txt2)">le ${fd(f.date_paiement)}</span>`:''}</td>
     <td style="white-space:nowrap">
@@ -4591,8 +4591,8 @@ function vDonListe(){
     return`<tr>
     <td><strong style="font-weight:500">${f.numero}</strong></td>
     <td>${fd(f.date_op)}</td>
-    <td>${f.destinataire||''}</td>
-    <td>${f.objet||''}</td>
+    <td>${esc(f.destinataire||'')}</td>
+    <td>${esc(f.objet||'')}</td>
     <td><strong>${tot.toFixed(2)} €</strong></td>
     <td style="white-space:nowrap">
     ${canWrite?`<button class="btn sm" onclick="loadDon('${f.id}')">Modifier</button>`:''}
@@ -4615,20 +4615,20 @@ function vFacEditor(){
   <div>
   <p class="stit" style="margin-top:0">${meta.infoTitle}</p>
   <div style="display:flex;flex-direction:column;gap:10px">
-  <div class="fg"><label>${meta.numberLabel}</label><input id="inv-num" value="${inv.numero}" oninput="UI.invState.numero=this.value;updPrev()"></div>
-  <div class="fg"><label>Date</label><input id="inv-date" type="date" value="${inv.date}" oninput="UI.invState.date=this.value;updPrev()"></div>
+  <div class="fg"><label>${meta.numberLabel}</label><input id="inv-num" value="${esc(inv.numero)}" oninput="UI.invState.numero=this.value;updPrev()"></div>
+  <div class="fg"><label>Date</label><input id="inv-date" type="date" value="${esc(inv.date)}" oninput="UI.invState.date=this.value;updPrev()"></div>
   <div class="fg"><label>${meta.partyLabel}</label>
-  <input id="inv-dest" value="${inv.destinataire}" list="adh-dl" oninput="UI.invState.destinataire=this.value;updPrev()">
-  <datalist id="adh-dl">${D.adherents.map(a=>`<option value="${a.nom} ${a.prenom}">`).join('')}</datalist>
+  <input id="inv-dest" value="${esc(inv.destinataire)}" list="adh-dl" oninput="UI.invState.destinataire=this.value;updPrev()">
+  <datalist id="adh-dl">${D.adherents.map(a=>`<option value="${esc(a.nom)} ${esc(a.prenom)}">`).join('')}</datalist>
   </div>
-  <div class="fg"><label>${meta.addressLabel}</label><textarea id="inv-addr" rows="2" style="resize:vertical" oninput="UI.invState.adresse=this.value;updPrev()">${inv.adresse}</textarea></div>
-  <div class="fg"><label>Objet</label><input id="inv-objet" value="${inv.objet}" oninput="UI.invState.objet=this.value;updPrev()"></div>
+  <div class="fg"><label>${meta.addressLabel}</label><textarea id="inv-addr" rows="2" style="resize:vertical" oninput="UI.invState.adresse=this.value;updPrev()">${esc(inv.adresse)}</textarea></div>
+  <div class="fg"><label>Objet</label><input id="inv-objet" value="${esc(inv.objet)}" oninput="UI.invState.objet=this.value;updPrev()"></div>
   </div>
   <p class="stit">Lignes</p>
   <div id="lgwrap">${renderLignes()}</div>
   <button class="btn sm" onclick="addL()">+ Ligne</button>
   <p class="stit">Notes</p>
-  <textarea id="inv-notes" rows="2" style="resize:vertical;margin-bottom:12px" oninput="UI.invState.notes=this.value;updPrev()">${inv.notes}</textarea>
+  <textarea id="inv-notes" rows="2" style="resize:vertical;margin-bottom:12px" oninput="UI.invState.notes=this.value;updPrev()">${esc(inv.notes)}</textarea>
   <div style="display:flex;gap:8px">
   <button class="btn primary" onclick="saveFac()">${meta.saveLabel}</button>
   <button class="btn gold" onclick="printFacEditor()">🖨 Imprimer</button>
@@ -4643,7 +4643,7 @@ function vFacEditor(){
 
 function renderLignes(){
   return UI.invState.lignes.map((l,i)=>`<div style="display:grid;grid-template-columns:1fr 55px 80px 24px;gap:6px;margin-bottom:6px;align-items:center">
-  <input placeholder="Description" value="${l.desc}" oninput="updL(${i},'desc',this.value)">
+  <input placeholder="Description" value="${esc(l.desc)}" oninput="updL(${i},'desc',this.value)">
   <input type="number" placeholder="Qté" value="${l.qte}" min="1" oninput="updL(${i},'qte',+this.value)">
   <input type="number" placeholder="P.U." value="${l.pu}" min="0" step="0.01" oninput="updL(${i},'pu',+this.value)">
   <button class="btn sm danger" onclick="rmL(${i})" style="padding:4px 6px">✕</button>
@@ -4689,22 +4689,22 @@ function buildFacHTML(f){
   <div style="background:#111;padding:16px 20px;display:flex;justify-content:space-between;align-items:center">
   <div style="display:flex;align-items:center;gap:10px">
   <div style="width:44px;height:44px;border-radius:50%;overflow:hidden;border:2px solid #D4AC0D;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0">${logo}</div>
-  <div><div style="color:#fff;font-size:12px;font-weight:500">${clubName}</div><div style="color:#aaa;font-size:10px;line-height:1.6">${ci.adresse||''}<br>${ci.email||''}</div></div>
+  <div><div style="color:#fff;font-size:12px;font-weight:500">${esc(clubName)}</div><div style="color:#aaa;font-size:10px;line-height:1.6">${esc(ci.adresse||'')}<br>${esc(ci.email||'')}</div></div>
   </div>
   <div style="text-align:right">
   <div style="color:#D4AC0D;font-size:15px;font-weight:500">${meta.docTitle}</div>
-  <div style="color:#fff;font-size:11px;margin-top:2px">${f.numero||'—'}</div>
+  <div style="color:#fff;font-size:11px;margin-top:2px">${esc(f.numero||'—')}</div>
   <div style="color:#888;font-size:10px">${fd(f.date||f.date_op)}</div>
   </div>
   </div>
   <div style="padding:16px 20px">
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
   <div><div style="font-size:9px;font-weight:500;color:#888;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Émetteur</div>
-  <p style="font-size:11px;line-height:1.6">${clubName}<br>${ci.adresse||''}<br>SIRET : ${clubSiret}</p></div>
+  <p style="font-size:11px;line-height:1.6">${esc(clubName)}<br>${esc(ci.adresse||'')}<br>SIRET : ${esc(clubSiret)}</p></div>
   <div><div style="font-size:9px;font-weight:500;color:#888;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">${meta.partyLabel}</div>
-  <p style="font-size:11px;line-height:1.6">${f.destinataire||'—'}<br>${(f.adresse||'').replace(/\n/g,'<br>')}</p></div>
+  <p style="font-size:11px;line-height:1.6">${esc(f.destinataire||'—')}<br>${esc(f.adresse||'').replace(/\n/g,'<br>')}</p></div>
   </div>
-  ${f.objet?`<p style="font-size:10px;color:#888;margin-bottom:10px;padding:5px 8px;background:#f5f5f5;border-radius:4px;border-left:3px solid #111">Objet : ${f.objet}</p>`:''}
+  ${f.objet?`<p style="font-size:10px;color:#888;margin-bottom:10px;padding:5px 8px;background:#f5f5f5;border-radius:4px;border-left:3px solid #111">Objet : ${esc(f.objet)}</p>`:''}
   <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:10px">
   <thead><tr style="background:#111;color:#fff">
   <th style="padding:5px 8px;text-align:left;font-weight:500">Désignation</th>
@@ -4713,7 +4713,7 @@ function buildFacHTML(f){
   <th style="padding:5px 8px;text-align:right;font-weight:500">Total</th>
   </tr></thead>
   <tbody>${(f.lignes||[]).map((l,i)=>`<tr style="background:${i%2===0?'#fff':'#fafafa'}">
-  <td style="padding:5px 8px;border-bottom:.5px solid #eee">${l.desc||'—'}</td>
+  <td style="padding:5px 8px;border-bottom:.5px solid #eee">${esc(l.desc||'—')}</td>
   <td style="padding:5px 8px;border-bottom:.5px solid #eee;text-align:right">${l.qte}</td>
   <td style="padding:5px 8px;border-bottom:.5px solid #eee;text-align:right">${(+l.pu).toFixed(2)} €</td>
   <td style="padding:5px 8px;border-bottom:.5px solid #eee;text-align:right;font-weight:500">${((+l.qte)*(+l.pu)).toFixed(2)} €</td>
@@ -4734,9 +4734,9 @@ function buildFacHTML(f){
     </div>
     </div>
     ${isDon?`<p style="font-size:10px;color:#666;margin-top:10px;padding:8px 10px;background:#f8f6f1;border-left:3px solid #D4AC0D;border-radius:4px">Réduction d'impôt indicative pour un particulier : <strong>${deductible.toFixed(2)} €</strong>, soit 66 % du montant versé.</p>`:''}
-    ${f.notes?`<p style="font-size:10px;color:#888;margin-top:10px;padding-top:8px;border-top:.5px solid #eee">${f.notes}</p>`:''}
+    ${f.notes?`<p style="font-size:10px;color:#888;margin-top:10px;padding-top:8px;border-top:.5px solid #eee">${esc(f.notes)}</p>`:''}
     </div>
-    <div style="background:#111;padding:7px 20px;font-size:9px;color:#888;text-align:center">${clubName} — SIRET ${clubSiret} — Association loi 1901 — TVA non applicable, art. 261-7-1°b CGI</div>
+    <div style="background:#111;padding:7px 20px;font-size:9px;color:#888;text-align:center">${esc(clubName)} — SIRET ${esc(clubSiret)} — Association loi 1901 — TVA non applicable, art. 261-7-1°b CGI</div>
     </div>`;
 }
 
@@ -5891,17 +5891,17 @@ function renderModal(){
     const signupDocs=getAdherentDocuments(a.id);
     html=`<div class="modal" style="max-width:720px"><h2>👥 ${UI.editObj?'Modifier':'Nouvel'} adhérent</h2>
     <div class="g2">
-    <div class="fg"><label>Nom</label><input id="f-nom" value="${a.nom}"></div>
-    <div class="fg"><label>Prénom</label><input id="f-prn" value="${a.prenom}"></div>
-    <div class="fg"><label>Date de naissance</label><input id="f-nai" type="date" value="${a.naissance||''}"></div>
+    <div class="fg"><label>Nom</label><input id="f-nom" value="${esc(a.nom)}"></div>
+    <div class="fg"><label>Prénom</label><input id="f-prn" value="${esc(a.prenom)}"></div>
+    <div class="fg"><label>Date de naissance</label><input id="f-nai" type="date" value="${esc(a.naissance||'')}"></div>
     <div class="fg"><label>Type adhésion</label><select id="f-dis" onchange="onAdhTypeChange(this.value)">${ADH_TYPES.map(d=>`<option ${a.discipline===d?'selected':''}>${d}</option>`).join('')}</select></div>
-    <div class="fg"><label>Couleur de ceinture</label><select id="f-cei"><option value="">—</option>${CEINTURE_COLORS.map(c=>`<option value="${c}" ${a.couleur_ceinture===c?'selected':''}>${c}</option>`).join('')}${a.couleur_ceinture&&!CEINTURE_COLORS.includes(a.couleur_ceinture)?`<option value="${a.couleur_ceinture}" selected>${a.couleur_ceinture}</option>`:''}</select></div>
-    <div class="fg"><label>Numéro de licence</label><input id="f-lic" value="${a.numero_licence||''}" placeholder="Ex. 12345678"></div>
-    <div class="fg"><label>Email</label><input id="f-eml" value="${a.email||''}"></div>
-    <div class="fg"><label>Téléphone</label><input id="f-tel" value="${a.telephone||''}"></div>
-    <div class="fg full"><label>Adresse</label><input id="f-adr" value="${a.adresse||''}"></div>
-    <div class="fg"><label>Code postal</label><input id="f-cp" value="${a.code_postal||''}"></div>
-    <div class="fg"><label>Ville</label><input id="f-vil" value="${a.ville||''}"></div>
+    <div class="fg"><label>Couleur de ceinture</label><select id="f-cei"><option value="">—</option>${CEINTURE_COLORS.map(c=>`<option value="${c}" ${a.couleur_ceinture===c?'selected':''}>${c}</option>`).join('')}${a.couleur_ceinture&&!CEINTURE_COLORS.includes(a.couleur_ceinture)?`<option value="${esc(a.couleur_ceinture)}" selected>${esc(a.couleur_ceinture)}</option>`:''}</select></div>
+    <div class="fg"><label>Numéro de licence</label><input id="f-lic" value="${esc(a.numero_licence||'')}" placeholder="Ex. 12345678"></div>
+    <div class="fg"><label>Email</label><input id="f-eml" value="${esc(a.email||'')}"></div>
+    <div class="fg"><label>Téléphone</label><input id="f-tel" value="${esc(a.telephone||'')}"></div>
+    <div class="fg full"><label>Adresse</label><input id="f-adr" value="${esc(a.adresse||'')}"></div>
+    <div class="fg"><label>Code postal</label><input id="f-cp" value="${esc(a.code_postal||'')}"></div>
+    <div class="fg"><label>Ville</label><input id="f-vil" value="${esc(a.ville||'')}"></div>
     <div class="fg full" style="background:var(--bg2);padding:10px;border-radius:var(--r)">
     <p style="font-size:12px;font-weight:500;margin-bottom:8px">Documents administratifs</p>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
@@ -5928,16 +5928,16 @@ function renderModal(){
     <div class="fg full" style="background:var(--bg2);padding:10px;border-radius:var(--r)">
     <p style="font-size:12px;font-weight:500;margin-bottom:8px">Personne à prévenir en cas d'urgence</p>
     <div class="g3">
-    <div class="fg"><label>Nom</label><input id="f-urn" value="${a.urgence_nom||''}"></div>
-    <div class="fg"><label>Téléphone</label><input id="f-urt" value="${a.urgence_telephone||''}"></div>
-    <div class="fg"><label>Lien (parent, conjoint...)</label><input id="f-url" value="${a.urgence_lien||''}"></div>
+    <div class="fg"><label>Nom</label><input id="f-urn" value="${esc(a.urgence_nom||'')}"></div>
+    <div class="fg"><label>Téléphone</label><input id="f-urt" value="${esc(a.urgence_telephone||'')}"></div>
+    <div class="fg"><label>Lien (parent, conjoint...)</label><input id="f-url" value="${esc(a.urgence_lien||'')}"></div>
     </div>
     </div>
     <div class="fg full" style="background:var(--bg2);padding:10px;border-radius:var(--r)">
     <p style="font-size:12px;font-weight:500;margin-bottom:8px">Document PDF adhérent</p>
     ${a.id?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <button class="btn sm" onclick="trigPDF('adherents','${a.id}')">${a.pdf_public_url?'Remplacer le PDF':'Téléverser un PDF'}</button>
-      ${a.pdf_public_url?`<a class="btn sm" href="${a.pdf_public_url}" target="_blank">Ouvrir</a><span style="font-size:12px;color:var(--txt2)">${a.pdf_nom_fichier||'document.pdf'}</span>`:`<span style="font-size:12px;color:var(--txt2)">Aucun fichier stocké</span>`}
+      ${a.pdf_public_url?`<a class="btn sm" href="${a.pdf_public_url}" target="_blank">Ouvrir</a><span style="font-size:12px;color:var(--txt2)">${esc(a.pdf_nom_fichier||'document.pdf')}</span>`:`<span style="font-size:12px;color:var(--txt2)">Aucun fichier stocké</span>`}
       </div>`:`<p style="font-size:12px;color:var(--txt2)">Enregistrez d'abord l'adhérent, puis ajoutez son PDF.</p>`}
       </div>
       <div class="fg full" style="background:var(--bg2);padding:10px;border-radius:var(--r)">
