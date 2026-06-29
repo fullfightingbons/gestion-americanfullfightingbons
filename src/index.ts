@@ -838,8 +838,7 @@ async function handleSendReminder(request: Request, env: Env, origin: string): P
 
 // ─── Handler principal ───────────────────────────────────────────────────────
 
-export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
     const method = request.method.toUpperCase();
@@ -1257,5 +1256,41 @@ if (path.startsWith("/api/") && !publicApiRoutes.has(path)) {
 }
 
 return new Response('Not Found', { status: 404 });
-    },
+}
+
+/**
+ * En-têtes de sécurité HTTP appliqués à TOUTE réponse (API, assets statiques,
+ * erreurs). Jusqu'ici ce Worker n'en envoyait aucun, contrairement aux
+ * autres Workers du projet (boutique/calendrier/inscription en ont déjà
+ * une partie) — défense en profondeur, notamment utile en complément de
+ * l'échappement HTML appliqué côté front (public/assets/app.js).
+ */
+const SECURITY_HEADERS: Record<string, string> = {
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  // 'unsafe-inline' nécessaire : le front (public/assets/app.js) utilise des
+  // attributs onclick/oninput inline de façon massive (pas de build/CSP nonce).
+  // Le CSP protège malgré tout contre le chargement de scripts/styles externes
+  // et restreint connect-src, ce qui limite l'exfiltration de données même en
+  // cas d'injection HTML qui aurait échappé à l'échappement applicatif.
+  'Content-Security-Policy':
+    "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; " +
+    "script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; " +
+    "base-uri 'self'; form-action 'self'",
+};
+
+function withSecurityHeaders(response: Response): Response {
+  const headers = new Headers(response.headers);
+  for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
+    if (!headers.has(key)) headers.set(key, value);
+  }
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const response = await handleFetch(request, env, ctx);
+    return withSecurityHeaders(response);
+  },
 } satisfies ExportedHandler<Env>;
