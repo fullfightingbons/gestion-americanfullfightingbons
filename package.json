@@ -2,7 +2,6 @@
 	"name": "gestion-americanfullfightingbons",
 	"description": "Application de gestion du club AFFBC (adhérents, comptabilité, banque, achats, facturation) — Cloudflare Workers + D1 + R2.",
 	"devDependencies": {
-		"esbuild": "^0.24.0",
 		"typescript": "5.9.3",
 		"wrangler": "4.97.0",
 		"vitest": "^2.1.0"
@@ -10,10 +9,8 @@
 	"scripts": {
 		"cf-typegen": "wrangler types",
 		"typecheck": "tsc --noEmit",
-		"build": "esbuild public/assets/app.js --minify --target=es2019 --legal-comments=none --outfile=public/assets/app.min.js",
-		"predev": "npm run build",
-		"check": "tsc && npm run build && wrangler deploy --dry-run",
-		"deploy": "npm run build && wrangler deploy",
+		"check": "tsc && wrangler deploy --dry-run",
+		"deploy": "wrangler deploy",
 		"dev": "wrangler dev",
 		"seedLocalD1": "wrangler d1 migrations apply DB --local",
 		"test": "vitest run"

@@ -3284,7 +3284,7 @@ function vComptes(){
       <thead><tr><th>Date</th><th>Valeur</th><th>Libellé</th><th>Débit</th><th>Crédit</th><th>Rapproché</th></tr></thead>
       <tbody>${tr.slice(0,5).map(t=>`<tr><td>${fd(frDateToISO(t.date_op)||t.date_op)||''}</td>
       <td style="font-size:11px;color:var(--txt2)">${fd(t.date_valeur)||'—'}</td>
-      <td>${t.libelle}</td>
+      <td>${esc(t.libelle)}</td>
       <td style="color:var(--red);text-align:right">${+t.debit>0?(+t.debit).toFixed(2)+' €':''}</td>
       <td style="color:#1e7e34;text-align:right">${+t.credit>0?(+t.credit).toFixed(2)+' €':''}</td>
       <td>${t.rapproche?`<span class="badge bok">✓</span>`:`<span class="badge bwarn">En attente</span>`}</td>
@@ -3433,7 +3433,7 @@ function vCompteDetail(c){
     return`<tr>
     <td>${fd(frDateToISO(t.date_op)||t.date_op)||''}</td>
     <td>${fd(t.date_valeur)||'—'}</td>
-    <td>${t.libelle||''}</td>
+    <td>${esc(t.libelle||'')}</td>
     <td style="color:var(--red);text-align:right">${+t.debit>0?(+t.debit).toFixed(2)+' €':'-'}</td>
     <td style="color:#1e7e34;text-align:right">${+t.credit>0?(+t.credit).toFixed(2)+' €':'-'}</td>
     <td>${t.rapproche?`<span class="badge bok">✓</span>`:`<span class="badge bwarn">En attente</span>`}</td>
@@ -3623,7 +3623,7 @@ function vEcr512(){
   <div class="gl-hdr"><strong>512 — Banque</strong><span style="font-size:12px;color:var(--txt2)">${e.length} écriture(s)</span></div>
   <div class="gl-row gl-head"><span>Date</span><span>Libellé</span><span style="text-align:right">Débit</span><span style="text-align:right">Crédit</span><span style="text-align:right">Solde</span></div>
   ${(()=>{let s=0;return e.map(j=>{s+=(+j.credit)-(+j.debit);return`<div class="gl-row">
-    <span>${fd(j.date_op)}</span><span>${j.libelle}<br><span style="font-size:10px;color:var(--txt2)">${j.piece||''}</span></span>
+    <span>${fd(j.date_op)}</span><span>${esc(j.libelle)}<br><span style="font-size:10px;color:var(--txt2)">${esc(j.piece||'')}</span></span>
     <span style="color:var(--red);text-align:right">${+j.debit>0?(+j.debit).toFixed(2)+' €':''}</span>
     <span style="color:#1e7e34;text-align:right">${+j.credit>0?(+j.credit).toFixed(2)+' €':''}</span>
     <span style="text-align:right;font-weight:500;color:${s>=0?'#1e7e34':'var(--red)'}">${s.toFixed(2)} €</span>
@@ -3944,8 +3944,8 @@ function vJournal(){
   </div>
   ${jnl.map(j=>`<div style="display:grid;grid-template-columns:90px 70px 1fr 90px 90px;gap:8px;padding:7px 0;border-bottom:.5px solid var(--brd);font-size:12px;align-items:center">
     <span>${fd(j.date_op)}</span>
-    <span style="font-size:11px;color:var(--txt2)">${j.piece||''}</span>
-    <span><strong style="font-weight:500">${j.compte}</strong><br><span style="font-size:11px;color:var(--txt2)">${j.libelle}</span></span>
+    <span style="font-size:11px;color:var(--txt2)">${esc(j.piece||'')}</span>
+    <span><strong style="font-weight:500">${j.compte}</strong><br><span style="font-size:11px;color:var(--txt2)">${esc(j.libelle)}</span></span>
     <span style="color:var(--red);text-align:right;font-weight:500">${+j.debit>0?(+j.debit).toFixed(2)+' €':''}</span>
     <span style="color:#1e7e34;text-align:right;font-weight:500">${+j.credit>0?(+j.credit).toFixed(2)+' €':''}</span>
     </div>`).join('')}
@@ -4248,8 +4248,8 @@ function printBilan(){
   <div class="hdr">
   ${logo}
   <div class="club">
-  <h1>${ci.nom||'AFFBC'}</h1>
-  <p>${ci.adresse||''}</p>
+  <h1>${esc(ci.nom||'AFFBC')}</h1>
+  <p>${esc(ci.adresse||'')}</p>
   </div>
   <div class="doc">
   <div class="k">Document officiel</div>
@@ -4290,11 +4290,11 @@ function printBilan(){
   <h3>Informations de clôture</h3>
   <div class="kv"><span>Total produits</span><strong>${produits.toFixed(2)} €</strong></div>
   <div class="kv"><span>Total charges</span><strong>${charges.toFixed(2)} €</strong></div>
-  <div class="kv"><span>Association</span><strong>${ci.nom||'AFFBC'}</strong></div>
+  <div class="kv"><span>Association</span><strong>${esc(ci.nom||'AFFBC')}</strong></div>
   </div>
   </div>
   <div class="footer">
-  <p>${ci.nom||'AFFBC'} — Association loi 1901. Document généré pour diffusion interne ou présentation officielle après validation du bureau.</p>
+  <p>${esc(ci.nom||'AFFBC')} — Association loi 1901. Document généré pour diffusion interne ou présentation officielle après validation du bureau.</p>
   <div class="result"><div class="l">Résultat net de l'exercice</div><div class="v" style="color:${resultat>=0?'#1e7e34':'#b33627'}">${resultat>=0?'+':''}${resultat.toFixed(2)} €</div></div>
   </div>
   <div class="sign">
@@ -4313,11 +4313,11 @@ function vResultat(){
   const tP=prod.reduce((s,j)=>s+(+j.credit),0),tC=charg.reduce((s,j)=>s+(+j.debit),0);
   return`<div class="g2">
   <div><p class="stit">Produits (classe 7)</p>
-  ${prod.map(j=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:.5px solid var(--brd);font-size:12.5px"><span>${j.libelle}</span><span style="color:#1e7e34">${(+j.credit).toFixed(2)} €</span></div>`).join('')}
+  ${prod.map(j=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:.5px solid var(--brd);font-size:12.5px"><span>${esc(j.libelle)}</span><span style="color:#1e7e34">${(+j.credit).toFixed(2)} €</span></div>`).join('')}
   <div style="display:flex;justify-content:space-between;padding:7px 0;font-weight:500"><span>Total</span><span style="color:#1e7e34">${tP.toFixed(2)} €</span></div>
   </div>
   <div><p class="stit">Charges (classe 6)</p>
-  ${charg.map(j=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:.5px solid var(--brd);font-size:12.5px"><span>${j.libelle}</span><span style="color:var(--red)">${(+j.debit).toFixed(2)} €</span></div>`).join('')}
+  ${charg.map(j=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:.5px solid var(--brd);font-size:12.5px"><span>${esc(j.libelle)}</span><span style="color:var(--red)">${(+j.debit).toFixed(2)} €</span></div>`).join('')}
   <div style="display:flex;justify-content:space-between;padding:7px 0;font-weight:500"><span>Total</span><span style="color:var(--red)">${tC.toFixed(2)} €</span></div>
   </div>
   </div>
@@ -5546,12 +5546,12 @@ function vClub(){
   const canWrite=hasPerm('perm_administration','write');
   const ci=D.clubInfo||{};
   return`<div style="max-width:460px;display:flex;flex-direction:column;gap:12px">
-  <div class="fg"><label>Nom du club</label><input id="ci-nom" value="${ci.nom||''}"></div>
-  <div class="fg"><label>Adresse</label><input id="ci-adr" value="${ci.adresse||''}"></div>
-  <div class="fg"><label>Téléphone</label><input id="ci-tel" value="${ci.telephone||''}"></div>
-  <div class="fg"><label>Email</label><input id="ci-email" value="${ci.email||''}"></div>
-  <div class="fg"><label>SIRET</label><input id="ci-siret" value="${ci.siret||''}"></div>
-  <div class="fg"><label>Code APE</label><input id="ci-ape" value="${ci.ape||''}"></div>
+  <div class="fg"><label>Nom du club</label><input id="ci-nom" value="${esc(ci.nom||'')}"></div>
+  <div class="fg"><label>Adresse</label><input id="ci-adr" value="${esc(ci.adresse||'')}"></div>
+  <div class="fg"><label>Téléphone</label><input id="ci-tel" value="${esc(ci.telephone||'')}"></div>
+  <div class="fg"><label>Email</label><input id="ci-email" value="${esc(ci.email||'')}"></div>
+  <div class="fg"><label>SIRET</label><input id="ci-siret" value="${esc(ci.siret||'')}"></div>
+  <div class="fg"><label>Code APE</label><input id="ci-ape" value="${esc(ci.ape||'')}"></div>
   ${canWrite?`<button class="btn primary" style="align-self:flex-start" onclick="saveClub()">💾 Sauvegarder</button>`:''}
   </div>`;
 }
@@ -6183,7 +6183,7 @@ function renderModal(){
     <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:10px;cursor:pointer"><input id="exo-close-report" type="checkbox" checked style="width:auto;accent-color:var(--red)"> Reporter automatiquement le résultat sur le compte 1060 - Réserves</label>
     <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px;cursor:pointer"><input id="exo-close-next" type="checkbox" checked style="width:auto;accent-color:var(--red)" onchange="document.getElementById('exo-next-fields').style.display=this.checked?'grid':'none'"> Créer automatiquement le nouvel exercice actif</label>
     <div id="exo-next-fields" class="g3" style="display:grid">
-    <div class="fg full"><label>Libellé du nouvel exercice</label><input id="exo-next-lib" value="${next.libelle}"></div>
+    <div class="fg full"><label>Libellé du nouvel exercice</label><input id="exo-next-lib" value="${esc(next.libelle)}"></div>
     <div class="fg"><label>Date de début</label><input id="exo-next-deb" type="date" value="${next.date_debut}"></div>
     <div class="fg"><label>Date de fin</label><input id="exo-next-fin" type="date" value="${next.date_fin}"></div>
     </div>
@@ -7737,7 +7737,7 @@ function exportFEC(){
     '','',
     j.piece||'',
     toFECDate(j.date_op),
-    (j.libelle||'').replace(/\|/g,' '),
+    (j.libelle||'').replace(/\|/g,' ').replace(/^[=+\-@]+/,''),
     Number(j.debit||0).toFixed(2).replace('.',','),
     Number(j.credit||0).toFixed(2).replace('.',','),
     '','','','',''
