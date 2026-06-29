@@ -321,6 +321,19 @@ function esc(v){
   .replace(/'/g,'&#39;');
 }
 
+/**
+ * Neutralise l'injection CSV/formule : si la cellule (texte libre, donc
+ * potentiellement issu du formulaire public d'inscription) commence par
+ * =, +, -, @, tabulation ou retour chariot, Excel/LibreOffice/Google
+ * Sheets l'interprètent comme une formule à l'ouverture du fichier
+ * (ex: nom="=HYPERLINK(...)" exfiltrant des données, ou pire avec DDE).
+ * On préfixe d'une apostrophe pour forcer une interprétation en texte.
+ */
+function csvSafe(v){
+  const s=(v??'').toString();
+  return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+}
+
 function sortAdherentsList(list){
   const {key='nom',dir='asc'}=UI?.adhSort||{};
   return (list||[]).sort((a,b)=>{
@@ -3182,8 +3195,8 @@ function exportDiplomesCSV(){
   if(!rows.length){notify('warn','Aucun diplôme à exporter pour cette sélection.','Diplômes');return;}
   const header=['Nom','Prénom','Ceinture','Titre','Date d\'émission','Saison','Délivré par','Modèle','Commentaire','PDF archivé'];
   const lines=rows.map(d=>[
-    d.nom||'',d.prenom||'',d.ceinture||'',d.titre||'',d.date_emission||'',
-    d.saison||'',d.delivre_par||'',d.modele||'',d.commentaire||'',
+    csvSafe(d.nom||''),csvSafe(d.prenom||''),csvSafe(d.ceinture||''),csvSafe(d.titre||''),d.date_emission||'',
+    d.saison||'',csvSafe(d.delivre_par||''),d.modele||'',csvSafe(d.commentaire||''),
     d.pdf_storage_path?'Oui':'Non'
   ].map(c=>`"${String(c).replace(/"/g,'""')}"`).join(';'));
   dl('\uFEFF'+[header.join(';'),...lines].join('\n'),`diplomes_${td()}.csv`,'text/csv;charset=utf-8');
@@ -5397,7 +5410,7 @@ function exportFeedbackCSV(campaignId){
   const rows=reps.map(r=>{
     let parsed={};
     try{parsed=JSON.parse(r.reponses);}catch(e){}
-    return[fd(r.submitted_at),r.note_globale||'',r.commentaire||'',...questions.map(q=>parsed[q.id]||'')];
+    return[fd(r.submitted_at),r.note_globale||'',csvSafe(r.commentaire||''),...questions.map(q=>csvSafe(parsed[q.id]||''))];
   });
   const csv=[headers,...rows].map(row=>row.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';')).join('\n');
   const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
@@ -7660,7 +7673,7 @@ async function doImportEcr(){
 function dl(c,n,m){const b=new Blob([c],{type:m});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=n;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)}
 function exportCSV(){
   const rows=[['Nom','Prénom','Couleur ceinture','N° licence','Type adhésion','Certif.','Droit image','Pass Région','Montant Pass','Règlement','Cotisation','Paiement','Statut','Saison','Fin adhésion','Adresse','CP','Ville','Urgence nom','Urgence tél']];
-  D.adherents.forEach(a=>rows.push([a.nom,a.prenom,a.couleur_ceinture||'',a.numero_licence||'',a.discipline||'Club',a.certificat?'Oui':'Non',a.droit_image?'Oui':'Non',a.pass_region?'Oui':'Non',(+a.montant_pass_region||0).toFixed(2),a.reglement?'Oui':'Non',(+a.cotisation).toFixed(2),a.paiement,a.statut,seasonFromDate(a.date_fin_adhesion||a.date_inscription)||'',a.date_fin_adhesion||'',a.adresse||'',a.code_postal||'',a.ville||'',a.urgence_nom||'',a.urgence_telephone||'']));
+  D.adherents.forEach(a=>rows.push([csvSafe(a.nom),csvSafe(a.prenom),csvSafe(a.couleur_ceinture||''),csvSafe(a.numero_licence||''),a.discipline||'Club',a.certificat?'Oui':'Non',a.droit_image?'Oui':'Non',a.pass_region?'Oui':'Non',(+a.montant_pass_region||0).toFixed(2),a.reglement?'Oui':'Non',(+a.cotisation).toFixed(2),a.paiement,a.statut,seasonFromDate(a.date_fin_adhesion||a.date_inscription)||'',a.date_fin_adhesion||'',csvSafe(a.adresse||''),csvSafe(a.code_postal||''),csvSafe(a.ville||''),csvSafe(a.urgence_nom||''),csvSafe(a.urgence_telephone||'')]));
   dl('\uFEFF'+rows.map(r=>r.join(';')).join('\n'),`adherents_${td()}.csv`,'text/csv;charset=utf-8');
 }
 
@@ -7679,13 +7692,13 @@ function exportAdhEmailsCSV(){
   });
   if(!filtered.length){notify('warn','Aucun adhérent avec email dans la sélection courante.','Export emails');return;}
   const rows=[['Nom','Prénom','Email','Statut','Type adhésion']];
-  filtered.forEach(a=>rows.push([a.nom,a.prenom,a.email||'',a.statut,a.discipline||'Club']));
+  filtered.forEach(a=>rows.push([csvSafe(a.nom),csvSafe(a.prenom),csvSafe(a.email||''),a.statut,a.discipline||'Club']));
   dl('\uFEFF'+rows.map(r=>r.join(';')).join('\n'),`emails_adherents_${td()}.csv`,'text/csv;charset=utf-8');
   notify('success',`${filtered.length} email(s) exporté(s).`,'Export emails');
 }
 function exportAchatsCSV(){
   const rows=[['Date','Fournisseur','Désignation','Catégorie','Montant','Mode paiement','Référence','Statut','Pièce']];
-  D.achats.forEach(a=>rows.push([a.date_op,a.fournisseur,a.designation,a.categorie,(+a.montant).toFixed(2),a.mode_paiement||'',a.reference_paiement||'',a.statut,a.piece||'']));
+  D.achats.forEach(a=>rows.push([a.date_op,csvSafe(a.fournisseur),csvSafe(a.designation),csvSafe(a.categorie),(+a.montant).toFixed(2),a.mode_paiement||'',csvSafe(a.reference_paiement||''),a.statut,csvSafe(a.piece||'')]));
   dl('\uFEFF'+rows.map(r=>r.join(';')).join('\n'),`achats_${td()}.csv`,'text/csv;charset=utf-8');
 }
 
@@ -7694,7 +7707,7 @@ function exportAuditCSV(){
   const rows=[['Date','Action','Entité','Utilisateur','Détails']];
   (D.auditLogs||[]).forEach(log=>{
     const user=D.users.find(u=>u.id===log.user_id)?.email||log.user_id||'système';
-    rows.push([log.created_at||'',log.action||'',log.entity_type||'',user,(log.details||'').replace(/;/g,',')]);
+    rows.push([log.created_at||'',log.action||'',log.entity_type||'',user,csvSafe((log.details||'').replace(/;/g,','))]);
   });
   dl('\uFEFF'+rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(';')).join('\n'),`audit_${td()}.csv`,'text/csv;charset=utf-8');
   notify('success',`${(D.auditLogs||[]).length} événement(s) exportés.`,'Audit');
@@ -7736,7 +7749,7 @@ function exportFEC(){
 
 function exportJournalCSV(){
   const rows=[['Date','Pièce','Compte','Libellé','Débit','Crédit']];
-  D.journal.forEach(j=>rows.push([j.date_op,j.piece||'',j.compte,j.libelle,(+j.debit).toFixed(2),(+j.credit).toFixed(2)]));
+  D.journal.forEach(j=>rows.push([j.date_op,csvSafe(j.piece||''),j.compte,csvSafe(j.libelle),(+j.debit).toFixed(2),(+j.credit).toFixed(2)]));
   dl('\uFEFF'+rows.map(r=>r.join(';')).join('\n'),`journal_${td()}.csv`,'text/csv;charset=utf-8');
 }
 
@@ -7750,7 +7763,7 @@ function exportGLCSV(){
     let s=0;
     by[acc].forEach(j=>{
       s+=(+j.credit||0)-(+j.debit||0);
-      rows.push([acc,j.date_op,j.piece||'',j.libelle,(+j.debit).toFixed(2),(+j.credit).toFixed(2),s.toFixed(2)]);
+      rows.push([acc,j.date_op,csvSafe(j.piece||''),csvSafe(j.libelle),(+j.debit).toFixed(2),(+j.credit).toFixed(2),s.toFixed(2)]);
     });
     const tD=by[acc].reduce((r,j)=>r+(+j.debit||0),0);
     const tC=by[acc].reduce((r,j)=>r+(+j.credit||0),0);
