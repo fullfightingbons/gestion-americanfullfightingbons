@@ -5584,6 +5584,9 @@ function vTarifs(){
   const p = safeParseJSON(D.clubInfo?.inscription_pricing, {});
   loadInscriptionBoutiqueProducts();
   const updated = p.updated_at ? ` — mis à jour le ${fd(p.updated_at)}` : '';
+  const ci = D.clubInfo||{};
+  const isOpen = ci.public_inscription_enabled===undefined ? true : !['0','false','non','off'].includes(String(ci.public_inscription_enabled).trim().toLowerCase());
+  const closedMessage = ci.public_inscription_closed_message || '';
   const fields = [
     {key:'base',           label:'Tarif de base',               desc:'Cotisation standard'},
     {key:'family',         label:'Tarif famille',               desc:'Par membre, 2 minimum'},
@@ -5598,6 +5601,19 @@ function vTarifs(){
     {key:'passRegionFemale',label:'Remise Pass Région fille',  desc:'Déduit de la cotisation'},
   ];
   return`<div style="max-width:680px;display:flex;flex-direction:column;gap:14px">
+  <div class="card" style="border:1px solid ${isOpen?'var(--line)':'rgba(162,53,33,.35)'};${isOpen?'':'background:rgba(162,53,33,.05)'}">
+  <p style="font-size:11px;font-weight:500;color:var(--txt2);letter-spacing:.06em;margin-bottom:4px">OUVERTURE DES INSCRIPTIONS</p>
+  <p style="font-size:12px;color:var(--txt2);margin-bottom:14px">Coupe l'accès au formulaire public en une seule action — utile pour éviter toute inscription intempestive hors période d'ouverture. Le blocage est appliqué côté serveur, pas seulement masqué à l'écran.</p>
+  <label style="display:flex;align-items:center;gap:9px;font-size:14px;font-weight:500;cursor:pointer;margin-bottom:12px">
+  <input type="checkbox" id="insc-open-toggle" ${isOpen?'checked':''} style="width:auto;accent-color:var(--red)" ${canWrite?'':'disabled'}>
+  ${isOpen?'🟢 Inscriptions ouvertes':'🔴 Inscriptions fermées'}
+  </label>
+  <div class="fg">
+  <label>Message affiché aux visiteurs quand c'est fermé</label>
+  <textarea id="insc-closed-message" rows="2" placeholder="Les inscriptions sont actuellement fermées. Revenez bientôt !" ${canWrite?'':'readonly'}>${esc(closedMessage)}</textarea>
+  </div>
+  ${canWrite?`<button class="btn primary" style="margin-top:10px" onclick="saveInscriptionStatus()">💾 Sauvegarder</button>`:''}
+  </div>
   <div class="card">
   <p style="font-size:11px;font-weight:500;color:var(--txt2);letter-spacing:.06em;margin-bottom:4px">TARIFS DU FORMULAIRE D'INSCRIPTION${updated}</p>
   <p style="font-size:12px;color:var(--txt2);margin-bottom:16px">Ces montants sont lus en temps réel par <strong>inscription.americanfullfightingbons.fr</strong>. Toute sauvegarde est immédiatement visible sur le site.</p>
@@ -5631,6 +5647,23 @@ function vTarifs(){
     </div>
     </div>
     </div>`;
+}
+
+async function saveInscriptionStatus(){
+  if(!requireWritePerm('perm_administration')) return;
+  const isOpen = document.getElementById('insc-open-toggle')?.checked ?? true;
+  const message = (document.getElementById('insc-closed-message')?.value || '').trim();
+  const rows = [
+    {cle:'public_inscription_enabled', valeur: isOpen ? '1' : '0'},
+    {cle:'public_inscription_closed_message', valeur: message},
+  ];
+  const {error} = await SB.from('club_info').upsert(rows,{onConflict:'cle'});
+  if(error) return notify('error','Erreur : '+error.message);
+  D.clubInfo=D.clubInfo||{};
+  D.clubInfo.public_inscription_enabled = isOpen ? '1' : '0';
+  D.clubInfo.public_inscription_closed_message = message;
+  notify('success', isOpen ? 'Inscriptions rouvertes — le site les accepte de nouveau ✓' : 'Inscriptions fermées — le site refuse désormais toute nouvelle inscription ✓');
+  render();
 }
 
 async function saveTarifs(){
