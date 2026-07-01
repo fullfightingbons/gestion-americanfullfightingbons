@@ -934,6 +934,29 @@ async function openStorageFile(url){
   }
 }
 
+// Récupère un fichier du storage privé (ex. fiche de notation) et le renvoie en
+// base64 brut (sans le préfixe "data:...;base64,"), prêt à être joint à un email
+// via /api/email/send. Retourne null si le fichier est absent ou inaccessible
+// (l'appelant doit alors continuer sans bloquer l'envoi du reste de l'email).
+async function fetchStorageFileAsBase64(url){
+  if(!url) return null;
+  try{
+    const headers={};
+    if(AUTH_TOKEN) headers['Authorization']='Bearer '+AUTH_TOKEN;
+    const res=await fetch(url,{headers,credentials:'same-origin'});
+    if(!res.ok) return null;
+    const blob=await res.blob();
+    return await new Promise((resolve,reject)=>{
+      const reader=new FileReader();
+      reader.onload=()=>resolve(String(reader.result||'').split(',')[1]||null);
+      reader.onerror=()=>reject(new Error('Lecture du fichier impossible'));
+      reader.readAsDataURL(blob);
+    });
+  }catch(e){
+    return null;
+  }
+}
+
 function getAdherentPublicRegistration(adherentId){
   if(!adherentId) return null;
   const matches=(D.publicRegistrations||[]).filter(r=>r.adherent_id===adherentId);
@@ -2816,21 +2839,36 @@ async function printDiplome(){
       try{
         const pdfBase64=pdf.output('datauristring').split(',')[1];
         const clubNom=esc(D.clubInfo?.nom||DEFAULT_CLUB_NAME);
+        const attachments=[{name:`${safeName||'diplome'}.pdf`,content:pdfBase64,type:'application/pdf'}];
+        // Jointe la fiche de notation (adh.pdf_public_url) au même email que le diplôme,
+        // si elle a été importée pour cet adhérent. Un échec de récupération (fichier
+        // absent, erreur réseau...) n'empêche jamais l'envoi du diplôme seul.
+        let notationJoined=false;
+        if(adh.pdf_public_url){
+          const notationBase64=await fetchStorageFileAsBase64(adh.pdf_public_url);
+          if(notationBase64){
+            attachments.push({name:adh.pdf_nom_fichier||'fiche_notation.pdf',content:notationBase64,type:'application/pdf'});
+            notationJoined=true;
+          }
+        }
         const res=await fetch('/api/email/send',{
           method:'POST',
           credentials:'same-origin',
           headers:{'Content-Type':'application/json'},
           body:JSON.stringify({
             to:[{email:adh.email,name:`${adh.prenom||''} ${adh.nom||''}`.trim()}],
-            subject:`Votre diplôme — ${UI.diplome.titre||'Diplôme de ceinture'} — ${clubNom}`,
-            html:`<p>Bonjour ${esc(adh.prenom||'')},</p>
-<p>Félicitations ! Vous trouverez ci-joint votre diplôme${adh.couleur_ceinture?` de ceinture <strong>${esc(adh.couleur_ceinture)}</strong>`:''}, daté du ${fd(emissionDate)}.</p>
-<p>Sportivement,<br>${clubNom}</p>`,
-            attachments:[{name:`${safeName||'diplome'}.pdf`,content:pdfBase64}],
+            subject:`🥋 Bravo ${adh.prenom||''} ! Ton diplôme${adh.couleur_ceinture?` de ceinture ${adh.couleur_ceinture}`:''} est arrivé — ${clubNom}`,
+            html:`<p>Salut ${esc(adh.prenom||'')} 👋</p>
+<p>Belle nouvelle : ton diplôme${adh.couleur_ceinture?` de ceinture <strong>${esc(adh.couleur_ceinture)}</strong>`:''} vient d'être délivré, daté du ${fd(emissionDate)} 🥋🎉</p>
+<p>Toutes nos félicitations pour l'obtention de${adh.couleur_ceinture?` ta ceinture <strong>${esc(adh.couleur_ceinture)}</strong>`:' ce grade'} — c'est le fruit de ton travail et de ta persévérance, bravo !</p>
+<p>Tu trouveras ton diplôme ci-joint${notationJoined?', accompagné de ta fiche de notation':''}.</p>
+<p>Toute l'équipe est fière du chemin parcouru — continue comme ça, on se voit vite sur le tatami !</p>
+<p>Sportivement,<br>Teddy Biguet<br>Secrétaire de l'American Full Fighting Bons en Chablais</p>`,
+            attachments,
           })
         });
         if(res.ok){
-          notify('success',`Diplôme également envoyé par email à ${adh.email}.`,'Diplômes');
+          notify('success',`Diplôme${notationJoined?' et fiche de notation envoyés':' envoyé'} par email à ${adh.email}.`,'Diplômes');
         }else{
           const err=await res.json().catch(()=>({}));
           notify('warn','Diplôme généré mais email non envoyé : '+(err?.error?.message||res.status),'Diplômes');
@@ -2928,6 +2966,31 @@ async function printDiplomeBatch(adherentIds){
     notify('success',`${adhs.length} diplôme(s) générés et tracés (saison ${saison}).`,'Diplômes batch');
   }catch(err){
     alert('Génération batch impossible : '+(err?.message||err));
+  }
+}
+
+// Enregistre un échec de passage de grade dans les notes de l'adhérent, sans jamais
+// générer, archiver ou envoyer de diplôme (aucune ligne insérée dans la table
+// "diplomes"). Permet de garder un historique des tentatives non validées même
+// quand seule la fiche de notation (adh.pdf_public_url, via attachPDF) est ajoutée.
+async function logDiplomeEchec(){
+  const adh=selectedDiplomeAdherent();
+  if(!adh) return alert('Sélectionnez un adhérent.');
+  const date=UI.diplome.date||td();
+  const commentaire=(UI.diplome.commentaire||'').trim();
+  if(!confirm(`Enregistrer un échec de passage de grade pour ${adh.prenom} ${adh.nom} (session du ${fd(date)}) ?\n\nAucun diplôme ne sera généré ni envoyé — seule une note sera ajoutée à sa fiche.`)) return;
+  try{
+    const jury=UI.diplome.delivrePar?` — jury : ${UI.diplome.delivrePar}`:'';
+    const detail=commentaire?` — ${commentaire}`:'';
+    const logLine=`[Passage de grade non validé le ${td()} (session du ${fd(date)})${jury}${detail}]`;
+    const newNotes=(adh.notes?adh.notes+'\n':'')+logLine;
+    const {error}=await SB.from('adherents').update({notes:newNotes,updated_at:new Date().toISOString()}).eq('id',adh.id);
+    if(error) throw error;
+    adh.notes=newNotes;
+    notify('warn',`Échec enregistré pour ${adh.prenom} ${adh.nom} — aucun diplôme créé.`,'Diplômes');
+    render();
+  }catch(e){
+    alert("Impossible d'enregistrer l'échec : "+(e?.message||e));
   }
 }
 
@@ -3037,6 +3100,7 @@ function vDiplomes(){
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
     <button class="btn primary" onclick="printDiplome()" ${!adh||!tpl?'disabled':''}>⬇ Télécharger le PDF</button>
     <button class="btn" onclick="openDiplomeBatchModal()" ${!tpl||!adhList.length?'disabled':''} title="Générer un PDF multi-pages pour plusieurs adhérents">📋 Impression batch</button>
+    <button class="btn" style="color:var(--red)" onclick="logDiplomeEchec()" ${!adh?'disabled':''} title="Note un échec de passage de grade dans la fiche adhérent, sans créer de diplôme">❌ Enregistrer un échec</button>
     <button class="btn gold" onclick="saveDiplomeLayouts()" ${!tpl?'disabled':''}>💾 Sauvegarder ce modèle</button>
     <button class="btn" onclick="resetCurrentDiplomeLayout()" ${!tpl?'disabled':''}>↺ Réinitialiser le modèle</button>
     <button class="btn" onclick="loadDiplomeTemplates().then(()=>render())">↻ Recharger les modèles</button>
