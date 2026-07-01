@@ -6006,24 +6006,28 @@ function renderModal(){
     </div>
     </div>
     <div class="fg full" style="background:var(--bg2);padding:10px;border-radius:var(--r)">
-    <p style="font-size:12px;font-weight:500;margin-bottom:8px">Document PDF adhérent</p>
-    ${a.id?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <button class="btn sm" onclick="trigPDF('adherents','${a.id}')">${a.pdf_public_url?'Remplacer le PDF':'Téléverser un PDF'}</button>
-      ${a.pdf_public_url?`<button type="button" class="btn sm" data-storage-url="${esc(a.pdf_public_url)}" onclick="openStorageFile(this.dataset.storageUrl)">Ouvrir</button><span style="font-size:12px;color:var(--txt2)">${esc(a.pdf_nom_fichier||'document.pdf')}</span>`:`<span style="font-size:12px;color:var(--txt2)">Aucun fichier stocké</span>`}
-      </div>`:`<p style="font-size:12px;color:var(--txt2)">Enregistrez d'abord l'adhérent, puis ajoutez son PDF.</p>`}
+    <p style="font-size:12px;font-weight:500;margin-bottom:8px">Documents &amp; justificatifs</p>
+    <div style="display:flex;flex-direction:column;gap:8px">
+    ${a.id?`<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
+      <div>
+      <div style="font-size:13px;font-weight:600">PDF de notation</div>
+      <div style="font-size:12px;color:var(--txt2)">${a.pdf_public_url?esc(a.pdf_nom_fichier||'document.pdf'):'Aucun fichier stocké'}</div>
       </div>
-      <div class="fg full" style="background:var(--bg2);padding:10px;border-radius:var(--r)">
-      <p style="font-size:12px;font-weight:500;margin-bottom:8px">Pièces de l'inscription en ligne</p>
-      ${signupDocs.length?`<div style="display:flex;flex-direction:column;gap:8px">
-        ${signupDocs.map(doc=>`<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
-          <div>
-          <div style="font-size:13px;font-weight:600">${esc(doc.label)}</div>
-          <div style="font-size:12px;color:var(--txt2)">${esc(doc.name)}</div>
-          </div>
-          <button type="button" class="btn sm" data-storage-url="${esc(doc.url)}" onclick="openStorageFile(this.dataset.storageUrl)">Ouvrir</button>
-          </div>`).join('')}
-          </div>`:`<p style="font-size:12px;color:var(--txt2)">Aucune pièce issue de l'inscription web n'est rattachée à cet adhérent.</p>`}
-          </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${a.pdf_public_url?`<button type="button" class="btn sm" data-storage-url="${esc(a.pdf_public_url)}" onclick="openStorageFile(this.dataset.storageUrl)">Ouvrir</button>`:''}
+      <button class="btn sm" onclick="trigPDF('adherents','${a.id}')">${a.pdf_public_url?'Remplacer':'Téléverser'}</button>
+      </div>
+      </div>`:`<p style="font-size:12px;color:var(--txt2)">Enregistrez d'abord l'adhérent, puis ajoutez son PDF de notation.</p>`}
+    ${signupDocs.map(doc=>`<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
+      <div>
+      <div style="font-size:13px;font-weight:600">${esc(doc.label)}</div>
+      <div style="font-size:12px;color:var(--txt2)">${esc(doc.name)}</div>
+      </div>
+      <button type="button" class="btn sm" data-storage-url="${esc(doc.url)}" onclick="openStorageFile(this.dataset.storageUrl)">Ouvrir</button>
+      </div>`).join('')}
+    ${!signupDocs.length?`<p style="font-size:12px;color:var(--txt2)">Aucune pièce issue de l'inscription web n'est rattachée à cet adhérent.</p>`:''}
+    </div>
+    </div>
           <div class="fg full"><label>Notes</label><textarea id="f-not" rows="2" style="resize:vertical">${a.notes||''}</textarea></div>
           ${a.id&&D.loaded.diplomesArchive?`<div class="fg full" style="background:var(--bg2);padding:10px;border-radius:var(--r)">
           <p style="font-size:12px;font-weight:500;margin-bottom:8px">🎓 Diplômes reçus</p>
