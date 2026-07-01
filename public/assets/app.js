@@ -2854,7 +2854,7 @@ async function printDiplome(){
         const res=await fetch('/api/email/send',{
           method:'POST',
           credentials:'same-origin',
-          headers:{'Content-Type':'application/json'},
+          headers:{'Content-Type':'application/json',...(AUTH_TOKEN?{'Authorization':'Bearer '+AUTH_TOKEN}:{})},
           body:JSON.stringify({
             to:[{email:adh.email,name:`${adh.prenom||''} ${adh.nom||''}`.trim()}],
             subject:`🥋 Bravo ${adh.prenom||''} ! Ton diplôme${adh.couleur_ceinture?` de ceinture ${adh.couleur_ceinture}`:''} est arrivé — ${clubNom}`,
@@ -4951,7 +4951,7 @@ async function relanceFactureEmail(id){
     const res=await fetch('/api/email/send',{
       method:'POST',
       credentials:'same-origin',
-      headers:{'Content-Type':'application/json'},
+      headers:{'Content-Type':'application/json',...(AUTH_TOKEN?{'Authorization':'Bearer '+AUTH_TOKEN}:{})},
       body:JSON.stringify({
         to:[{email,name:f.client_nom||email}],
         subject:`Rappel de paiement — ${num} — ${clubNom}`,
@@ -4999,7 +4999,7 @@ async function sendFactureEmail(id){
       const res=await fetch('/api/email/send',{
         method:'POST',
         credentials:'same-origin',
-        headers:{'Content-Type':'application/json'},
+        headers:{'Content-Type':'application/json',...(AUTH_TOKEN?{'Authorization':'Bearer '+AUTH_TOKEN}:{})},
         body:JSON.stringify({
           to:[{email,name:f.client_nom||email}],
           subject:`${num} — ${clubNom}`,
