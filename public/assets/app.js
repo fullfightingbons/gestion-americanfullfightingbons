@@ -908,6 +908,32 @@ function buildStorageObjectUrl(bucket,path){  const base=bucket==='fullfighting-
   return `${base}/${String(path||'').split('/').map(encodeURIComponent).join('/')}`;
 }
 
+// Les objets stockés sur R2 (PDF adhérents, justificatifs d'inscription,
+// diplômes...) ne sont PAS publics : l'API /api/storage/:bucket/<chemin>
+// exige un en-tête "Authorization: Bearer <token>" (cf. handleStorageApi
+// côté Worker), sauf pour branding/diplome/club-assets dans le bucket
+// "storage". Un lien <a href="..."> classique ne transmet jamais cet
+// en-tête lors d'une navigation — il faut donc récupérer le fichier via
+// fetch() (qui peut porter l'en-tête), puis l'ouvrir comme Blob.
+async function openStorageFile(url){
+  if(!url) return;
+  try{
+    const headers={};
+    if(AUTH_TOKEN) headers['Authorization']='Bearer '+AUTH_TOKEN;
+    const res=await fetch(url,{headers,credentials:'same-origin'});
+    if(!res.ok){
+      alert('Impossible d\'ouvrir ce fichier (erreur '+res.status+'). Reconnectez-vous si le problème persiste.');
+      return;
+    }
+    const blob=await res.blob();
+    const blobUrl=URL.createObjectURL(blob);
+    window.open(blobUrl,'_blank');
+    setTimeout(()=>URL.revokeObjectURL(blobUrl),60000);
+  }catch(e){
+    alert('Erreur réseau lors de l\'ouverture du fichier.');
+  }
+}
+
 function getAdherentPublicRegistration(adherentId){
   if(!adherentId) return null;
   const matches=(D.publicRegistrations||[]).filter(r=>r.adherent_id===adherentId);
@@ -2242,7 +2268,7 @@ function vAdh(){
     <td>${adhBadge(a)}</td>
     <td style="white-space:nowrap">
     ${canWrite?`<button class="btn sm" onclick="trigPDF('adherents','${a.id}')">${a.pdf_public_url?'Remplacer':'Ajouter'}</button>`:''}
-    ${a.pdf_public_url?`<a class="btn sm" style="margin-left:4px" href="${a.pdf_public_url}" target="_blank">Voir</a>`:`<span class="badge bgray" style="margin-left:4px">Aucun</span>`}
+    ${a.pdf_public_url?`<button type="button" class="btn sm" style="margin-left:4px" data-storage-url="${esc(a.pdf_public_url)}" onclick="openStorageFile(this.dataset.storageUrl)">Voir</button>`:`<span class="badge bgray" style="margin-left:4px">Aucun</span>`}
     ${docs.length?`<br><span style="font-size:10px;color:var(--txt2)">${docs.length} justificatif(s)</span>`:''}
     </td>
     <td style="white-space:nowrap">
@@ -2983,7 +3009,7 @@ function vDiplomes(){
     ${adh?`<div style="font-size:13px;line-height:1.8">${adh.pdf_public_url?`PDF lié : <strong>${esc(adh.pdf_nom_fichier||'document.pdf')}</strong>`:'Aucun PDF de notation importé.'}</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
     <button class="btn" onclick="trigPDF('adherents','${adh.id}')">${adh.pdf_public_url?'Remplacer le PDF':'Importer le PDF'}</button>
-    ${adh.pdf_public_url?`<a class="btn" href="${adh.pdf_public_url}" target="_blank">Ouvrir le PDF</a>`:''}
+    ${adh.pdf_public_url?`<button type="button" class="btn" data-storage-url="${esc(adh.pdf_public_url)}" onclick="openStorageFile(this.dataset.storageUrl)">Ouvrir le PDF</button>`:''}
     </div>`:`<div class="empty" style="padding:18px 12px">Sélectionnez un adhérent.</div>`}
     </div>
     <div class="card" style="margin-top:14px;padding:12px 14px;background:rgba(255,255,255,.58)">
@@ -3171,7 +3197,7 @@ function vDiplomesArchive(){
   <td>${esc(d.saison||'—')}</td>
   <td>${esc(d.delivre_par||'—')}</td>
   <td>${esc(d.modele||'—')}</td>
-  <td>${d.pdf_storage_path?`<a class="btn sm" href="${buildStorageObjectUrl(DIPLOME_PDF_BUCKET,d.pdf_storage_path)}" target="_blank">⬇ PDF</a>`:'—'}</td>
+  <td>${d.pdf_storage_path?`<button type="button" class="btn sm" data-storage-url="${esc(buildStorageObjectUrl(DIPLOME_PDF_BUCKET,d.pdf_storage_path))}" onclick="openStorageFile(this.dataset.storageUrl)">⬇ PDF</button>`:'—'}</td>
   ${hasPerm('perm_diplomes','write')?`<td><button class="btn sm" style="color:var(--red)" onclick="deleteDiplome('${d.id}')" title="Supprimer cet enregistrement">✕</button></td>`:''}
   </tr>`).join('')}
   </tbody>
@@ -4487,7 +4513,7 @@ function vAchat(){
     <td style="font-size:11px;color:var(--txt2)">${a.reference_paiement||'—'}</td>
     <td style="font-size:11px;color:var(--txt2)">${a.piece||'—'}</td>
     <td style="white-space:nowrap">
-    ${a.pdf_public_url?`<a class="btn sm" href="${a.pdf_public_url}" target="_blank">Voir</a>`:`<span class="badge bgray">Aucun</span>`}
+    ${a.pdf_public_url?`<button type="button" class="btn sm" data-storage-url="${esc(a.pdf_public_url)}" onclick="openStorageFile(this.dataset.storageUrl)">Voir</button>`:`<span class="badge bgray">Aucun</span>`}
     </td>
     <td><span class="badge ${a.statut==='paye'?'bok':a.statut==='valide'?'bblue':a.statut==='refuse'?'bno':'bwarn'}">${a.statut==='nouveau'?'Nouveau':a.statut==='valide'?'Validé':a.statut==='refuse'?'Refusé':'Payé'}</span></td>
     <td style="white-space:nowrap">
@@ -5983,7 +6009,7 @@ function renderModal(){
     <p style="font-size:12px;font-weight:500;margin-bottom:8px">Document PDF adhérent</p>
     ${a.id?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <button class="btn sm" onclick="trigPDF('adherents','${a.id}')">${a.pdf_public_url?'Remplacer le PDF':'Téléverser un PDF'}</button>
-      ${a.pdf_public_url?`<a class="btn sm" href="${a.pdf_public_url}" target="_blank">Ouvrir</a><span style="font-size:12px;color:var(--txt2)">${esc(a.pdf_nom_fichier||'document.pdf')}</span>`:`<span style="font-size:12px;color:var(--txt2)">Aucun fichier stocké</span>`}
+      ${a.pdf_public_url?`<button type="button" class="btn sm" data-storage-url="${esc(a.pdf_public_url)}" onclick="openStorageFile(this.dataset.storageUrl)">Ouvrir</button><span style="font-size:12px;color:var(--txt2)">${esc(a.pdf_nom_fichier||'document.pdf')}</span>`:`<span style="font-size:12px;color:var(--txt2)">Aucun fichier stocké</span>`}
       </div>`:`<p style="font-size:12px;color:var(--txt2)">Enregistrez d'abord l'adhérent, puis ajoutez son PDF.</p>`}
       </div>
       <div class="fg full" style="background:var(--bg2);padding:10px;border-radius:var(--r)">
@@ -5994,7 +6020,7 @@ function renderModal(){
           <div style="font-size:13px;font-weight:600">${esc(doc.label)}</div>
           <div style="font-size:12px;color:var(--txt2)">${esc(doc.name)}</div>
           </div>
-          <a class="btn sm" href="${doc.url}" target="_blank">Ouvrir</a>
+          <button type="button" class="btn sm" data-storage-url="${esc(doc.url)}" onclick="openStorageFile(this.dataset.storageUrl)">Ouvrir</button>
           </div>`).join('')}
           </div>`:`<p style="font-size:12px;color:var(--txt2)">Aucune pièce issue de l'inscription web n'est rattachée à cet adhérent.</p>`}
           </div>
@@ -6008,7 +6034,7 @@ function renderModal(){
                 <div><span style="font-size:13px;font-weight:500">${esc(d.ceinture||d.titre||'Diplôme')}</span>${d.delivre_par?`<span style="font-size:11px;color:var(--txt2);margin-left:8px">par ${esc(d.delivre_par)}</span>`:''}</div>
                 <div style="display:flex;gap:8px;align-items:center">
                 <span style="font-size:12px;color:var(--txt2)">${fd(d.date_emission)}</span>
-                ${d.pdf_storage_path?`<a class="btn sm" href="${buildStorageObjectUrl(DIPLOME_PDF_BUCKET,d.pdf_storage_path)}" target="_blank">PDF</a>`:''}
+                ${d.pdf_storage_path?`<button type="button" class="btn sm" data-storage-url="${esc(buildStorageObjectUrl(DIPLOME_PDF_BUCKET,d.pdf_storage_path))}" onclick="openStorageFile(this.dataset.storageUrl)">PDF</button>`:''}
                 </div>
                 </div>`).join('')}</div>`
               :`<p style="font-size:12px;color:var(--txt2)">Aucun diplôme émis pour cet adhérent.</p>`;
@@ -6126,7 +6152,7 @@ function renderModal(){
     <p style="font-size:12px;font-weight:500;margin-bottom:8px">Facture PDF</p>
     ${a.id?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <button class="btn sm" onclick="trigPDF('achats','${a.id}')">${a.pdf_public_url?'Remplacer le PDF':'Téléverser le PDF'}</button>
-      ${a.pdf_public_url?`<a class="btn sm" href="${a.pdf_public_url}" target="_blank">Ouvrir</a><span style="font-size:12px;color:var(--txt2)">${a.pdf_nom_fichier||'facture.pdf'}</span>`:`<span style="font-size:12px;color:var(--txt2)">Aucun fichier stocké</span>`}
+      ${a.pdf_public_url?`<button type="button" class="btn sm" data-storage-url="${esc(a.pdf_public_url)}" onclick="openStorageFile(this.dataset.storageUrl)">Ouvrir</button><span style="font-size:12px;color:var(--txt2)">${esc(a.pdf_nom_fichier||'facture.pdf')}</span>`:`<span style="font-size:12px;color:var(--txt2)">Aucun fichier stocké</span>`}
       </div>`:`<p style="font-size:12px;color:var(--txt2)">Enregistrez d'abord l'achat, puis ajoutez sa facture PDF.</p>`}
       </div>
       <div class="fg full"><label>Notes</label><textarea id="a-not" rows="2" style="resize:vertical">${a.notes||''}</textarea></div>
