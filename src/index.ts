@@ -731,6 +731,40 @@ async function handlePublicFeedbackSubmit(request: Request, env: Env): Promise<R
   return json({ data: { ok: true }, error: null });
 }
 
+// POST /api/feedback/trigger-season — relance manuelle du processus complet
+// pour un exercice donné (mêmes étapes que le déclenchement automatique à la
+// clôture, voir triggerEndOfSeasonFeedback ci-dessus) : recense à nouveau
+// tous les adhérents rattachés à cet exercice (donc y compris ceux qui
+// viennent d'être recorrigés via l'outil "Vérifier le rattachement des
+// adhérents"), crée les destinataires manquants et envoie l'invitation à
+// tous ceux pas encore "envoye". Utile en cas d'échec silencieux à la
+// clôture (ex. BREVO_API_KEY absent à l'époque, ou adhérents mal rattachés
+// à leur exercice — voir migrations/0015 et le correctif de saveAdh()).
+async function handleTriggerSeasonFeedback(request: Request, env: Env, ctx: ExecutionContext, origin: string): Promise<Response> {
+  const user = await getCurrentUserFromBearer(request, env);
+  if (!user) return err('Unauthorized', 401);
+  const rolePerms = await getRolePerms(env);
+  if (!dbHasPermission(user, 'perm_feedback', 'write', rolePerms)) return err('Permission refusée', 403);
+
+  let body: { exercice_id?: string };
+  try { body = await request.json(); } catch { return err('JSON invalide', 400); }
+  const exerciceId = body?.exercice_id;
+  if (!exerciceId) return err('Paramètre exercice_id manquant', 400);
+
+  const exercice = await env.DB
+    .prepare(`SELECT id FROM exercices WHERE id = ?`)
+    .bind(exerciceId)
+    .first<{ id: string }>();
+  if (!exercice) return err('Exercice introuvable', 404);
+
+  try {
+    const result = await triggerEndOfSeasonFeedback(env, exerciceId, origin);
+    return json({ data: result, error: null });
+  } catch (e) {
+    return err('Échec du déclenchement : ' + (e instanceof Error ? e.message : String(e)), 500);
+  }
+}
+
 async function handleSendPendingInvites(request: Request, env: Env, origin: string): Promise<Response> {
   const user = await getCurrentUserFromBearer(request, env);
   if (!user) return err('Unauthorized', 401);
@@ -1033,6 +1067,13 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
         .run();
 
       return json({ data: { ok: true }, error: null });
+    }
+
+    // POST /api/feedback/trigger-season — relance manuelle complète (re-scan
+    // des adhérents + envoi) pour un exercice donné. Voir le commentaire de
+    // handleTriggerSeasonFeedback ci-dessus.
+    if (method === 'POST' && path === '/api/feedback/trigger-season') {
+      return await handleTriggerSeasonFeedback(request, env, ctx, url.origin);
     }
 
     // POST /api/feedback/send-pending — envoi manuel (admin) des invitations
