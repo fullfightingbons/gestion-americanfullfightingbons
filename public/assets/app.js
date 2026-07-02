@@ -4437,7 +4437,7 @@ function vExercices(){
     <td>${nb}</td>
     <td><span class="badge ${e.statut==='actif'?'bok':e.statut==='cloture'?'bwarn':'barch'}">${e.statut==='actif'?'Actif':e.statut==='cloture'?'Clôturé':'Archivé'}</span></td>
     <td style="white-space:nowrap">
-    ${canWrite&&e.statut==='actif'?`<button class="btn sm" onclick="setExoActif('${e.id}')">Sélectionner</button>`:''}
+    ${canWrite&&e.id!==D.currentExo?.id?`<button class="btn sm" onclick="setExoActif('${e.id}')">${e.statut==='actif'?'Sélectionner':'Consulter'}</button>`:''}
     ${e.id===D.currentExo?.id?`<span class="badge bok" style="margin-left:4px">✓ En cours</span>`:''}
     ${canWrite&&e.statut==='actif'?`<button class="btn sm gold" style="margin-left:4px" onclick="openModal('exo_close','${e.id}')">Clôturer</button>`:''}
     ${canFeedback&&e.statut==='cloture'?`<button class="btn sm" style="margin-left:4px" onclick="relancerFeedbackExercice('${e.id}','${esc(e.libelle)}')" title="Crée la campagne si elle n'existe pas encore, recense les adhérents de cet exercice et envoie l'invitation">🔁 Lancer/relancer le feedback</button>`:''}
