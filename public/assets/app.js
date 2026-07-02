@@ -6684,7 +6684,17 @@ async function saveAdh(id){
   const inscription=g('f-di2').value||td();
   const finAdhesion=g('f-fin').value||defaultAdhesionEnd(inscription);
   const discipline=g('f-dis').value;
-  const d=normalizeAdherentFinance({nom:g('f-nom').value.trim(),prenom:g('f-prn').value.trim(),naissance:g('f-nai').value||null,couleur_ceinture:g('f-cei').value.trim(),numero_licence:g('f-lic').value.trim(),discipline,email:g('f-eml').value.trim().toLowerCase(),telephone:g('f-tel').value.trim(),adresse:g('f-adr').value.trim(),code_postal:g('f-cp').value.trim(),ville:g('f-vil').value.trim(),droit_image:g('f-di').checked,certificat:g('f-ce').checked,pass_region:g('f-pr').checked,montant_pass_region:parseFloat(g('f-mpr-val')?.value)||0,reglement:g('f-ri').checked,cotisation:parseFloat(g('f-cot').value)||0,paiement:g('f-pay').value,statut:g('f-sta').value,date_inscription:inscription,date_fin_adhesion:finAdhesion,urgence_nom:g('f-urn').value.trim(),urgence_telephone:g('f-urt').value.trim(),urgence_lien:g('f-url').value.trim(),notes:g('f-not').value,exercice_id:D.currentExo?.id||null,updated_at:new Date().toISOString()});
+  // Important : ne jamais réassigner l'exercice d'un adhérent existant à
+  // l'exercice actuellement sélectionné (D.currentExo) simplement parce qu'on
+  // modifie sa fiche (téléphone, notes, fiche de notation...). Sans cette
+  // protection, éditer un adhérent pendant qu'un autre exercice est
+  // sélectionné (ex. préparation de la saison suivante avant clôture de la
+  // précédente) le détache silencieusement de sa saison d'origine — avec pour
+  // conséquence que la campagne de feedback de fin de saison, déclenchée à la
+  // clôture via "WHERE exercice_id = ?", ne le trouve plus. Seule la création
+  // d'un nouvel adhérent doit utiliser D.currentExo par défaut.
+  const existingAdh=id?D.adherents.find(a=>a.id===id):null;
+  const d=normalizeAdherentFinance({nom:g('f-nom').value.trim(),prenom:g('f-prn').value.trim(),naissance:g('f-nai').value||null,couleur_ceinture:g('f-cei').value.trim(),numero_licence:g('f-lic').value.trim(),discipline,email:g('f-eml').value.trim().toLowerCase(),telephone:g('f-tel').value.trim(),adresse:g('f-adr').value.trim(),code_postal:g('f-cp').value.trim(),ville:g('f-vil').value.trim(),droit_image:g('f-di').checked,certificat:g('f-ce').checked,pass_region:g('f-pr').checked,montant_pass_region:parseFloat(g('f-mpr-val')?.value)||0,reglement:g('f-ri').checked,cotisation:parseFloat(g('f-cot').value)||0,paiement:g('f-pay').value,statut:g('f-sta').value,date_inscription:inscription,date_fin_adhesion:finAdhesion,urgence_nom:g('f-urn').value.trim(),urgence_telephone:g('f-urt').value.trim(),urgence_lien:g('f-url').value.trim(),notes:g('f-not').value,exercice_id:existingAdh?(existingAdh.exercice_id||D.currentExo?.id||null):(D.currentExo?.id||null),updated_at:new Date().toISOString()});
   if(!d.nom||!d.prenom)return alert('Nom et prénom obligatoires');
   if(id){
     const {error}=await SB.from('adherents').update(d).eq('id',id);
