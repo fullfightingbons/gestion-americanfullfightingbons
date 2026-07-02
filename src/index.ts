@@ -695,10 +695,24 @@ async function handlePublicFeedbackSubmit(request: Request, env: Env): Promise<R
   if (recipient.repondu) return err('Cette réponse a déjà été enregistrée', 409);
 
   const campaign = await env.DB
-    .prepare(`SELECT statut FROM feedback_campaigns WHERE id = ?`)
+    .prepare(`SELECT statut, titre, exercice_id FROM feedback_campaigns WHERE id = ?`)
     .bind(recipient.campaign_id)
-    .first<{ statut: string }>();
+    .first<{ statut: string; titre: string; exercice_id: string | null }>();
   if (!campaign || campaign.statut !== 'active') return err('Cette campagne n\'accepte plus de réponses', 410);
+
+  // feedback_responses.season est NOT NULL sans valeur par défaut en
+  // production (schéma legacy hérité d'un ancien questionnaire à colonnes
+  // fixes — voir migrations/0016). On dérive une valeur du libellé de
+  // l'exercice lié à la campagne, avec repli sur le titre de la campagne
+  // pour ne jamais envoyer NULL sur cette colonne.
+  let season = campaign.titre || '';
+  if (campaign.exercice_id) {
+    const exercice = await env.DB
+      .prepare(`SELECT libelle FROM exercices WHERE id = ?`)
+      .bind(campaign.exercice_id)
+      .first<{ libelle: string | null }>();
+    if (exercice?.libelle) season = exercice.libelle;
+  }
 
   // Validation : taille des champs texte libres
   const MAX_TEXT = 2000;
@@ -724,12 +738,13 @@ async function handlePublicFeedbackSubmit(request: Request, env: Env): Promise<R
   try {
     await env.DB
       .prepare(
-        `INSERT INTO feedback_responses (id, campaign_id, recipient_id, reponses, note_globale, commentaire, submitted_at)
-         VALUES (?, ?, NULL, ?, ?, ?, datetime('now'))`
+        `INSERT INTO feedback_responses (id, campaign_id, recipient_id, season, reponses, note_globale, commentaire, submitted_at)
+         VALUES (?, ?, NULL, ?, ?, ?, ?, datetime('now'))`
       )
       .bind(
         crypto.randomUUID(),
         recipient.campaign_id,
+        season,
         JSON.stringify(body.reponses || {}),
         noteGlobale,
         body.commentaire || null
