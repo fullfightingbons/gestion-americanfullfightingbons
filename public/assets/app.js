@@ -5167,7 +5167,7 @@ function vFeedbackListe(){
     <td>${avg?`<strong style="color:var(--primary)">${avg} / 5</strong>`:'—'}</td>
     <td style="white-space:nowrap">
     <button class="btn sm" onclick="UI.feedbackCampaignId='${c.id}';showST('feedback','detail')">Détail</button>
-    ${canWrite&&c.statut==='active'?`<button class="btn sm" style="margin-left:4px" onclick="ouvrirEnvoi('${c.id}')">📨 Inviter</button><button class="btn sm" style="margin-left:4px" onclick="envoyerInvitesEnAttente('${c.id}')">📤 Envoyer</button><button class="btn sm" style="margin-left:4px" onclick="cloturerCampagne('${c.id}')">⏹ Clôturer</button>`:''}
+    ${canWrite&&c.statut==='active'?`<button class="btn sm" style="margin-left:4px" onclick="ouvrirEnvoi('${c.id}')">📨 Inviter</button><button class="btn sm" style="margin-left:4px" onclick="envoyerInvitesEnAttente('${c.id}')">📤 Envoyer</button>${c.exercice_id?`<button class="btn sm" style="margin-left:4px" onclick="relancerRecensementSaison('${c.id}','${c.exercice_id}')" title="Recense à nouveau les adhérents de cet exercice (utile après correction de rattachement) et envoie aux nouveaux/manquants">🔁 Recenser &amp; envoyer</button>`:''}<button class="btn sm" style="margin-left:4px" onclick="cloturerCampagne('${c.id}')">⏹ Clôturer</button>`:''}
     ${canWrite&&c.statut==='brouillon'?`<button class="btn sm" style="margin-left:4px" onclick="activerCampagne('${c.id}')">▶ Lancer</button>`:''}
     ${canWrite?`<button class="btn sm danger" style="margin-left:4px" onclick="delCampagne('${c.id}')">✕</button>`:''}
     </td></tr>`;
@@ -5327,7 +5327,7 @@ function vFeedbackDetail(camp){
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
   ${canWrite&&camp.statut==='brouillon'?`<button class="btn primary" onclick="activerCampagne('${camp.id}')">▶ Lancer la campagne</button>`:''}
-  ${canWrite&&camp.statut==='active'?(()=>{const nonRepondants=recs.filter(r=>r.envoye&&!r.repondu).length;return`<button class="btn" onclick="ouvrirEnvoi('${camp.id}')">📨 Inviter des adhérents</button><button class="btn" onclick="envoyerInvitesEnAttente('${camp.id}')">📤 Envoyer les invitations en attente</button>${nonRepondants?`<button class="btn bwarn" onclick="relancerNonRepondants('${camp.id}',${nonRepondants})">📣 Relancer (${nonRepondants})</button>`:''}<button class="btn" onclick="cloturerCampagne('${camp.id}')">⏹ Clôturer</button>`;})():''}
+  ${canWrite&&camp.statut==='active'?(()=>{const nonRepondants=recs.filter(r=>r.envoye&&!r.repondu).length;return`<button class="btn" onclick="ouvrirEnvoi('${camp.id}')">📨 Inviter des adhérents</button><button class="btn" onclick="envoyerInvitesEnAttente('${camp.id}')">📤 Envoyer les invitations en attente</button>${camp.exercice_id?`<button class="btn" onclick="relancerRecensementSaison('${camp.id}','${camp.exercice_id}')" title="Recense à nouveau les adhérents de cet exercice (utile après correction de rattachement) et envoie aux nouveaux/manquants">🔁 Recenser &amp; envoyer</button>`:''}${nonRepondants?`<button class="btn bwarn" onclick="relancerNonRepondants('${camp.id}',${nonRepondants})">📣 Relancer (${nonRepondants})</button>`:''}<button class="btn" onclick="cloturerCampagne('${camp.id}')">⏹ Clôturer</button>`;})():''}
   <button class="btn" onclick="exportFeedbackCSV('${camp.id}')">⬇ Export CSV</button>
   <button class="btn" onclick="showST('feedback','liste')">← Retour</button>
   </div></div>
@@ -5439,6 +5439,21 @@ async function envoyerInvitesEnAttente(campaignId){
   if(error)return alert('Erreur : '+error.message);
   await loadTabData('feedback',true);
   notify('success',`${data.sent} email(s) envoyé(s)${data.failed?`, ${data.failed} échec(s)`:''}.`,'Feedback');
+  render();
+}
+
+// Relance complète pour un exercice : recense à nouveau tous les adhérents
+// rattachés à cet exercice (donc y compris ceux dont l'exercice_id vient
+// d'être corrigé via l'outil "Vérifier le rattachement des adhérents"),
+// crée les destinataires manquants et envoie l'invitation à tous ceux pas
+// encore "envoye". À utiliser en cas de doute sur l'envoi automatique fait
+// à la clôture (ex. rien reçu malgré une clôture réussie).
+async function relancerRecensementSaison(campaignId,exerciceId){
+  if(!confirm("Recenser à nouveau les adhérents de cet exercice et envoyer l'invitation à tous ceux qui ne l'ont pas encore reçue ?"))return;
+  const {data,error}=await apiRequest('/feedback/trigger-season',{method:'POST',body:JSON.stringify({exercice_id:exerciceId})});
+  if(error)return alert('Erreur : '+error.message);
+  await loadTabData('feedback',true);
+  notify('success',`${data.invited} nouveau(x) destinataire(s), ${data.sent} email(s) envoyé(s)${data.failed?`, ${data.failed} échec(s)`:''}.`,'Feedback');
   render();
 }
 
