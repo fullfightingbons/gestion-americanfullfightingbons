@@ -721,24 +721,35 @@ async function handlePublicFeedbackSubmit(request: Request, env: Env): Promise<R
   // permettre le suivi du taux de réponse et les relances — mais il est
   // techniquement impossible, même pour un administrateur, de relier une
   // réponse précise à la personne qui l'a soumise.
-  await env.DB
-    .prepare(
-      `INSERT INTO feedback_responses (id, campaign_id, recipient_id, reponses, note_globale, commentaire, submitted_at)
-       VALUES (?, ?, NULL, ?, ?, ?, datetime('now'))`
-    )
-    .bind(
-      crypto.randomUUID(),
-      recipient.campaign_id,
-      JSON.stringify(body.reponses || {}),
-      noteGlobale,
-      body.commentaire || null
-    )
-    .run();
+  try {
+    await env.DB
+      .prepare(
+        `INSERT INTO feedback_responses (id, campaign_id, recipient_id, reponses, note_globale, commentaire, submitted_at)
+         VALUES (?, ?, NULL, ?, ?, ?, datetime('now'))`
+      )
+      .bind(
+        crypto.randomUUID(),
+        recipient.campaign_id,
+        JSON.stringify(body.reponses || {}),
+        noteGlobale,
+        body.commentaire || null
+      )
+      .run();
 
-  await env.DB
-    .prepare(`UPDATE feedback_recipients SET repondu = 1, repondu_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`)
-    .bind(recipient.id)
-    .run();
+    await env.DB
+      .prepare(`UPDATE feedback_recipients SET repondu = 1, repondu_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`)
+      .bind(recipient.id)
+      .run();
+  } catch (e) {
+    // Cf. migrations/0016_feedback_responses_submitted_at.sql : le schéma réel
+    // de feedback_responses en production a historiquement divergé du schéma
+    // attendu par ce code (colonnes ajoutées manuellement hors migration).
+    // On journalise le détail SQL exact pour diagnostic plutôt que de laisser
+    // l'exception remonter brute (ce qui casserait le fetch() JSON côté
+    // formulaire public avec un message "Erreur de connexion" trompeur).
+    console.error('[feedback:submit] échec enregistrement', e instanceof Error ? e.message : String(e));
+    return err('Impossible d\'enregistrer ta réponse pour le moment. Réessaie dans un instant.', 500);
+  }
 
   return json({ data: { ok: true }, error: null });
 }
@@ -1343,7 +1354,21 @@ function withSecurityHeaders(response: Response): Response {
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    const response = await handleFetch(request, env, ctx);
-    return withSecurityHeaders(response);
+    try {
+      const response = await handleFetch(request, env, ctx);
+      return withSecurityHeaders(response);
+    } catch (e) {
+      // Filet de sécurité global : sans ce catch, toute exception non gérée
+      // plus bas (ex. erreur SQL type "no such column") remonte brute et
+      // Cloudflare renvoie une réponse non-JSON. Côté client, tout fetch()
+      // qui attend du JSON (ex. public/feedback.html) échoue alors sur
+      // r.json() et affiche un message trompeur ("Erreur de connexion")
+      // qui masque la vraie cause. On renvoie ici une vraie réponse JSON
+      // avec le détail de l'erreur, visible dans les logs (wrangler tail).
+      console.error('[fetch:unhandled]', e instanceof Error ? e.stack || e.message : String(e));
+      return withSecurityHeaders(
+        json({ data: null, error: { message: 'Erreur interne du serveur' } }, 500)
+      );
+    }
   },
 } satisfies ExportedHandler<Env>;
