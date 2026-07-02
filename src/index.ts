@@ -549,18 +549,20 @@ async function triggerEndOfSeasonFeedback(
     campaignId = campaign.id;
   } else {
     campaignId = crypto.randomUUID();
-    // NOTE : "season" est une colonne legacy (NOT NULL) présente en production
-    // mais absente de toute migration versionnée du dépôt — même schéma
-    // "divergent entre prod et fichiers de migration" déjà documenté pour
-    // titre/statut/description/date_debut dans 0014_feedback_schema_align.sql.
-    // Découverte le 2026-07-02 suite à l'échec "NOT NULL constraint failed:
-    // feedback_campaigns.season" lors du déclenchement manuel depuis l'onglet
-    // Exercices. On lui donne la même valeur que "titre" (le code ne lit
-    // jamais "season" ensuite, seul "titre" est utilisé partout ailleurs).
+    // NOTE : "season" et "title" sont des colonnes legacy (NOT NULL) présentes
+    // en production mais absentes de toute migration versionnée du dépôt —
+    // même schéma "divergent entre prod et fichiers de migration" déjà
+    // documenté pour titre/statut/description/date_debut dans
+    // 0014_feedback_schema_align.sql. Découvertes le 2026-07-02, une par une,
+    // via les échecs successifs de déclenchement manuel depuis l'onglet
+    // Exercices ("NOT NULL constraint failed: feedback_campaigns.season" puis
+    // ".title"). On leur donne la même valeur que "titre"/season respectifs ;
+    // le code ne relit jamais "title" ensuite, seul "titre" est utilisé
+    // partout ailleurs dans l'app.
     await env.DB
       .prepare(
-        `INSERT INTO feedback_campaigns (id, titre, description, questions, statut, exercice_id, date_debut, season, created_at, updated_at)
-         VALUES (?, ?, ?, ?, 'active', ?, datetime('now'), ?, datetime('now'), datetime('now'))`
+        `INSERT INTO feedback_campaigns (id, titre, description, questions, statut, exercice_id, date_debut, season, title, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'active', ?, datetime('now'), ?, ?, datetime('now'), datetime('now'))`
       )
       .bind(
         campaignId,
@@ -568,7 +570,8 @@ async function triggerEndOfSeasonFeedback(
         `Questionnaire envoyé automatiquement à la clôture de l'exercice ${seasonLabel}.`,
         JSON.stringify(defaultEndOfSeasonQuestions()),
         exerciceId,
-        seasonLabel
+        seasonLabel,
+        `Bilan de saison — ${seasonLabel}`
       )
       .run();
   }
