@@ -4419,6 +4419,7 @@ function vResultat(){
 
 function vExercices(){
   const canWrite=hasPerm('perm_comptabilite','write');
+  const canFeedback=hasPerm('perm_feedback','write');
   return`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
   <strong>Exercices comptables</strong>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -4439,6 +4440,7 @@ function vExercices(){
     ${canWrite&&e.statut==='actif'?`<button class="btn sm" onclick="setExoActif('${e.id}')">Sélectionner</button>`:''}
     ${e.id===D.currentExo?.id?`<span class="badge bok" style="margin-left:4px">✓ En cours</span>`:''}
     ${canWrite&&e.statut==='actif'?`<button class="btn sm gold" style="margin-left:4px" onclick="openModal('exo_close','${e.id}')">Clôturer</button>`:''}
+    ${canFeedback&&e.statut==='cloture'?`<button class="btn sm" style="margin-left:4px" onclick="relancerFeedbackExercice('${e.id}','${esc(e.libelle)}')" title="Crée la campagne si elle n'existe pas encore, recense les adhérents de cet exercice et envoie l'invitation">🔁 Lancer/relancer le feedback</button>`:''}
     ${canWrite&&e.statut!=='archive'&&e.id!==D.currentExo?.id?`<button class="btn sm danger" style="margin-left:4px" onclick="archiverExo('${e.id}')">Archiver</button>`:''}
     </td>
     </tr>`;
@@ -5428,6 +5430,22 @@ async function relancerNonRepondants(campaignId, count){
   if(error)return alert('Erreur : '+error.message);
   await loadTabData('feedback',true);
   notify('success',`${data.sent} rappel(s) envoyé(s)${data.failed?`, ${data.failed} échec(s)`:''}.`,'Feedback');
+  render();
+}
+
+// Contrairement à relancerRecensementSaison() (accrochée à une campagne déjà
+// créée), celle-ci part uniquement de l'exercice : elle fonctionne même si
+// AUCUNE campagne n'existe encore pour cette saison (ex. échec silencieux du
+// déclenchement automatique à la clôture — le backend recrée la campagne si
+// besoin, cf. triggerEndOfSeasonFeedback). L'erreur éventuelle est affichée
+// telle quelle : c'est volontairement le seul endroit qui n'avale pas
+// l'erreur en arrière-plan, pour diagnostiquer une vraie panne.
+async function relancerFeedbackExercice(exerciceId,libelle){
+  if(!confirm(`Lancer/relancer le feedback pour "${libelle}" ?\n\nCrée la campagne si nécessaire, recense tous les adhérents de cet exercice et envoie l'invitation à ceux qui ne l'ont pas encore reçue.`))return;
+  const {data,error}=await apiRequest('/feedback/trigger-season',{method:'POST',body:JSON.stringify({exercice_id:exerciceId})});
+  if(error)return alert('Échec du déclenchement du feedback :\n\n'+error.message);
+  await loadTabData('feedback',true);
+  notify('success',`Campagne prête : ${data.invited} destinataire(s) recensé(s), ${data.sent} email(s) envoyé(s)${data.failed?`, ${data.failed} échec(s) d'envoi`:''}.`,'Feedback');
   render();
 }
 
