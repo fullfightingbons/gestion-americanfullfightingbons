@@ -6082,6 +6082,13 @@ function renderModal(){
       <button class="btn sm" onclick="trigPDF('adherents','${a.id}')">${a.pdf_public_url?'Remplacer':'Téléverser'}</button>
       </div>
       </div>`:`<p style="font-size:12px;color:var(--txt2)">Enregistrez d'abord l'adhérent, puis ajoutez son PDF de notation.</p>`}
+    ${a.id&&a.pdf_inscription_public_url?`<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
+      <div>
+      <div style="font-size:13px;font-weight:600">Bulletin d'inscription</div>
+      <div style="font-size:12px;color:var(--txt2)">${esc(a.pdf_inscription_nom_fichier||'bulletin_inscription.pdf')}</div>
+      </div>
+      <button type="button" class="btn sm" data-storage-url="${esc(a.pdf_inscription_public_url)}" onclick="openStorageFile(this.dataset.storageUrl)">Ouvrir</button>
+      </div>`:''}
     ${signupDocs.map(doc=>`<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
       <div>
       <div style="font-size:13px;font-weight:600">${esc(doc.label)}</div>
@@ -6089,7 +6096,7 @@ function renderModal(){
       </div>
       <button type="button" class="btn sm" data-storage-url="${esc(doc.url)}" onclick="openStorageFile(this.dataset.storageUrl)">Ouvrir</button>
       </div>`).join('')}
-    ${!signupDocs.length?`<p style="font-size:12px;color:var(--txt2)">Aucune pièce issue de l'inscription web n'est rattachée à cet adhérent.</p>`:''}
+    ${!signupDocs.length&&!a.pdf_inscription_public_url?`<p style="font-size:12px;color:var(--txt2)">Aucune pièce issue de l'inscription web n'est rattachée à cet adhérent.</p>`:''}
     </div>
     </div>
           <div class="fg full"><label>Notes</label><textarea id="f-not" rows="2" style="resize:vertical">${a.notes||''}</textarea></div>
