@@ -4421,7 +4421,10 @@ function vExercices(){
   const canWrite=hasPerm('perm_comptabilite','write');
   return`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
   <strong>Exercices comptables</strong>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+  ${canWrite?`<button class="btn" onclick="openExoCheckModal()" title="Repère les adhérents dont l'exercice ne correspond pas à leur date d'inscription">🔍 Vérifier le rattachement des adhérents</button>`:''}
   ${canWrite?`<button class="btn primary" onclick="openModal('exo')">+ Nouvel exercice</button>`:''}
+  </div>
   </div>
   <div class="wrap"><table>
   <thead><tr><th>Libellé</th><th>Début</th><th>Fin</th><th>Écritures</th><th>Statut</th><th></th></tr></thead>
@@ -6331,6 +6334,27 @@ function renderModal(){
     </div>`;
   }
 
+  if(UI.modal==='exo_check'){
+    const list=UI._exoCheckMismatches||[];
+    html=`<div class="modal" style="max-width:760px"><h2>🔍 Rattachement des adhérents</h2>
+    <p style="font-size:13px;color:var(--txt2);margin-bottom:14px">Compare l'exercice actuellement enregistré sur chaque adhérent avec l'exercice attendu d'après sa date d'inscription. Un décalage empêche notamment cet adhérent de recevoir le questionnaire de fin de saison à la clôture de son exercice réel.</p>
+    ${list.length?`<div class="wrap" style="max-height:50vh;overflow:auto"><table>
+    <thead><tr><th>Adhérent</th><th>Date d'inscription</th><th>Exercice enregistré</th><th>Exercice attendu</th><th></th></tr></thead>
+    <tbody>${list.map(m=>`<tr>
+      <td>${esc(m.adherent.prenom||'')} ${esc(m.adherent.nom||'')}</td>
+      <td>${fd(m.adherent.date_inscription)}</td>
+      <td>${m.current?esc(m.current.libelle):'<span style="color:var(--txt2)">Aucun</span>'}</td>
+      <td><strong style="font-weight:600">${esc(m.expected.libelle)}</strong></td>
+      <td><button class="btn sm" onclick="fixAdherentExo('${m.adherent.id}','${m.expected.id}')">Corriger</button></td>
+      </tr>`).join('')}</tbody>
+    </table></div>`:`<div class="imp-ok">Aucun décalage détecté : tous les adhérents dont la date d'inscription tombe dans une période d'exercice connue sont correctement rattachés.</div>`}
+    <div class="modal-act">
+    <button class="btn" onclick="closeModal()">Fermer</button>
+    ${list.length?`<button class="btn primary" onclick="fixAllAdherentExoMismatches()">Corriger les ${list.length} adhérent(s)</button>`:''}
+    </div>
+    </div>`;
+  }
+
   if(UI.modal==='feedback_campaign'){
     // Le modal "Nouvelle campagne" n'est plus exposé (les campagnes sont auto).
     // On le conserve uniquement pour la modification du titre/description
@@ -6447,6 +6471,67 @@ function forcePasswordRotation(){
 function openDiplomeBatchModal(){
   UI.modal='diplome_batch';
   UI._diplomeBatchSel=UI._diplomeBatchSel||{};
+  renderModal();
+}
+
+// Détermine, pour un adhérent donné, l'exercice auquel il devrait être
+// rattaché en se basant sur sa date d'inscription (source de vérité neutre,
+// non affectée par le bug corrigé dans saveAdh — voir son commentaire).
+// Retourne null si aucun exercice connu ne couvre cette date (auquel cas on
+// ne peut rien affirmer, et l'adhérent est ignoré par le diagnostic plutôt
+// que de risquer un mauvais rattachement).
+function findExoForDate(dateStr){
+  if(!dateStr) return null;
+  const exos=(D.exercices||[]).filter(e=>e.date_debut&&e.date_fin);
+  return exos.find(e=>dateStr>=e.date_debut&&dateStr<=e.date_fin)||null;
+}
+
+function computeAdherentExoMismatches(){
+  const mismatches=[];
+  for(const a of (D.adherents||[])){
+    const expected=findExoForDate(a.date_inscription);
+    if(!expected) continue;
+    if(a.exercice_id!==expected.id){
+      mismatches.push({
+        adherent:a,
+        current:D.exercices.find(e=>e.id===a.exercice_id)||null,
+        expected,
+      });
+    }
+  }
+  return mismatches.sort((x,y)=>`${x.adherent.nom} ${x.adherent.prenom}`.localeCompare(`${y.adherent.nom} ${y.adherent.prenom}`));
+}
+
+function openExoCheckModal(){
+  if(!requireWritePerm('perm_comptabilite')) return;
+  UI.modal='exo_check';
+  UI.editObj=null;
+  UI._exoCheckMismatches=computeAdherentExoMismatches();
+  renderModal();
+}
+
+async function fixAdherentExo(adherentId,expectedExoId){
+  const {error}=await SB.from('adherents').update({exercice_id:expectedExoId}).eq('id',adherentId);
+  if(error) return alert('Erreur : '+error.message);
+  const idx=D.adherents.findIndex(a=>a.id===adherentId);
+  if(idx>=0) D.adherents[idx]={...D.adherents[idx],exercice_id:expectedExoId};
+  UI._exoCheckMismatches=computeAdherentExoMismatches();
+  renderModal();
+}
+
+async function fixAllAdherentExoMismatches(){
+  const list=UI._exoCheckMismatches||[];
+  if(!list.length) return;
+  if(!confirm(`Corriger le rattachement de ${list.length} adhérent(s) vers leur exercice d'inscription réel ?`)) return;
+  let failed=0;
+  for(const m of list){
+    const {error}=await SB.from('adherents').update({exercice_id:m.expected.id}).eq('id',m.adherent.id);
+    if(error){ failed++; continue; }
+    const idx=D.adherents.findIndex(a=>a.id===m.adherent.id);
+    if(idx>=0) D.adherents[idx]={...D.adherents[idx],exercice_id:m.expected.id};
+  }
+  UI._exoCheckMismatches=computeAdherentExoMismatches();
+  notify(failed?'warn':'success',failed?`${list.length-failed} corrigé(s), ${failed} échec(s).`:`${list.length} adhérent(s) corrigé(s).`,'Exercices');
   renderModal();
 }
 
