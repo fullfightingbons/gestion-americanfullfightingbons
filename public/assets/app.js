@@ -1701,6 +1701,7 @@ function adherentMatchesSpecialFilter(adherent, special){
   if(special==='incomplete') return !adherent.certificat || !adherent.droit_image || !adherent.reglement;
   if(special==='renew') return adherent.statut==='Renouvellement';
   if(special==='expired') return adhStatus(adherent)==='expire';
+  if(special==='uptodate') return adhStatus(adherent)==='valid' || adhStatus(adherent)==='soon';
   if(special==='soon') return adhStatus(adherent)==='soon';
   return true;
 }
@@ -2266,6 +2267,7 @@ function vAdh(){
   <option value="incomplete" ${UI.adhFilters.special==='incomplete'?'selected':''}>Dossiers incomplets</option>
   <option value="renew" ${UI.adhFilters.special==='renew'?'selected':''}>À renouveler</option>
   <option value="expired" ${UI.adhFilters.special==='expired'?'selected':''}>Expirés</option>
+  <option value="uptodate" ${UI.adhFilters.special==='uptodate'?'selected':''}>À jour</option>
   <option value="soon" ${UI.adhFilters.special==='soon'?'selected':''}>Échéance proche</option>
   </select>
   ${canWrite?`<button class="btn primary" onclick="openModal('adh')">+ Nouvel adhérent</button>`:''}
