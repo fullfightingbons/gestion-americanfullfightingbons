@@ -1449,6 +1449,13 @@ function seasonBounds(label){
   return {start:`${m[1]}-07-01`,end:`${m[2]}-06-30`};
 }
 
+function nextSeasonEnd(currentFin){
+  const label=seasonFromDate(currentFin)||currentSeasonLabel();
+  const m=(label||'').match(/^(\d{4})-(\d{4})$/);
+  const nextLabel=m?`${+m[1]+1}-${+m[2]+1}`:currentSeasonLabel();
+  return seasonBounds(nextLabel)?.end||currentFin;
+}
+
 function defaultAdhesionEnd(dateStr){
   const d=dateStr?new Date(dateStr):new Date();
   if(Number.isNaN(d.getTime())) return '';
@@ -2363,16 +2370,7 @@ async function bulkRenewSelectedAdh(){
   let okCount=0, errCount=0;
   for(const adh of adhs){
     const currentFin=adh.date_fin_adhesion||td();
-    const [y,m,d2]=currentFin.split('-').map(Number);
-    const newFin=`${(y||new Date().getFullYear())+1}-${String(m||8).padStart(2,'0')}-${String(d2||31).padStart(2,'0')}`;
-    const patch={
-      statut:'Actif',
-      date_fin_adhesion:newFin,
-      certificat:0,
-      reglement:0,
-      updated_at:new Date().toISOString(),
-      notes:(adh.notes?adh.notes+'\n':'')+`[Renouvelé en lot le ${td()} — fin : ${newFin}]`
-    };
+    const newFin=nextSeasonEnd(currentFin);
     const {error}=await SB.from('adherents').update(patch).eq('id',adh.id);
     if(error){ errCount++; continue; }
     Object.assign(adh,patch);
@@ -2389,11 +2387,10 @@ async function renewAdh(id){
   const adh=D.adherents.find(a=>a.id===id);
   if(!adh) return;
   const nomComplet=`${adh.prenom} ${adh.nom}`.trim();
-  // Calculer la nouvelle date de fin : +1 an par rapport à la date de fin actuelle
-  // ou +1 an à partir d'aujourd'hui si pas de date de fin
+  // Calculer la nouvelle date de fin : fin de la saison suivante (30 juin),
+  // calculée à partir de la saison de la date de fin actuelle (ou d'aujourd'hui si absente)
   const currentFin=adh.date_fin_adhesion||td();
-  const [y,m,d2]=currentFin.split('-').map(Number);
-  const newFin=`${(y||new Date().getFullYear())+1}-${String(m||8).padStart(2,'0')}-${String(d2||31).padStart(2,'0')}`;
+  const newFin=nextSeasonEnd(currentFin);
   if(!confirm(`Renouveler l'adhésion de ${nomComplet} ?\n\nNouvelle date de fin : ${fd(newFin)}\nLe statut sera remis à "Actif".\nLes cases Certificat et Règlement seront décochées (à re-valider).`)) return;
   const patch={
     statut:'Actif',
