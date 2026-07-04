@@ -1432,7 +1432,7 @@ function adhBadge(a){
 function currentSeasonLabel(ref=new Date()){
   const y=ref.getFullYear();
   const m=ref.getMonth()+1;
-  const start=m>=9?y:y-1;
+  const start=m>=7?y:y-1;
   return `${start}-${start+1}`;
 }
 
@@ -1446,7 +1446,7 @@ function seasonFromDate(dateStr){
 function seasonBounds(label){
   const m=(label||'').match(/^(\d{4})-(\d{4})$/);
   if(!m) return null;
-  return {start:`${m[1]}-09-01`,end:`${m[2]}-08-31`};
+  return {start:`${m[1]}-07-01`,end:`${m[2]}-06-30`};
 }
 
 function defaultAdhesionEnd(dateStr){
@@ -6300,8 +6300,8 @@ function renderModal(){
     html=`<div class="modal" style="max-width:440px"><h2>📅 Nouvel exercice</h2>
     <div style="display:flex;flex-direction:column;gap:12px">
     <div class="fg"><label>Libellé</label><input id="exo-lib" value="Exercice ${yr}-${yr+1}"></div>
-    <div class="fg"><label>Date de début</label><input id="exo-deb" type="date" value="${yr}-09-01"></div>
-    <div class="fg"><label>Date de fin</label><input id="exo-fin" type="date" value="${yr+1}-08-31"></div>
+    <div class="fg"><label>Date de début</label><input id="exo-deb" type="date" value="${yr}-07-01"></div>
+    <div class="fg"><label>Date de fin</label><input id="exo-fin" type="date" value="${yr+1}-06-30"></div>
     </div>
     <div style="background:var(--gold-l);border-radius:var(--r);padding:10px;margin-top:12px;font-size:12px;color:var(--gold-d)">⚠ Pensez à archiver l'exercice courant avant d'en créer un nouveau.</div>
     <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="saveExo()">Créer</button></div>
