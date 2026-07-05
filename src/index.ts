@@ -20,12 +20,13 @@ import {verifyPassword, createSessionToken, parseSessionToken, hashPassword, pre
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function json(data: unknown, status = 200): Response {
+function json(data: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
+      ...extraHeaders,
     },
   });
 }
@@ -34,9 +35,42 @@ function err(message: string, status = 400): Response {
   return json({ error: message }, status);
 }
 
-async function requireAuth(request: Request, env: Env): Promise<boolean> {
+// ── Session admin : cookie HttpOnly signé ───────────────────────────────────
+// Remplace le stockage du token JWT en localStorage (lisible par un XSS) par
+// un cookie HttpOnly. Le token signé (createSessionToken/parseSessionToken)
+// et sa logique de révocation ne changent pas — seul le transport change.
+// Un Authorization: Bearer reste accepté en repli pour un usage scripté/API.
+const ADMIN_SESSION_COOKIE = 'affbc_gestion_session';
+
+function parseCookieHeader(request: Request): Record<string, string> {
+  const raw = request.headers.get('Cookie') || '';
+  return Object.fromEntries(
+    raw.split(';').map(p => p.trim()).filter(Boolean).map(p => {
+      const i = p.indexOf('=');
+      return i < 0 ? [p, ''] : [p.slice(0, i), decodeURIComponent(p.slice(i + 1))];
+    }),
+  );
+}
+
+function getSessionToken(request: Request): string {
+  const cookieToken = parseCookieHeader(request)[ADMIN_SESSION_COOKIE];
+  if (cookieToken) return cookieToken;
   const auth = request.headers.get('Authorization') ?? '';
-  const token = auth.replace(/^Bearer\s+/i, '').trim();
+  return auth.replace(/^Bearer\s+/i, '').trim();
+}
+
+function buildSessionCookie(request: Request, token: string, maxAgeSeconds: number): string {
+  const secure = new URL(request.url).protocol === 'https:' ? ' Secure;' : '';
+  return `${ADMIN_SESSION_COOKIE}=${token}; HttpOnly;${secure} SameSite=Strict; Path=/; Max-Age=${maxAgeSeconds}`;
+}
+
+function clearSessionCookie(request: Request): string {
+  const secure = new URL(request.url).protocol === 'https:' ? ' Secure;' : '';
+  return `${ADMIN_SESSION_COOKIE}=; HttpOnly;${secure} SameSite=Strict; Path=/; Max-Age=0`;
+}
+
+async function requireAuth(request: Request, env: Env): Promise<boolean> {
+  const token = getSessionToken(request);
   if (!token) return false;
   const payload = await parseSessionToken(token, env as any);
   if (!payload || Number(payload.expiresAt) <= Date.now()) return false;
@@ -114,8 +148,7 @@ function dbNormalizeValue(value: unknown): unknown {
 }
 
 async function getCurrentUserFromBearer(request: Request, env: Env): Promise<Record<string, any> | null> {
-  const auth = request.headers.get('Authorization') ?? '';
-  const token = auth.replace(/^Bearer\s+/i, '').trim();
+  const token = getSessionToken(request);
   if (!token) return null;
   const session = await parseSessionToken(token, env as any);
   if (!session || !session.userId || Number(session.expiresAt) < Date.now()) return null;
@@ -460,6 +493,68 @@ async function sendBrevoEmail(
     return { ok: false, error: `Brevo ${res.status}: ${detail}` };
   }
   return { ok: true };
+}
+
+// ── Rappels d'échéance du certificat médical / questionnaire de santé ──────
+// Un adhérent "Actif" dont le certificat (date connue) arrive à échéance
+// dans les 30 prochains jours — ou est déjà dépassée — reçoit un email de
+// rappel, une seule fois par échéance (cf. table certificat_rappels).
+async function checkCertificatsExpirants(env: Env): Promise<{ checked: number; sent: number; errors: string[] }> {
+  const errors: string[] = [];
+  let sent = 0;
+
+  const dureeRow = await env.DB.prepare(
+    `SELECT valeur FROM club_info WHERE cle = 'duree_validite_certificat_mois'`
+  ).first<{ valeur: string }>();
+  const dureeMois = Number(dureeRow?.valeur) || 12;
+
+  const { results } = await env.DB.prepare(
+    `SELECT id, prenom, nom, email,
+            date(certificat_date, '+' || ? || ' months') AS echeance
+     FROM adherents
+     WHERE statut = 'Actif'
+       AND certificat_date IS NOT NULL AND certificat_date != ''
+       AND email IS NOT NULL AND email != ''
+       AND date(certificat_date, '+' || ? || ' months') <= date('now', '+30 days')`
+  ).bind(dureeMois, dureeMois).all<{ id: string; prenom: string; nom: string; email: string; echeance: string }>();
+
+  for (const row of results || []) {
+    const already = await env.DB.prepare(
+      `SELECT id FROM certificat_rappels WHERE adherent_id = ? AND echeance = ?`
+    ).bind(row.id, row.echeance).first();
+    if (already) continue;
+
+    const echeanceDate = new Date(row.echeance);
+    const expire = echeanceDate.getTime() < Date.now();
+    const echeanceFr = echeanceDate.toLocaleDateString('fr-FR');
+    const sujet = expire
+      ? `Certificat médical à renouveler — ${row.prenom} ${row.nom}`
+      : `Certificat médical : échéance le ${echeanceFr}`;
+    const html = `
+      <p>Bonjour ${row.prenom},</p>
+      <p>${expire
+        ? `Votre certificat médical / questionnaire de santé est arrivé à échéance le ${echeanceFr}.`
+        : `Votre certificat médical / questionnaire de santé arrive à échéance le ${echeanceFr}.`}</p>
+      <p>Merci de transmettre un nouveau justificatif au bureau du club dès que possible afin de continuer à pratiquer sereinement.</p>
+      <p>Sportivement,<br>AFFBC</p>`;
+
+    const result = await sendBrevoEmail(env, {
+      to: [{ email: row.email, name: `${row.prenom} ${row.nom}` }],
+      subject: sujet,
+      html,
+    });
+
+    if (result.ok) {
+      sent++;
+      await env.DB.prepare(
+        `INSERT INTO certificat_rappels (id, adherent_id, echeance) VALUES (?, ?, ?)`
+      ).bind(crypto.randomUUID(), row.id, row.echeance).run();
+    } else {
+      errors.push(`${row.prenom} ${row.nom} (${row.email}) : ${result.error}`);
+    }
+  }
+
+  return { checked: results?.length || 0, sent, errors };
 }
 
 // Questionnaire par défaut utilisé pour la campagne de fin de saison
@@ -1055,8 +1150,16 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       if(!user) return err('Utilisateur introuvable',401);
       const check= await verifyPassword(body.password,user.mot_de_passe,env as any,'pbkdf2_sha256',100000,/^[a-f0-9]{64}$/i);
       if(!check.valid) return err('Email ou mot de passe incorrect',401);
-      const token= await createSessionToken({userId:user.id,expiresAt:Date.now()+86400000,pwdStamp:user.password_changed_at||''},env as any);
-      return json({token,user:{id:user.id,prenom:user.prenom,nom:user.nom,email:user.email,role:user.role,must_change_password:user.must_change_password||0}})
+      const maxAgeSeconds = 86400;
+      const token= await createSessionToken({userId:user.id,expiresAt:Date.now()+maxAgeSeconds*1000,pwdStamp:user.password_changed_at||''},env as any);
+      // Le token reste renvoyé dans le corps (compat scripts existants) et est en
+      // plus posé en cookie HttpOnly signé : le front (app.js) migre vers ce cookie
+      // et arrête de le recopier en localStorage.
+      return json(
+        {token,user:{id:user.id,prenom:user.prenom,nom:user.nom,email:user.email,role:user.role,must_change_password:user.must_change_password||0}},
+        200,
+        { 'Set-Cookie': buildSessionCookie(request, token, maxAgeSeconds) },
+      )
     }
 
     // GET /api/auth/session — vérifie un token Bearer et retourne l'utilisateur courant.
@@ -1242,8 +1345,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
     // POST /api/auth/logout   (sessions utilisateur — JWT HMAC ; on les place en liste noire
     //                          en réutilisant la table admin_sessions avec type='jwt')
     if (method === 'POST' && (path === '/api/admin/logout' || path === '/api/auth/logout')) {
-      const auth = request.headers.get('Authorization') ?? '';
-      const token = auth.replace(/^Bearer\s+/i, '').trim();
+      const token = getSessionToken(request);
       if (token) {
         // On tente de supprimer le token s'il était stocké (sessions admin UUID),
         // ET on l'inscrit en liste noire pour invalider les JWT signés avant expiration.
@@ -1263,7 +1365,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       await env.DB
         .prepare(`DELETE FROM admin_sessions WHERE expires_at < datetime('now')`)
         .run();
-      return json({ ok: true });
+      return json({ ok: true }, 200, { 'Set-Cookie': clearSessionCookie(request) });
     }
 
      // ── Santé ─────────────────────────────────────────────────────────────
@@ -1309,6 +1411,14 @@ if (path.startsWith("/api/") && !publicApiRoutes.has(path)) {
         return err("Non autorisé", 401);
     }
 }
+
+    // POST /api/admin/certificats/verifier — déclenche manuellement la même
+    // vérification que le cron quotidien (utile pour tester ou forcer un envoi
+    // sans attendre l'exécution planifiée).
+    if (method === 'POST' && path === '/api/admin/certificats/verifier') {
+        const result = await checkCertificatsExpirants(env);
+        return json({ data: result, error: null });
+    }
 
     // NOTE : les anciennes routes /api/sync/*, /api/membres*, /api/compta
     // (legacy) et /api/ventes* ont été retirées le 2026-06-27 : elles
@@ -1359,10 +1469,22 @@ const SECURITY_HEADERS: Record<string, string> = {
     "base-uri 'self'; form-action 'self'",
 };
 
-function withSecurityHeaders(response: Response): Response {
+function withSecurityHeaders(response: Response, request?: Request): Response {
   const headers = new Headers(response.headers);
   for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
     if (!headers.has(key)) headers.set(key, value);
+  }
+  // CORS : ce Worker n'a aucun consommateur cross-origin légitime (le front est
+  // servi par ce même Worker via ASSETS) — on remplace ici, en un point unique,
+  // tout 'Access-Control-Allow-Origin: *' posé plus bas (ex. json(), OPTIONS)
+  // par l'origine réelle de la requête entrante. Combiné aux cookies de session
+  // (voir requireAuth), un wildcard laisserait n'importe quel site tiers lire
+  // les réponses d'un utilisateur connecté.
+  if (request) {
+    const requestUrl = new URL(request.url);
+    headers.set('Access-Control-Allow-Origin', requestUrl.origin);
+    headers.set('Access-Control-Allow-Credentials', 'true');
+    headers.set('Vary', 'Origin');
   }
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
@@ -1371,7 +1493,7 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     try {
       const response = await handleFetch(request, env, ctx);
-      return withSecurityHeaders(response);
+      return withSecurityHeaders(response, request);
     } catch (e) {
       // Filet de sécurité global : sans ce catch, toute exception non gérée
       // plus bas (ex. erreur SQL type "no such column") remonte brute et
@@ -1382,8 +1504,19 @@ export default {
       // avec le détail de l'erreur, visible dans les logs (wrangler tail).
       console.error('[fetch:unhandled]', e instanceof Error ? e.stack || e.message : String(e));
       return withSecurityHeaders(
-        json({ data: null, error: { message: 'Erreur interne du serveur' } }, 500)
+        json({ data: null, error: { message: 'Erreur interne du serveur' } }, 500),
+        request
       );
     }
+  },
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    // Vérification quotidienne des certificats médicaux arrivant à échéance
+    // (cf. checkCertificatsExpirants) — trigger cron à ajouter dans wrangler.json.
+    ctx.waitUntil(
+      checkCertificatsExpirants(env).then(
+        (r) => console.log('[cron:certificats]', JSON.stringify(r)),
+        (e) => console.error('[cron:certificats] échec', e instanceof Error ? e.stack || e.message : String(e)),
+      ),
+    );
   },
 } satisfies ExportedHandler<Env>;

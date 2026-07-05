@@ -179,9 +179,11 @@ const ECR_FIELDS = [
 // STATE
 // ═══════════════════════════════════════════════════
 let SB = null;
-let AUTH_TOKEN = (() => {
-  try { return localStorage.getItem('affbc_token') || null; } catch(e) { return null; }
-})(); // token JWT Bearer pour les appels API (persisté en localStorage)
+let AUTH_TOKEN = null; // en mémoire uniquement (fallback Authorization: Bearer) ;
+// la session « pour de vrai » est portée par le cookie HttpOnly signé posé par
+// le serveur au login (voir /api/auth/session, appelé sans condition au démarrage
+// plus bas — le navigateur joint automatiquement le cookie sur les requêtes
+// same-origin, plus besoin de le relire depuis localStorage ici).
 const D = {
   adherents:[], comptes:[], journal:[], achats:[], factures:[],
   publicRegistrations:[],
@@ -897,7 +899,8 @@ function clearSession(){
   const headers = {};
   if(AUTH_TOKEN) headers['Authorization'] = 'Bearer ' + AUTH_TOKEN;
   AUTH_TOKEN = null;
-  try { localStorage.removeItem('affbc_token'); } catch(e) {}
+  // Le cookie HttpOnly est effacé côté serveur par /admin/logout et /auth/logout
+  // (Set-Cookie Max-Age=0) — rien à faire côté client.
   // Appel les deux routes pour couvrir sessions admin (UUID) et JWT utilisateur
   const logoutAdmin = fetch(apiUrl('/admin/logout'),{method:'POST',headers,cache:'no-store'}).catch(function(){});
   const logoutUser  = fetch(apiUrl('/auth/logout'), {method:'POST',headers,cache:'no-store'}).catch(function(){});
@@ -1173,8 +1176,7 @@ async function doLogin(){
   }
   document.getElementById('login-err').style.display='none';
   if(data.token){
-    AUTH_TOKEN = data.token;
-    try { localStorage.setItem('affbc_token', data.token); } catch(e) {}
+    AUTH_TOKEN = data.token; // mémoire uniquement — le cookie HttpOnly fait foi
   }
   UI.currentUser=normalizeUserRow(data.user||data);
   resetLoadedData();
