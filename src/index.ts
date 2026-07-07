@@ -188,6 +188,58 @@ function dbHasPermission(user: Record<string, any>, permKey: string, mode: 'read
   return level === 'write';
 }
 
+// ─── Journal d'audit ──────────────────────────────────────────────────────
+// La table audit_logs existe et a sa propre vue en lecture côté interface,
+// mais rien n'écrivait jamais dedans : aucune mutation (transaction modifiée
+// ou supprimée, adhérent édité, etc.) n'y laissait de trace. writeAuditLog
+// journalise chaque insert/update/delete passé par handleDbApi, avec l'auteur
+// réel (utilisateur nominatif, jamais le mot de passe maître partagé), la
+// table et la ou les lignes touchées, et le détail des champs modifiés.
+// Les champs sensibles (mots de passe) sont retirés avant écriture — le
+// journal doit rester consultable sans devenir lui-même une fuite de secrets.
+const AUDIT_REDACT_KEYS = new Set(['password', 'password_hash', 'mot_de_passe', 'admin_password']);
+
+function auditRedact(payload: unknown): unknown {
+  if (!payload || typeof payload !== 'object') return payload;
+  const clone: Record<string, unknown> = { ...(payload as Record<string, unknown>) };
+  for (const key of Object.keys(clone)) {
+    if (AUDIT_REDACT_KEYS.has(key.toLowerCase())) clone[key] = '[redacted]';
+  }
+  return clone;
+}
+
+async function writeAuditLog(
+  env: Env,
+  params: {
+    userId?: string | null;
+    action: string;
+    entityType: string;
+    entityId?: string | null;
+    details?: unknown;
+    ip?: string | null;
+  }
+): Promise<void> {
+  try {
+    await env.DB.prepare(
+      `INSERT INTO audit_logs (id, user_id, action, entity_type, entity_id, details, ip, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+    )
+      .bind(
+        crypto.randomUUID(),
+        params.userId || null,
+        params.action,
+        params.entityType,
+        params.entityId ?? null,
+        params.details !== undefined ? JSON.stringify(auditRedact(params.details)).slice(0, 4000) : null,
+        params.ip || null
+      )
+      .run();
+  } catch (e) {
+    // Le journal ne doit jamais faire échouer l'opération métier qu'il journalise.
+    console.error('[audit_logs]', e instanceof Error ? e.message : String(e));
+  }
+}
+
 async function handleDbApi(request: Request, env: Env, table: string, ctx: ExecutionContext, origin: string): Promise<Response> {
   if (!DB_TABLES.has(table)) return err('Table inconnue', 404);
 
@@ -282,6 +334,13 @@ async function handleDbApi(request: Request, env: Env, table: string, ctx: Execu
         inserted.push(result);
       }
       const data = body?.single ? (inserted[0] ?? null) : inserted;
+      if (table !== 'audit_logs') {
+        const ids = (inserted as Record<string, any>[]).map((r) => r?.[primaryKey]).filter(Boolean).join(',');
+        ctx.waitUntil(writeAuditLog(env, {
+          userId: user.id, action: op, entityType: table, entityId: ids || null,
+          details: rows, ip: request.headers.get('CF-Connecting-IP'),
+        }));
+      }
       return json({ data, error: null });
     }
 
@@ -299,6 +358,13 @@ async function handleDbApi(request: Request, env: Env, table: string, ctx: Execu
       const sql = `UPDATE ${dbQuoteIdentifier(table)} SET ${setSql}${whereSql} RETURNING *`;
       const { results } = await env.DB.prepare(sql).bind(...setValues, ...whereParams).all();
       const rows = results || [];
+      if (table !== 'audit_logs') {
+        const ids = (rows as Record<string, any>[]).map((r) => r?.[primaryKey]).filter(Boolean).join(',');
+        ctx.waitUntil(writeAuditLog(env, {
+          userId: user.id, action: 'update', entityType: table, entityId: ids || null,
+          details: { changed: row, resulting_count: rows.length }, ip: request.headers.get('CF-Connecting-IP'),
+        }));
+      }
 
       // ── Déclencheur automatique : fin de saison ────────────────────────
       // Quand un exercice passe à statut='cloture' (clôture comptable réelle,
@@ -326,7 +392,15 @@ async function handleDbApi(request: Request, env: Env, table: string, ctx: Execu
       if (!whereSql) return err('DELETE sans filtre refusé', 400);
       const sql = `DELETE FROM ${dbQuoteIdentifier(table)}${whereSql} RETURNING *`;
       const { results } = await env.DB.prepare(sql).bind(...params).all();
-      return json({ data: results || [], error: null });
+      const deleted = results || [];
+      if (table !== 'audit_logs') {
+        const ids = (deleted as Record<string, any>[]).map((r) => r?.[primaryKey]).filter(Boolean).join(',');
+        ctx.waitUntil(writeAuditLog(env, {
+          userId: user.id, action: 'delete', entityType: table, entityId: ids || null,
+          details: deleted, ip: request.headers.get('CF-Connecting-IP'),
+        }));
+      }
+      return json({ data: deleted, error: null });
     }
 
     return err(`Opération inconnue: ${op}`, 400);
