@@ -14,6 +14,7 @@ export interface Env {
   ASSETS: Fetcher;
   R2_STORAGE?: R2Bucket;
   R2_PDF?: R2Bucket;
+  MEMBER_PORTAL_URL?: string;  // ex. https://espace-membre.americanfullfightingbons.fr (liens d'activation/réinitialisation par email)
 }
 
 import {verifyPassword, createSessionToken, parseSessionToken, hashPassword, prepareUserWriteValues, hasStoragePermission, isPublicStorageObject} from './lib/security';
@@ -67,6 +68,113 @@ function buildSessionCookie(request: Request, token: string, maxAgeSeconds: numb
 function clearSessionCookie(request: Request): string {
   const secure = new URL(request.url).protocol === 'https:' ? ' Secure;' : '';
   return `${ADMIN_SESSION_COOKIE}=; HttpOnly;${secure} SameSite=Strict; Path=/; Max-Age=0`;
+}
+
+// ── Espace membre (adherent_comptes) ───────────────────────────────────────
+// Cookie et session strictement distincts de ceux du staff (ADMIN_SESSION_COOKIE
+// / utilisateurs) : un jeton membre porte kind:'member' et un adherentCompteId
+// (jamais userId), donc même un jeton mal aiguillé ne peut jamais être accepté
+// par requireAuth/getCurrentUserFromBearer (qui exigent session.userId), ni
+// l'inverse. Deux systèmes d'authentification qui ne se recoupent jamais.
+const MEMBER_SESSION_COOKIE = 'affbc_membre_session';
+const MEMBER_TOKEN_TTL_SEC = 60 * 60 * 24 * 30; // 30 jours
+
+function getMemberSessionToken(request: Request): string {
+  const cookieToken = parseCookieHeader(request)[MEMBER_SESSION_COOKIE];
+  if (cookieToken) return cookieToken;
+  const auth = request.headers.get('Authorization') ?? '';
+  return auth.replace(/^Bearer\s+/i, '').trim();
+}
+
+function buildMemberSessionCookie(request: Request, token: string, maxAgeSeconds: number): string {
+  const secure = new URL(request.url).protocol === 'https:' ? ' Secure;' : '';
+  return `${MEMBER_SESSION_COOKIE}=${token}; HttpOnly;${secure} SameSite=Strict; Path=/; Max-Age=${maxAgeSeconds}`;
+}
+
+function clearMemberSessionCookie(request: Request): string {
+  const secure = new URL(request.url).protocol === 'https:' ? ' Secure;' : '';
+  return `${MEMBER_SESSION_COOKIE}=; HttpOnly;${secure} SameSite=Strict; Path=/; Max-Age=0`;
+}
+
+async function getCurrentMemberFromBearer(request: Request, env: Env): Promise<Record<string, any> | null> {
+  const token = getMemberSessionToken(request);
+  if (!token) return null;
+  const session = await parseSessionToken(token, env as any);
+  if (!session || session.kind !== 'member' || !session.adherentCompteId || Number(session.expiresAt) < Date.now()) {
+    return null;
+  }
+  const compte = await env.DB.prepare(
+    `SELECT ac.*, a.nom, a.prenom, a.email AS adherent_email, a.statut, a.cotisation, a.paiement,
+            a.date_inscription, a.date_fin_adhesion, a.certificat, a.certificat_date,
+            a.telephone, a.adresse, a.code_postal, a.ville
+     FROM adherent_comptes ac
+     JOIN adherents a ON a.id = ac.adherent_id
+     WHERE ac.id = ?`
+  ).bind(session.adherentCompteId).first<Record<string, any>>();
+  if (!compte) return null;
+  if (session.pwdStamp !== undefined) {
+    const currentStamp = String(compte.password_changed_at || '');
+    if (String(session.pwdStamp) !== currentStamp) return null;
+  }
+  return compte;
+}
+
+// Rate-limiting persistant (D1, cf. migration 0018) — même logique que le
+// projet "site" : 8 tentatives / 15 min, puis blocage 15 min. Appliqué ici
+// aux endpoints membre les plus sensibles (login, jetons d'activation et de
+// réinitialisation), qui n'avaient jusqu'ici aucune protection de ce type
+// dans ce Worker.
+// Rate-limiting persistant (D1) — la table auth_rate_limits existait déjà
+// depuis la toute première migration (0001) mais n'était utilisée par aucune
+// route : ce Worker n'avait donc en pratique aucune protection anti-brute-force,
+// ni ici ni sur /api/auth/login ou /api/admin/login. On la met enfin en
+// service, avec son schéma d'origine (failures / last_failure_at), pour les
+// routes membre les plus sensibles (login, jetons d'activation/réinitialisation).
+// Même seuils que le rate-limiting déjà éprouvé sur le projet "site" : 8
+// tentatives / 15 min, puis blocage 15 min.
+const AUTH_RATE_LIMIT_MAX_ATTEMPTS = 8;
+const AUTH_RATE_LIMIT_WINDOW_SEC = 15 * 60;
+
+async function checkAuthRateLimit(ip: string, env: Env): Promise<boolean> {
+  const windowStart = new Date(Date.now() - AUTH_RATE_LIMIT_WINDOW_SEC * 1000).toISOString();
+  try {
+    await env.DB.prepare('DELETE FROM auth_rate_limits WHERE ip = ? AND last_failure_at < ?').bind(ip, windowStart).run();
+    const row = await env.DB.prepare('SELECT failures, blocked_until FROM auth_rate_limits WHERE ip = ? LIMIT 1').bind(ip).first<any>();
+    if (row?.blocked_until && Date.now() < new Date(String(row.blocked_until)).getTime()) return false;
+    if (row && Number(row.failures) >= AUTH_RATE_LIMIT_MAX_ATTEMPTS) {
+      const blockedUntil = new Date(Date.now() + AUTH_RATE_LIMIT_WINDOW_SEC * 1000).toISOString();
+      await env.DB.prepare('UPDATE auth_rate_limits SET blocked_until = ?, last_failure_at = ?, updated_at = ? WHERE ip = ?')
+        .bind(blockedUntil, new Date().toISOString(), new Date().toISOString(), ip).run();
+      return false;
+    }
+    const now = new Date().toISOString();
+    await env.DB.prepare(`
+      INSERT INTO auth_rate_limits (ip, failures, last_failure_at, created_at, updated_at) VALUES (?, 1, ?, ?, ?)
+      ON CONFLICT(ip) DO UPDATE SET failures = failures + 1, last_failure_at = excluded.last_failure_at, updated_at = excluded.updated_at
+    `).bind(ip, now, now, now).run();
+    return true;
+  } catch {
+    return true; // ne jamais bloquer par erreur si D1 a un souci ponctuel
+  }
+}
+
+async function resetAuthRateLimit(ip: string, env: Env): Promise<void> {
+  try { await env.DB.prepare('DELETE FROM auth_rate_limits WHERE ip = ?').bind(ip).run(); } catch { /* best effort */ }
+}
+
+function requestIp(request: Request): string {
+  return request.headers.get('CF-Connecting-IP') || 'unknown';
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Échappement minimal pour les quelques champs (prénom, nom) interpolés dans
+// les emails HTML envoyés par ce Worker — pas un usage général, juste de quoi
+// éviter qu'un prénom/nom contenant "<" ou "&" ne casse le rendu du message.
+function escapeHtmlLite(value: string): string {
+  return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 async function requireAuth(request: Request, env: Env): Promise<boolean> {
@@ -1086,9 +1194,10 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
 
     // CORS preflight
     if (method === 'OPTIONS') {
+      const allowedOrigin = corsOriginFor(request);
       return new Response(null, {
         headers: {
-          'Access-Control-Allow-Origin': '*',
+          ...(allowedOrigin ? { 'Access-Control-Allow-Origin': allowedOrigin, 'Access-Control-Allow-Credentials': 'true', Vary: 'Origin' } : {}),
           'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type, Authorization',
         },
@@ -1284,6 +1393,225 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       return json({ data: { ok: true }, error: null });
     }
 
+    // ── Espace membre ──────────────────────────────────────────────────────
+    // Toutes ces routes sont dans publicApiRoutes (elles gèrent leur propre
+    // vérification — session membre, jeton d'activation/réinitialisation —
+    // plutôt que la vérification staff de requireAuth, qui ne les concerne
+    // pas). cf. commentaire sur MEMBER_SESSION_COOKIE plus haut : un jeton
+    // membre ne peut jamais être accepté comme session staff, et inversement.
+
+    // POST /api/member/activation/request — { email }
+    // Ne révèle jamais si l'email correspond à un adhérent (message générique
+    // dans tous les cas), pour empêcher quiconque de vérifier par tâtonnement
+    // quels emails sont ceux d'adhérents existants.
+    if (method === 'POST' && path === '/api/member/activation/request') {
+      if (!(await checkAuthRateLimit(requestIp(request), env))) {
+        return err('Trop de tentatives. Réessayez dans quelques minutes.', 429);
+      }
+      const body = await request.json<{ email?: string }>().catch(() => ({} as { email?: string }));
+      const email = String(body?.email || '').trim().toLowerCase();
+      const generic = { data: { ok: true, message: "Si cet e-mail correspond à un adhérent, un lien d'activation vient de lui être envoyé." }, error: null };
+      if (!email) return json(generic);
+
+      const adherent = await env.DB.prepare(`SELECT id, email, nom, prenom FROM adherents WHERE LOWER(TRIM(email)) = ?`).bind(email).first<any>();
+      if (!adherent) return json(generic); // pas d'énumération
+
+      const token = bytesToHex(crypto.getRandomValues(new Uint8Array(32)));
+      const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+      const existing = await env.DB.prepare(`SELECT id FROM adherent_comptes WHERE adherent_id = ?`).bind(adherent.id).first<any>();
+      if (existing) {
+        await env.DB.prepare(`UPDATE adherent_comptes SET activation_token=?, activation_expires_at=?, email=? WHERE id=?`)
+          .bind(token, expiresAt, adherent.email, existing.id).run();
+      } else {
+        await env.DB.prepare(`INSERT INTO adherent_comptes (id, adherent_id, email, activation_token, activation_expires_at) VALUES (?,?,?,?,?)`)
+          .bind(crypto.randomUUID(), adherent.id, adherent.email, token, expiresAt).run();
+      }
+
+      const portalUrl = env.MEMBER_PORTAL_URL || 'https://espace-membre.americanfullfightingbons.fr';
+      const link = `${portalUrl}/activer?token=${token}`;
+      await sendBrevoEmail(env, {
+        to: [{ email: adherent.email, name: `${adherent.prenom || ''} ${adherent.nom || ''}`.trim() }],
+        subject: 'Activez votre espace membre AFFBC',
+        html: `<p>Bonjour ${escapeHtmlLite(adherent.prenom || '')},</p>
+<p>Vous pouvez activer votre espace membre et choisir votre mot de passe en suivant ce lien (valable 24h) :</p>
+<p><a href="${link}">${link}</a></p>
+<p>Si vous n'êtes pas à l'origine de cette demande, ignorez simplement ce message.</p>`,
+      }).catch((e) => console.error('[member:activation:email]', e));
+
+      return json(generic);
+    }
+
+    // POST /api/member/activation/confirm — { token, password }
+    if (method === 'POST' && path === '/api/member/activation/confirm') {
+      if (!(await checkAuthRateLimit(requestIp(request), env))) {
+        return err('Trop de tentatives. Réessayez dans quelques minutes.', 429);
+      }
+      const body = await request.json<{ token?: string; password?: string }>().catch(() => ({} as { token?: string; password?: string }));
+      const token = String(body?.token || '').trim();
+      if (!token) return err('Jeton manquant', 400);
+      if (!body?.password || String(body.password).length < 8) {
+        return err('Le mot de passe doit faire au moins 8 caractères', 400);
+      }
+
+      const compte = await env.DB.prepare(`SELECT * FROM adherent_comptes WHERE activation_token = ?`).bind(token).first<any>();
+      if (!compte || !compte.activation_expires_at || new Date(compte.activation_expires_at).getTime() < Date.now()) {
+        return err('Lien invalide ou expiré, merci de refaire une demande', 400);
+      }
+
+      const hash = await hashPassword(body.password, env as any, 'pbkdf2_sha256', 100000);
+      const now = new Date().toISOString();
+      await env.DB.prepare(
+        `UPDATE adherent_comptes SET mot_de_passe=?, email_verifie=1, password_changed_at=?, activation_token=NULL, activation_expires_at=NULL WHERE id=?`
+      ).bind(hash, now, compte.id).run();
+
+      const maxAgeSeconds = MEMBER_TOKEN_TTL_SEC;
+      const sessionToken = await createSessionToken(
+        { kind: 'member', adherentCompteId: compte.id, email: compte.email, expiresAt: Date.now() + maxAgeSeconds * 1000, pwdStamp: now },
+        env as any,
+      );
+      return json(
+        { data: { ok: true, token: sessionToken, expiresAt: Date.now() + maxAgeSeconds * 1000 }, error: null },
+        200,
+        { 'Set-Cookie': buildMemberSessionCookie(request, sessionToken, maxAgeSeconds) },
+      );
+    }
+
+    // POST /api/member/login — { email, password }
+    if (method === 'POST' && path === '/api/member/login') {
+      const ip = requestIp(request);
+      if (!(await checkAuthRateLimit(ip, env))) {
+        return err('Trop de tentatives. Réessayez dans quelques minutes.', 429);
+      }
+      const body = await request.json<{ email?: string; password?: string }>().catch(() => ({} as { email?: string; password?: string }));
+      const email = String(body?.email || '').trim().toLowerCase();
+      const compte = await env.DB.prepare(`SELECT * FROM adherent_comptes WHERE LOWER(TRIM(email)) = ?`).bind(email).first<any>();
+      if (!compte || !compte.mot_de_passe) return err('Email ou mot de passe incorrect', 401);
+
+      const check = await verifyPassword(String(body?.password || ''), compte.mot_de_passe, env as any, 'pbkdf2_sha256', 100000, /^[a-f0-9]{64}$/i);
+      if (!check.valid) return err('Email ou mot de passe incorrect', 401);
+
+      await resetAuthRateLimit(ip, env);
+      const now = new Date().toISOString();
+      await env.DB.prepare(`UPDATE adherent_comptes SET last_login_at=? WHERE id=?`).bind(now, compte.id).run();
+
+      const maxAgeSeconds = MEMBER_TOKEN_TTL_SEC;
+      const sessionToken = await createSessionToken(
+        { kind: 'member', adherentCompteId: compte.id, email: compte.email, expiresAt: Date.now() + maxAgeSeconds * 1000, pwdStamp: compte.password_changed_at || '' },
+        env as any,
+      );
+      return json(
+        { data: { ok: true, token: sessionToken, expiresAt: Date.now() + maxAgeSeconds * 1000 }, error: null },
+        200,
+        { 'Set-Cookie': buildMemberSessionCookie(request, sessionToken, maxAgeSeconds) },
+      );
+    }
+
+    // GET /api/member/me — profil + cotisation de l'adhérent connecté
+    if (method === 'GET' && path === '/api/member/me') {
+      const member = await getCurrentMemberFromBearer(request, env);
+      if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+      return json({
+        data: {
+          nom: member.nom, prenom: member.prenom, email: member.adherent_email,
+          telephone: member.telephone, adresse: member.adresse, code_postal: member.code_postal, ville: member.ville,
+          statut: member.statut, cotisation: member.cotisation, paiement: member.paiement,
+          date_inscription: member.date_inscription, date_fin_adhesion: member.date_fin_adhesion,
+          certificat: member.certificat, certificat_date: member.certificat_date,
+        },
+        error: null,
+      });
+    }
+
+    // POST /api/member/documents/certificat — l'adhérent dépose lui-même un
+    // certificat médical à jour. Stocké au même endroit et sous le même
+    // préfixe (adherents/{adherent_id}/...) que ce que l'équipe utilise déjà
+    // depuis l'interface staff (bucket "fullfighting-pdf" = R2_PDF, permission
+    // perm_adherents) : rien de nouveau à construire côté admin pour le voir.
+    if (method === 'POST' && path === '/api/member/documents/certificat') {
+      const member = await getCurrentMemberFromBearer(request, env);
+      if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+      if (!env.R2_PDF) return err('Stockage indisponible', 503);
+
+      let form: FormData;
+      try { form = await request.formData(); } catch { return err('Corps multipart invalide', 400); }
+      const file = form.get('file');
+      if (!(file instanceof File)) return err('Fichier manquant (champ "file")', 400);
+      if (file.size > 10 * 1024 * 1024) return err('Fichier trop volumineux (10 Mo max)', 400);
+
+      const dateFourni = String(form.get('date') || '').trim();
+      const dateCertificat = /^\d{4}-\d{2}-\d{2}$/.test(dateFourni) ? dateFourni : new Date().toISOString().slice(0, 10);
+      const ext = (file.name.split('.').pop() || 'pdf').toLowerCase().replace(/[^a-z0-9]/g, '') || 'pdf';
+      const key = `adherents/${member.adherent_id}/certificat-${Date.now()}.${ext}`;
+
+      await env.R2_PDF.put(key, await file.arrayBuffer(), { httpMetadata: { contentType: r2ContentType(key, file.type) } });
+      await env.DB.prepare(`UPDATE adherents SET certificat = 1, certificat_date = ? WHERE id = ?`).bind(dateCertificat, member.adherent_id).run();
+      ctx.waitUntil(writeAuditLog(env, {
+        userId: null, action: 'member_upload_certificat', entityType: 'adherents', entityId: member.adherent_id,
+        details: { key, dateCertificat, memberInitiated: true }, ip: request.headers.get('CF-Connecting-IP'),
+      }));
+
+      return json({ data: { ok: true, certificat_date: dateCertificat }, error: null }, 201);
+    }
+
+    // POST /api/member/logout
+    if (method === 'POST' && path === '/api/member/logout') {
+      return json({ data: { ok: true }, error: null }, 200, { 'Set-Cookie': clearMemberSessionCookie(request) });
+    }
+
+    // POST /api/member/password/forgot — { email } — même logique anti-énumération
+    // que activation/request, mais uniquement pour un compte déjà activé.
+    if (method === 'POST' && path === '/api/member/password/forgot') {
+      if (!(await checkAuthRateLimit(requestIp(request), env))) {
+        return err('Trop de tentatives. Réessayez dans quelques minutes.', 429);
+      }
+      const body = await request.json<{ email?: string }>().catch(() => ({} as { email?: string }));
+      const email = String(body?.email || '').trim().toLowerCase();
+      const generic = { data: { ok: true, message: 'Si un compte existe pour cet e-mail, un lien de réinitialisation vient de lui être envoyé.' }, error: null };
+      if (!email) return json(generic);
+
+      const compte = await env.DB.prepare(`SELECT * FROM adherent_comptes WHERE LOWER(TRIM(email)) = ? AND mot_de_passe IS NOT NULL`).bind(email).first<any>();
+      if (!compte) return json(generic);
+
+      const token = bytesToHex(crypto.getRandomValues(new Uint8Array(32)));
+      const expiresAt = new Date(Date.now() + 2 * 3600 * 1000).toISOString();
+      await env.DB.prepare(`UPDATE adherent_comptes SET reset_token=?, reset_expires_at=? WHERE id=?`).bind(token, expiresAt, compte.id).run();
+
+      const portalUrl = env.MEMBER_PORTAL_URL || 'https://espace-membre.americanfullfightingbons.fr';
+      const link = `${portalUrl}/reinitialiser?token=${token}`;
+      await sendBrevoEmail(env, {
+        to: [{ email: compte.email }],
+        subject: 'Réinitialisation de votre mot de passe — Espace membre AFFBC',
+        html: `<p>Vous pouvez choisir un nouveau mot de passe en suivant ce lien (valable 2h) :</p><p><a href="${link}">${link}</a></p><p>Si vous n'êtes pas à l'origine de cette demande, ignorez simplement ce message : votre mot de passe actuel reste inchangé.</p>`,
+      }).catch((e) => console.error('[member:reset:email]', e));
+
+      return json(generic);
+    }
+
+    // POST /api/member/password/reset — { token, password }
+    if (method === 'POST' && path === '/api/member/password/reset') {
+      if (!(await checkAuthRateLimit(requestIp(request), env))) {
+        return err('Trop de tentatives. Réessayez dans quelques minutes.', 429);
+      }
+      const body = await request.json<{ token?: string; password?: string }>().catch(() => ({} as { token?: string; password?: string }));
+      const token = String(body?.token || '').trim();
+      if (!token) return err('Jeton manquant', 400);
+      if (!body?.password || String(body.password).length < 8) {
+        return err('Le mot de passe doit faire au moins 8 caractères', 400);
+      }
+      const compte = await env.DB.prepare(`SELECT * FROM adherent_comptes WHERE reset_token = ?`).bind(token).first<any>();
+      if (!compte || !compte.reset_expires_at || new Date(compte.reset_expires_at).getTime() < Date.now()) {
+        return err('Lien invalide ou expiré, merci de refaire une demande', 400);
+      }
+      const hash = await hashPassword(body.password, env as any, 'pbkdf2_sha256', 100000);
+      const now = new Date().toISOString();
+      // password_changed_at change ⇒ le pwdStamp de toute session déjà émise
+      // (y compris volée) ne correspond plus : déconnexion globale immédiate.
+      await env.DB.prepare(
+        `UPDATE adherent_comptes SET mot_de_passe=?, password_changed_at=?, reset_token=NULL, reset_expires_at=NULL WHERE id=?`
+      ).bind(hash, now, compte.id).run();
+      return json({ data: { ok: true }, error: null }, 200, { 'Set-Cookie': clearMemberSessionCookie(request) });
+    }
+
     // POST /api/feedback/trigger-season — relance manuelle complète (re-scan
     // des adhérents + envoi) pour un exercice donné. Voir le commentaire de
     // handleTriggerSeasonFeedback ci-dessus.
@@ -1477,6 +1805,14 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
   "/api/auth/session",
   "/api/health",
   "/api/version",
+  "/api/member/activation/request",
+  "/api/member/activation/confirm",
+  "/api/member/login",
+  "/api/member/logout",
+  "/api/member/me",
+  "/api/member/documents/certificat",
+  "/api/member/password/forgot",
+  "/api/member/password/reset",
 ]);
 
 if (path.startsWith("/api/") && !publicApiRoutes.has(path)) {
@@ -1543,6 +1879,29 @@ const SECURITY_HEADERS: Record<string, string> = {
     "base-uri 'self'; form-action 'self'",
 };
 
+// Origines de confiance de l'écosystème AFFBC pouvant appeler cette API en
+// cross-origin. Nécessaire depuis l'espace membre (sous-domaine séparé) : les
+// routes /api/member/* sont appelées par espace-membre.* avec un jeton dans
+// l'en-tête Authorization, jamais par cookie, donc pas de risque CSRF à
+// autoriser ces origines précises — mais on garde une liste explicite plutôt
+// qu'un miroir aveugle de l'en-tête Origin, pour ne jamais élargir l'accès
+// à un domaine non prévu.
+const TRUSTED_ORIGINS = new Set([
+  'https://americanfullfightingbons.fr',
+  'https://www.americanfullfightingbons.fr',
+  'https://boutique.americanfullfightingbons.fr',
+  'https://calendrier.americanfullfightingbons.fr',
+  'https://inscription.americanfullfightingbons.fr',
+  'https://espace-membre.americanfullfightingbons.fr',
+  'https://gestion.americanfullfightingbons.fr',
+]);
+
+function corsOriginFor(request: Request): string | null {
+  const origin = request.headers.get('Origin');
+  if (origin && TRUSTED_ORIGINS.has(origin)) return origin;
+  return null;
+}
+
 function withSecurityHeaders(response: Response, request?: Request): Response {
   const headers = new Headers(response.headers);
   for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
@@ -1554,11 +1913,25 @@ function withSecurityHeaders(response: Response, request?: Request): Response {
   // par l'origine réelle de la requête entrante. Combiné aux cookies de session
   // (voir requireAuth), un wildcard laisserait n'importe quel site tiers lire
   // les réponses d'un utilisateur connecté.
+  // CORS : la grande majorité des routes n'ont aucun consommateur cross-origin
+  // légitime (le front staff est servi par ce même Worker via ASSETS), mais
+  // /api/member/* est désormais appelée depuis espace-membre.* — un vrai
+  // sous-domaine distinct. On échote donc l'en-tête Origin réel de la requête
+  // (et non request.url, qui n'est que l'adresse de CE Worker et ne reflète
+  // jamais l'origine de l'appelant : c'était un bug, silencieux jusqu'ici
+  // faute de vrai appelant cross-origin), uniquement s'il figure dans
+  // TRUSTED_ORIGINS. Sinon, aucun en-tête CORS n'est posé : le navigateur
+  // bloque par défaut, ce qui est le comportement sûr pour une origine inconnue.
   if (request) {
-    const requestUrl = new URL(request.url);
-    headers.set('Access-Control-Allow-Origin', requestUrl.origin);
-    headers.set('Access-Control-Allow-Credentials', 'true');
-    headers.set('Vary', 'Origin');
+    const allowedOrigin = corsOriginFor(request);
+    if (allowedOrigin) {
+      headers.set('Access-Control-Allow-Origin', allowedOrigin);
+      headers.set('Access-Control-Allow-Credentials', 'true');
+      headers.set('Vary', 'Origin');
+    } else {
+      headers.delete('Access-Control-Allow-Origin');
+      headers.delete('Access-Control-Allow-Credentials');
+    }
   }
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
