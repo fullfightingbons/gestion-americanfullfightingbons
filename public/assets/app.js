@@ -282,6 +282,48 @@ function dismissNotice(id){
   if(UI.notices.length!==before) renderNotices();
 }
 
+// Remplacement non bloquant de window.confirm(), basé sur une Promise et réutilisant
+// le système de modale existant (.modal-bg / .modal / .modal-act) pour rester cohérent
+// visuellement avec le reste de l'app. Usage : if(!await confirmModal('Supprimer ?')) return;
+function confirmModal(message,options){
+  options=options||{};
+  const okLabel=options.okLabel||'Confirmer';
+  const cancelLabel=options.cancelLabel||'Annuler';
+  const title=options.title||'Confirmation';
+  const host=document.getElementById('app')||document.body;
+  return new Promise(resolve=>{
+    const div=document.createElement('div');
+    div.className='modal-bg';
+    div.innerHTML=`<div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="confirm-modal-title" style="max-width:480px">
+      <h2 id="confirm-modal-title">${esc(title)}</h2>
+      <div class="confirm-modal-body" style="white-space:pre-line;line-height:1.6;color:var(--txt)">${esc(plainText(message))}</div>
+      <div class="modal-act">
+        <button class="btn" type="button" data-act="cancel">${esc(cancelLabel)}</button>
+        <button class="btn primary" type="button" data-act="ok">${esc(okLabel)}</button>
+      </div>
+    </div>`;
+    function finish(result){
+      document.removeEventListener('keydown',onKey,true);
+      div.remove();
+      resolve(result);
+    }
+    function onKey(e){
+      if(e.key==='Escape'){ e.preventDefault(); finish(false); }
+      else if(e.key==='Enter'){ e.preventDefault(); finish(true); }
+    }
+    div.addEventListener('click',e=>{
+      if(e.target===div){ finish(false); return; }
+      const btn=e.target.closest('button[data-act]');
+      if(btn) finish(btn.dataset.act==='ok');
+    });
+    document.addEventListener('keydown',onKey,true);
+    host.appendChild(div);
+    div.querySelector('button[data-act="ok"]')?.focus();
+  });
+}
+window.confirmModal=confirmModal;
+
+
 function renderNotices(){
   const host=document.getElementById('app-notices');
   if(!host) return;
@@ -295,7 +337,11 @@ function renderNotices(){
 }
 
 window.dismissNotice=dismissNotice;
-window.alert=function(message){ notify('info',message); };
+window.alert=function(message){
+  const text=plainText(message);
+  const isError=/^(erreur|échec|impossible)\b/i.test(text)||/\berreur\s*:/i.test(text);
+  notify(isError?'error':'info',message);
+};
 window._onSessionExpired=function(){
   if(UI.currentUser){
     UI.currentUser=null;
@@ -2370,7 +2416,7 @@ async function bulkRenewSelectedAdh(){
   const ids=Object.keys(UI.adhSelected).filter(id=>UI.adhSelected[id]);
   const adhs=ids.map(id=>D.adherents.find(a=>a.id===id)).filter(Boolean);
   if(!adhs.length) return;
-  if(!confirm(`Renouveler l'adhésion de ${adhs.length} adhérent(s) sélectionné(s) ?\n\nPour chacun : nouvelle date de fin = +1 an, statut remis à "Actif", Certificat et Règlement décochés (à re-valider individuellement).`)) return;
+  if(!await confirmModal(`Renouveler l'adhésion de ${adhs.length} adhérent(s) sélectionné(s) ?\n\nPour chacun : nouvelle date de fin = +1 an, statut remis à "Actif", Certificat et Règlement décochés (à re-valider individuellement).`)) return;
   let okCount=0, errCount=0;
   for(const adh of adhs){
     const currentFin=adh.date_fin_adhesion||td();
@@ -2395,7 +2441,7 @@ async function renewAdh(id){
   // calculée à partir de la saison de la date de fin actuelle (ou d'aujourd'hui si absente)
   const currentFin=adh.date_fin_adhesion||td();
   const newFin=nextSeasonEnd(currentFin);
-  if(!confirm(`Renouveler l'adhésion de ${nomComplet} ?\n\nNouvelle date de fin : ${fd(newFin)}\nLe statut sera remis à "Actif".\nLes cases Certificat et Règlement seront décochées (à re-valider).`)) return;
+  if(!await confirmModal(`Renouveler l'adhésion de ${nomComplet} ?\n\nNouvelle date de fin : ${fd(newFin)}\nLe statut sera remis à "Actif".\nLes cases Certificat et Règlement seront décochées (à re-valider).`)) return;
   const patch={
     statut:'Actif',
     date_fin_adhesion:newFin,
@@ -2415,7 +2461,7 @@ async function delAdh(id){
   if(!requireWritePerm('perm_adherents')) return;
   const adh=D.adherents.find(a=>a.id===id);
   const nomComplet=adh?`${adh.nom} ${adh.prenom}`:'cet adhérent';
-  if(!confirm(`Archiver ${nomComplet} ?\n\nL'adhérent sera retiré de la liste active mais son historique comptable sera conservé.\nPour une suppression définitive, contactez l'administrateur.`))return;
+  if(!await confirmModal(`Archiver ${nomComplet} ?\n\nL'adhérent sera retiré de la liste active mais son historique comptable sera conservé.\nPour une suppression définitive, contactez l'administrateur.`))return;
   const {error}=await SB.from('adherents').update({statut:'Inactif',notes:(adh?.notes?adh.notes+'\n':'')+'[Archivé le '+td()+']',updated_at:new Date().toISOString()}).eq('id',id);
   if(error)return alert('Erreur : '+error.message);
   if(adh){adh.statut='Inactif';}
@@ -2786,7 +2832,7 @@ async function printDiplome(){
   const tplBelt=(tpl.name||'').toLowerCase();
   const adhBelt=(adh.couleur_ceinture||'').toLowerCase();
   if(adhBelt && tplBelt && !tplBelt.includes(adhBelt)){
-    if(!confirm(`⚠️ Le modèle sélectionné ("${tpl.label}") ne correspond pas à la ceinture de ${adh.prenom} ${adh.nom} ("${adh.couleur_ceinture}").\n\nContinuer quand même ?`)) return;
+    if(!await confirmModal(`⚠️ Le modèle sélectionné ("${tpl.label}") ne correspond pas à la ceinture de ${adh.prenom} ${adh.nom} ("${adh.couleur_ceinture}").\n\nContinuer quand même ?`)) return;
   }
   try{
     const jsPDF=await ensureJsPDF();
@@ -2979,7 +3025,7 @@ async function logDiplomeEchec(){
   if(!adh) return alert('Sélectionnez un adhérent.');
   const date=UI.diplome.date||td();
   const commentaire=(UI.diplome.commentaire||'').trim();
-  if(!confirm(`Enregistrer un échec de passage de grade pour ${adh.prenom} ${adh.nom} (session du ${fd(date)}) ?\n\nAucun diplôme ne sera généré ni envoyé — seule une note sera ajoutée à sa fiche.`)) return;
+  if(!await confirmModal(`Enregistrer un échec de passage de grade pour ${adh.prenom} ${adh.nom} (session du ${fd(date)}) ?\n\nAucun diplôme ne sera généré ni envoyé — seule une note sera ajoutée à sa fiche.`)) return;
   try{
     const jury=UI.diplome.delivrePar?` — jury : ${UI.diplome.delivrePar}`:'';
     const detail=commentaire?` — ${commentaire}`:'';
@@ -3273,7 +3319,7 @@ function vDiplomesArchive(){
  
 async function deleteDiplome(id){
   if(!hasPerm('perm_diplomes','write')) return;
-  if(!confirm('Supprimer cet enregistrement de diplôme ? Cette action est irréversible.')) return;
+  if(!await confirmModal('Supprimer cet enregistrement de diplôme ? Cette action est irréversible.')) return;
   const {error}=await SB.from('diplomes').delete().eq('id',id);
   if(error){notify('error','Suppression échouée : '+(error.message||error),'Diplômes');return;}
   D.diplomes=D.diplomes.filter(d=>d.id!==id);
@@ -3940,7 +3986,7 @@ async function regulariserEquilibreExo(){
   if(!D.currentExo) return alert('Aucun exercice sélectionné.');
   const issues=pieceBalanceDiagnostics(jnlExo());
   if(!issues.length) return alert('Le journal de cet exercice est déjà équilibré.');
-  if(!confirm(`Créer des écritures de régularisation sur le compte 471 pour ${issues.length} pièce(s) déséquilibrée(s) ?`)) return;
+  if(!await confirmModal(`Créer des écritures de régularisation sur le compte 471 pour ${issues.length} pièce(s) déséquilibrée(s) ?`)) return;
   const rows=issues.map((issue,idx)=>({
     id:crypto.randomUUID(),
     date_op:issue.firstDate||td(),
@@ -3980,7 +4026,7 @@ async function regulariserPieceEquilibreAvecCompte(issueKey,compte,reason='Régu
   if(!D.currentExo) return alert('Aucun exercice sélectionné.');
   const issue=getEquilibreIssue(issueKey);
   if(!issue) return alert('Cette pièce semble déjà équilibrée.');
-  if(!confirm(`Créer ${issue.ecart>0?'un crédit':'un débit'} de ${Math.abs(issue.ecart).toFixed(2)} € sur ${compte} pour la pièce ${issue.piece} ?`)) return;
+  if(!await confirmModal(`Créer ${issue.ecart>0?'un crédit':'un débit'} de ${Math.abs(issue.ecart).toFixed(2)} € sur ${compte} pour la pièce ${issue.piece} ?`)) return;
   const row={
     id:crypto.randomUUID(),
     date_op:issue.firstDate||td(),
@@ -4459,7 +4505,7 @@ async function setExoActif(id){
 }
 async function archiverExo(id){
   if(!requireWritePerm('perm_comptabilite')) return;
-  if(!confirm('Archiver cet exercice ? Il ne pourra plus recevoir de nouvelles écritures.'))return;
+  if(!await confirmModal('Archiver cet exercice ? Il ne pourra plus recevoir de nouvelles écritures.'))return;
   const {error}=await SB.from('exercices').update({statut:'archive'}).eq('id',id);
   if(error) return alert('Erreur : '+error.message);
   D.exercices=D.exercices.map(e=>e.id===id?{...e,statut:'archive'}:e);
@@ -4926,7 +4972,7 @@ async function setFactureStatus(id,status){
   render();
 }
 async function delFac(id){
-  if(!confirm('Supprimer ?'))return;
+  if(!await confirmModal('Supprimer ?'))return;
   const {error}=await SB.from('factures').delete().eq('id',id);
   if(error)return alert('Erreur lors de la suppression : '+error.message);
   try{await deleteJournalAuto(autoPiece('vente',id));}catch(e){return alert('Vente supprimée, mais écriture comptable non supprimée : '+e.message);}
@@ -4952,7 +4998,7 @@ async function relanceFactureEmail(id){
   const num=esc(f.numero||f.id.slice(0,8).toUpperCase());
   const clubNom=esc(D.clubInfo?.nom||DEFAULT_CLUB_NAME);
   const clubEmail=D.clubInfo?.email||'';
-  if(!confirm(`Envoyer une relance à ${email} pour la vente ${num} (${montant}) ?\n\nStatut actuel : ${statut}`)) return;
+  if(!await confirmModal(`Envoyer une relance à ${email} pour la vente ${num} (${montant}) ?\n\nStatut actuel : ${statut}`)) return;
   try{
     const res=await fetch('/api/email/send',{
       method:'POST',
@@ -4993,7 +5039,7 @@ async function sendFactureEmail(id){
   }
   const num=esc(f.numero||f.id.slice(0,8).toUpperCase());
   const clubNom=esc(D.clubInfo?.nom||DEFAULT_CLUB_NAME);
-  if(!confirm(`Envoyer le document ${num} par email à ${email} ?`)) return;
+  if(!await confirmModal(`Envoyer le document ${num} par email à ${email} ?`)) return;
   notify('info',`Génération et envoi en cours...`,'Ventes');
   try{
     // Générer le PDF côté client puis envoyer via backend
@@ -5371,7 +5417,7 @@ function vFeedbackDetail(camp){
 }
 
 async function activerCampagne(id){
-  if(!confirm('Lancer cette campagne ? Les adhérents pourront être invités à répondre.')) return;
+  if(!await confirmModal('Lancer cette campagne ? Les adhérents pourront être invités à répondre.')) return;
   const {error}=await SB.from('feedback_campaigns').update({statut:'active',date_debut:new Date().toISOString(),updated_at:new Date().toISOString()}).eq('id',id);
   if(error)return notify('error','Erreur : '+error.message,'Feedback');
   const c=D.feedbackCampaigns.find(x=>x.id===id);
@@ -5380,7 +5426,7 @@ async function activerCampagne(id){
 }
 
 async function cloturerCampagne(id){
-  if(!confirm('Clôturer cette campagne ? Elle ne pourra plus recevoir de réponses.')) return;
+  if(!await confirmModal('Clôturer cette campagne ? Elle ne pourra plus recevoir de réponses.')) return;
   const {error}=await SB.from('feedback_campaigns').update({statut:'cloturee',date_fin:new Date().toISOString(),updated_at:new Date().toISOString()}).eq('id',id);
   if(error)return notify('error','Erreur : '+error.message,'Feedback');
   const c=D.feedbackCampaigns.find(x=>x.id===id);
@@ -5389,7 +5435,7 @@ async function cloturerCampagne(id){
 }
 
 async function delCampagne(id){
-  if(!confirm('Supprimer cette campagne et toutes ses réponses ?')) return;
+  if(!await confirmModal('Supprimer cette campagne et toutes ses réponses ?')) return;
   const {error}=await SB.from('feedback_campaigns').delete().eq('id',id);
   if(error)return notify('error','Erreur : '+error.message,'Feedback');
   D.feedbackCampaigns=D.feedbackCampaigns.filter(c=>c.id!==id);
@@ -5400,7 +5446,7 @@ async function delCampagne(id){
 }
 
 async function delRecipient(id){
-  if(!confirm('Retirer ce destinataire ?')) return;
+  if(!await confirmModal('Retirer ce destinataire ?')) return;
   const {error}=await SB.from('feedback_recipients').delete().eq('id',id);
   if(error)return notify('error','Erreur : '+error.message,'Feedback');
   D.feedbackRecipients=D.feedbackRecipients.filter(r=>r.id!==id);
@@ -5426,7 +5472,7 @@ function ouvrirEnvoi(campaignId){
 }
 
 async function relancerNonRepondants(campaignId, count){
-  if(!confirm(`Envoyer un email de rappel à ${count} destinataire(s) qui n'ont pas encore répondu ?`))return;
+  if(!await confirmModal(`Envoyer un email de rappel à ${count} destinataire(s) qui n'ont pas encore répondu ?`))return;
   const {data,error}=await apiRequest('/feedback/send-reminder',{method:'POST',body:JSON.stringify({campaign_id:campaignId})});
   if(error)return alert('Erreur : '+error.message);
   await loadTabData('feedback',true);
@@ -5442,7 +5488,7 @@ async function relancerNonRepondants(campaignId, count){
 // telle quelle : c'est volontairement le seul endroit qui n'avale pas
 // l'erreur en arrière-plan, pour diagnostiquer une vraie panne.
 async function relancerFeedbackExercice(exerciceId,libelle){
-  if(!confirm(`Lancer/relancer le feedback pour "${libelle}" ?\n\nCrée la campagne si nécessaire, recense tous les adhérents de cet exercice et envoie l'invitation à ceux qui ne l'ont pas encore reçue.`))return;
+  if(!await confirmModal(`Lancer/relancer le feedback pour "${libelle}" ?\n\nCrée la campagne si nécessaire, recense tous les adhérents de cet exercice et envoie l'invitation à ceux qui ne l'ont pas encore reçue.`))return;
   const {data,error}=await apiRequest('/feedback/trigger-season',{method:'POST',body:JSON.stringify({exercice_id:exerciceId})});
   if(error)return alert('Échec du déclenchement du feedback :\n\n'+error.message);
   await loadTabData('feedback',true);
@@ -5453,7 +5499,7 @@ async function relancerFeedbackExercice(exerciceId,libelle){
 async function envoyerInvitesEnAttente(campaignId){
   const enAttente=D.feedbackRecipients.filter(r=>r.campaign_id===campaignId&&!r.envoye).length;
   if(!enAttente)return alert('Aucune invitation en attente : tous les destinataires ont déjà reçu leur email.');
-  if(!confirm(`Envoyer l'invitation par email à ${enAttente} destinataire(s) en attente ?`))return;
+  if(!await confirmModal(`Envoyer l'invitation par email à ${enAttente} destinataire(s) en attente ?`))return;
   const {data,error}=await apiRequest('/feedback/send-pending',{method:'POST',body:JSON.stringify({campaign_id:campaignId})});
   if(error)return alert('Erreur : '+error.message);
   await loadTabData('feedback',true);
@@ -5468,7 +5514,7 @@ async function envoyerInvitesEnAttente(campaignId){
 // encore "envoye". À utiliser en cas de doute sur l'envoi automatique fait
 // à la clôture (ex. rien reçu malgré une clôture réussie).
 async function relancerRecensementSaison(campaignId,exerciceId){
-  if(!confirm("Recenser à nouveau les adhérents de cet exercice et envoyer l'invitation à tous ceux qui ne l'ont pas encore reçue ?"))return;
+  if(!await confirmModal("Recenser à nouveau les adhérents de cet exercice et envoyer l'invitation à tous ceux qui ne l'ont pas encore reçue ?"))return;
   const {data,error}=await apiRequest('/feedback/trigger-season',{method:'POST',body:JSON.stringify({exercice_id:exerciceId})});
   if(error)return alert('Erreur : '+error.message);
   await loadTabData('feedback',true);
@@ -6556,7 +6602,7 @@ async function fixAdherentExo(adherentId,expectedExoId){
 async function fixAllAdherentExoMismatches(){
   const list=UI._exoCheckMismatches||[];
   if(!list.length) return;
-  if(!confirm(`Corriger le rattachement de ${list.length} adhérent(s) vers leur exercice d'inscription réel ?`)) return;
+  if(!await confirmModal(`Corriger le rattachement de ${list.length} adhérent(s) vers leur exercice d'inscription réel ?`)) return;
   let failed=0;
   for(const m of list){
     const {error}=await SB.from('adherents').update({exercice_id:m.expected.id}).eq('id',m.adherent.id);
@@ -6899,7 +6945,7 @@ async function saveAchat(id){
   closeModal();render();
 }
 async function delAchat(id){
-  if(!confirm('Supprimer ?'))return;
+  if(!await confirmModal('Supprimer ?'))return;
   const {error}=await SB.from('achats').delete().eq('id',id);
   if(error)return alert('Erreur lors de la suppression : '+error.message);
   try{await deleteJournalAuto(autoPiece('achat',id));}catch(e){return alert('Achat supprimé, mais écriture comptable non supprimée : '+e.message);}
@@ -7414,7 +7460,7 @@ async function importBankPDF(e){
       // Chercher un compte dont le numéro contient le numéro détecté
       const matched=D.comptes.find(x=>(x.numero||'').replace(/\s+/g,'').includes(pdfAccountNum)||pdfAccountNum.includes((x.numero||'').replace(/\s+/g,'')));
       if(matched && matched.id!==cid){
-        const ok=confirm(`⚠️ Le PDF appartient au compte "${matched.nom}" (N° ${pdfAccountNum}), mais vous avez sélectionné "${c.nom}".\n\nCliquez OK pour basculer automatiquement sur le bon compte, ou Annuler pour conserver votre choix.`);
+        const ok=await confirmModal(`⚠️ Le PDF appartient au compte "${matched.nom}" (N° ${pdfAccountNum}), mais vous avez sélectionné "${c.nom}".\n\nCliquez OK pour basculer automatiquement sur le bon compte, ou Annuler pour conserver votre choix.`);
         if(ok){
           // Mettre à jour le select et la variable locale
           const sel=document.getElementById('cible-cpt');
@@ -7424,7 +7470,7 @@ async function importBankPDF(e){
         }
       } else if(!matched){
         // Numéro détecté mais aucun compte enregistré ne correspond
-        const ok=confirm(`ℹ️ Le PDF mentionne le compte N° ${pdfAccountNum} qui ne correspond à aucun compte enregistré.\n\nImporter quand même dans "${c.nom}" ?`);
+        const ok=await confirmModal(`ℹ️ Le PDF mentionne le compte N° ${pdfAccountNum} qui ne correspond à aucun compte enregistré.\n\nImporter quand même dans "${c.nom}" ?`);
         if(!ok) return;
       }
     }
@@ -7513,7 +7559,7 @@ async function rapprocherMulti(id){
 
 // Rapprochement groupé validé depuis le panneau de suggestion
 async function validerGroupeRapprochement(transactionIds, piece){
-  if(!confirm(`Rapprocher les ${transactionIds.length} transactions avec la pièce ${piece} ?`)) return;
+  if(!await confirmModal(`Rapprocher les ${transactionIds.length} transactions avec la pièce ${piece} ?`)) return;
   const piecesJson=JSON.stringify([piece]);
   for(const tid of transactionIds){
     await SB.from('transactions').update({rapproche:true,ecriture_piece:piece,ecriture_pieces_json:piecesJson}).eq('id',tid);
@@ -7533,7 +7579,7 @@ function toggleMultiSel(tid, piece){
 }
 
 async function modifierRapprochement(id){
-  if(!confirm('Modifier le rapprochement de cette transaction ? Elle repassera en attente et vous pourrez choisir une nouvelle écriture.')) return;
+  if(!await confirmModal('Modifier le rapprochement de cette transaction ? Elle repassera en attente et vous pourrez choisir une nouvelle écriture.')) return;
   await SB.from('transactions').update({rapproche:false,ecriture_piece:null,ecriture_pieces_json:null}).eq('id',id);
   const t=D.comptes.flatMap(c=>c.transactions||[]).find(x=>x.id===id);
   if(t){t.rapproche=false;t.ecriture_piece=null;t.ecriture_pieces_json=null;}
@@ -7722,7 +7768,7 @@ async function preselectRapprochements(){
 
   // Rapprochement automatique en base pour les matches haute confiance
   if(toAutoRapproch.length){
-    const confirmed = confirm(
+    const confirmed = await confirmModal(
       `${nbAuto} transaction(s) ont un match fiable et seront rapprochées automatiquement.\n` +
       `${nbSuggest} autre(s) ont été pré-sélectionnées pour validation manuelle.\n` +
       (nbGrouped?`${nbGrouped} regroupement(s) possible(s) détecté(s) (ex: virement groupé HelloAsso) — à valider manuellement dans l'onglet Rapprochement groupé.\n`:'') +
@@ -7755,7 +7801,7 @@ async function preselectRapprochements(){
 async function toutRappr(){
   const ids=D.comptes.flatMap(c=>(c.transactions||[]).filter(t=>!t.rapproche).map(t=>t.id));
   if(!ids.length) return;
-  if(!confirm(`Rapprocher les ${ids.length} transaction(s) restantes sans vérification ?`)) return;
+  if(!await confirmModal(`Rapprocher les ${ids.length} transaction(s) restantes sans vérification ?`)) return;
   const {error}=await SB.from('transactions').update({rapproche:true}).in('id',ids);
   if(error) return notify('error','Erreur lors du rapprochement groupé : '+error.message,'Rapprochement');
   D.comptes.forEach(c=>(c.transactions||[]).forEach(t=>{t.rapproche=true}));
@@ -7765,7 +7811,7 @@ async function toutRappr(){
 
 // Annule un rapprochement effectué par erreur (auto ou manuel).
 async function annulerRapprochement(id){
-  if(!confirm('Annuler le rapprochement de cette transaction ?')) return;
+  if(!await confirmModal('Annuler le rapprochement de cette transaction ?')) return;
   await SB.from('transactions').update({rapproche:false, ecriture_piece:null, ecriture_pieces_json:null}).eq('id',id);
   const t=D.comptes.flatMap(c=>c.transactions||[]).find(x=>x.id===id);
   if(t){ t.rapproche=false; t.ecriture_piece=null; t.ecriture_pieces_json=null; }
@@ -8063,7 +8109,7 @@ function onBackupJSONFile(e){
         .filter(([k,v])=>Array.isArray(v))
         .map(([k,v])=>`${k} : ${v.length} ligne(s)`)
         .join('\n');
-      if(!confirm(`📋 Résumé du fichier de sauvegarde :\n\n${summary}\n\nContinuer la restauration ?`)){
+      if(!await confirmModal(`📋 Résumé du fichier de sauvegarde :\n\n${summary}\n\nContinuer la restauration ?`)){
         throw new Error('Import annulé par l\'utilisateur.');
       }
       await restoreBackupJSON(payload);
@@ -8083,7 +8129,7 @@ function onBackupJSONFile(e){
 
 async function restoreBackupJSON(payload){
   if(!payload||typeof payload!=='object') throw new Error('Fichier JSON invalide.');
-  if(!confirm('Cette restauration va remplacer les données actuelles. Voulez-vous continuer ?')) throw new Error('Import annulé.');
+  if(!await confirmModal('Cette restauration va remplacer les données actuelles. Voulez-vous continuer ?')) throw new Error('Import annulé.');
   const confirmText=window.prompt(`Opération critique. Saisissez ${DANGEROUS_RESTORE_PHRASE} pour confirmer la restauration complète.`);
   if(String(confirmText||'').trim().toUpperCase()!==DANGEROUS_RESTORE_PHRASE) throw new Error('Confirmation invalide.');
   const {error}=await apiRequest('/admin/restore',{
