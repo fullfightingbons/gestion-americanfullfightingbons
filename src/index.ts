@@ -106,7 +106,9 @@ async function getCurrentMemberFromBearer(request: Request, env: Env): Promise<R
   const compte = await env.DB.prepare(
     `SELECT ac.*, a.nom, a.prenom, a.email AS adherent_email, a.statut, a.cotisation, a.paiement,
             a.date_inscription, a.date_fin_adhesion, a.certificat, a.certificat_date,
-            a.telephone, a.adresse, a.code_postal, a.ville
+            a.telephone, a.adresse, a.code_postal, a.ville,
+            a.couleur_ceinture, a.numero_licence,
+            a.urgence_nom, a.urgence_telephone, a.urgence_lien
      FROM adherent_comptes ac
      JOIN adherents a ON a.id = ac.adherent_id
      WHERE ac.id = ?`
@@ -160,6 +162,18 @@ async function checkAuthRateLimit(ip: string, env: Env): Promise<boolean> {
 
 async function resetAuthRateLimit(ip: string, env: Env): Promise<void> {
   try { await env.DB.prepare('DELETE FROM auth_rate_limits WHERE ip = ?').bind(ip).run(); } catch { /* best effort */ }
+}
+
+// Même source que checkCertificatsExpirants (cron), pour que la date
+// affichée à l'adhérent dans l'espace membre corresponde exactement à celle
+// utilisée pour déclencher les rappels par email.
+async function getCertificatDureeMois(env: Env): Promise<number> {
+  try {
+    const row = await env.DB.prepare(`SELECT valeur FROM club_info WHERE cle = 'duree_validite_certificat_mois'`).first<{ valeur: string }>();
+    return Number(row?.valeur) || 12;
+  } catch {
+    return 12;
+  }
 }
 
 function requestIp(request: Request): string {
@@ -1510,16 +1524,57 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
     if (method === 'GET' && path === '/api/member/me') {
       const member = await getCurrentMemberFromBearer(request, env);
       if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+
+      let certificatExpireLe: string | null = null;
+      if (member.certificat_date) {
+        const d = new Date(member.certificat_date);
+        if (!isNaN(d.getTime())) {
+          const dureeMois = await getCertificatDureeMois(env);
+          d.setMonth(d.getMonth() + dureeMois);
+          certificatExpireLe = d.toISOString().slice(0, 10);
+        }
+      }
+
       return json({
         data: {
           nom: member.nom, prenom: member.prenom, email: member.adherent_email,
           telephone: member.telephone, adresse: member.adresse, code_postal: member.code_postal, ville: member.ville,
           statut: member.statut, cotisation: member.cotisation, paiement: member.paiement,
           date_inscription: member.date_inscription, date_fin_adhesion: member.date_fin_adhesion,
-          certificat: member.certificat, certificat_date: member.certificat_date,
+          certificat: member.certificat, certificat_date: member.certificat_date, certificat_expire_le: certificatExpireLe,
+          ceinture: member.couleur_ceinture || null, numero_licence: member.numero_licence || null,
+          urgence_nom: member.urgence_nom, urgence_telephone: member.urgence_telephone, urgence_lien: member.urgence_lien,
         },
         error: null,
       });
+    }
+
+    // PATCH /api/member/me — l'adhérent met à jour lui-même ses coordonnées et
+    // son contact d'urgence. Volontairement restreint à ces champs : nom,
+    // prénom, email, statut, cotisation, certificat... restent modifiables
+    // uniquement par le bureau depuis l'interface staff (perm_adherents).
+    const MEMBER_EDITABLE_FIELDS = ['telephone', 'adresse', 'code_postal', 'ville', 'urgence_nom', 'urgence_telephone', 'urgence_lien'] as const;
+    if (method === 'PATCH' && path === '/api/member/me') {
+      const member = await getCurrentMemberFromBearer(request, env);
+      if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+
+      const body = await request.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+      const updates: Record<string, string> = {};
+      for (const field of MEMBER_EDITABLE_FIELDS) {
+        if (body[field] !== undefined) updates[field] = String(body[field] ?? '').trim().slice(0, 255);
+      }
+      if (!Object.keys(updates).length) return err('Aucun champ modifiable fourni', 400);
+
+      const setSql = Object.keys(updates).map((f) => `${f} = ?`).join(', ');
+      await env.DB.prepare(`UPDATE adherents SET ${setSql} WHERE id = ?`)
+        .bind(...Object.values(updates), member.adherent_id).run();
+
+      ctx.waitUntil(writeAuditLog(env, {
+        userId: null, action: 'member_update_profile', entityType: 'adherents', entityId: member.adherent_id,
+        details: { fields: Object.keys(updates), memberInitiated: true }, ip: request.headers.get('CF-Connecting-IP'),
+      }));
+
+      return json({ data: { ok: true, ...updates }, error: null });
     }
 
     // POST /api/member/documents/certificat — l'adhérent dépose lui-même un
@@ -1551,6 +1606,49 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       }));
 
       return json({ data: { ok: true, certificat_date: dateCertificat }, error: null }, 201);
+    }
+
+    // GET /api/member/diplomes — liste des diplômes de ceinture de l'adhérent
+    // connecté (titre, ceinture, date, saison). Le chemin R2 n'est jamais
+    // exposé directement : le téléchargement passe par la route suivante,
+    // qui vérifie que le diplôme appartient bien à cet adhérent.
+    if (method === 'GET' && path === '/api/member/diplomes') {
+      const member = await getCurrentMemberFromBearer(request, env);
+      if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+      const { results } = await env.DB.prepare(
+        `SELECT id, titre, ceinture, date_emission, saison, delivre_par
+         FROM diplomes WHERE adherent_id = ? ORDER BY date_emission DESC`
+      ).bind(member.adherent_id).all();
+      return json({ data: results || [], error: null });
+    }
+
+    // GET /api/member/documents/diplome/:id — téléchargement d'un diplôme
+    // précis. Réutilise le bucket R2_PDF déjà utilisé par l'admin (aucune
+    // migration de fichiers nécessaire), mais avec sa propre vérification de
+    // propriété (diplome.adherent_id === member.adherent_id) plutôt que la
+    // permission staff perm_diplomes utilisée par /api/storage/*.
+    const diplomeDocMatch = path.match(/^\/api\/member\/documents\/diplome\/([A-Za-z0-9_-]+)$/);
+    if (diplomeDocMatch && method === 'GET') {
+      const member = await getCurrentMemberFromBearer(request, env);
+      if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+      if (!env.R2_PDF) return err('Stockage indisponible', 503);
+
+      const diplome = await env.DB.prepare(
+        `SELECT id, adherent_id, pdf_storage_path, titre FROM diplomes WHERE id = ?`
+      ).bind(diplomeDocMatch[1]).first<any>();
+      if (!diplome || diplome.adherent_id !== member.adherent_id) return err('Diplôme introuvable', 404);
+      if (!diplome.pdf_storage_path) return err("Ce diplôme n'a pas d'archive PDF disponible", 404);
+
+      const object = await env.R2_PDF.get(diplome.pdf_storage_path);
+      if (!object) return err('Fichier introuvable', 404);
+      const safeName = String(diplome.titre || 'diplome').replace(/[^A-Za-z0-9 _-]/g, '') || 'diplome';
+      return new Response(object.body, {
+        headers: {
+          'Content-Type': r2ContentType(diplome.pdf_storage_path, object.httpMetadata?.contentType),
+          'Content-Disposition': `inline; filename="${safeName}.pdf"`,
+          'Cache-Control': 'private, no-store',
+        },
+      });
     }
 
     // POST /api/member/logout
@@ -1610,6 +1708,43 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
         `UPDATE adherent_comptes SET mot_de_passe=?, password_changed_at=?, reset_token=NULL, reset_expires_at=NULL WHERE id=?`
       ).bind(hash, now, compte.id).run();
       return json({ data: { ok: true }, error: null }, 200, { 'Set-Cookie': clearMemberSessionCookie(request) });
+    }
+
+    // POST /api/member/password/change — changement de mot de passe pour un
+    // adhérent déjà connecté (à la différence de password/reset, qui repose
+    // sur un jeton reçu par e-mail). password_changed_at est mis à jour, ce
+    // qui invalide immédiatement toute autre session ouverte (même logique
+    // que /api/auth/password côté staff).
+    if (method === 'POST' && path === '/api/member/password/change') {
+      const member = await getCurrentMemberFromBearer(request, env);
+      if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+
+      const body = await request.json<{ currentPassword?: string; nextPassword?: string }>().catch(() => ({} as any));
+      if (!body?.currentPassword || !body?.nextPassword) {
+        return err('currentPassword et nextPassword sont requis', 400);
+      }
+      if (String(body.nextPassword).length < 8) {
+        return err('Le nouveau mot de passe doit faire au moins 8 caractères', 400);
+      }
+
+      const check = await verifyPassword(body.currentPassword, member.mot_de_passe, env as any, 'pbkdf2_sha256', 100000, /^[a-f0-9]{64}$/i);
+      if (!check.valid) return err('Mot de passe actuel incorrect', 401);
+
+      const newHash = await hashPassword(body.nextPassword, env as any, 'pbkdf2_sha256', 100000);
+      const changedAt = new Date().toISOString();
+      await env.DB.prepare(`UPDATE adherent_comptes SET mot_de_passe=?, password_changed_at=? WHERE id=?`)
+        .bind(newHash, changedAt, member.id).run();
+
+      const maxAgeSeconds = MEMBER_TOKEN_TTL_SEC;
+      const sessionToken = await createSessionToken(
+        { kind: 'member', adherentCompteId: member.id, email: member.adherent_email, expiresAt: Date.now() + maxAgeSeconds * 1000, pwdStamp: changedAt },
+        env as any,
+      );
+      return json(
+        { data: { ok: true, token: sessionToken, expiresAt: Date.now() + maxAgeSeconds * 1000 }, error: null },
+        200,
+        { 'Set-Cookie': buildMemberSessionCookie(request, sessionToken, maxAgeSeconds) },
+      );
     }
 
     // POST /api/feedback/trigger-season — relance manuelle complète (re-scan
@@ -1813,6 +1948,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
   "/api/member/documents/certificat",
   "/api/member/password/forgot",
   "/api/member/password/reset",
+  "/api/member/password/change",
+  "/api/member/diplomes",
 ]);
 
 if (path.startsWith("/api/") && !publicApiRoutes.has(path)) {
