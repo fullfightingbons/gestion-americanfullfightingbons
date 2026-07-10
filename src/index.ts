@@ -108,7 +108,8 @@ async function getCurrentMemberFromBearer(request: Request, env: Env): Promise<R
             a.date_inscription, a.date_fin_adhesion, a.certificat, a.certificat_date,
             a.telephone, a.adresse, a.code_postal, a.ville,
             a.couleur_ceinture, a.numero_licence,
-            a.urgence_nom, a.urgence_telephone, a.urgence_lien
+            a.urgence_nom, a.urgence_telephone, a.urgence_lien,
+            a.annuaire_visible, a.pdf_storage_path, a.pdf_nom_fichier
      FROM adherent_comptes ac
      JOIN adherents a ON a.id = ac.adherent_id
      WHERE ac.id = ?`
@@ -1545,6 +1546,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
           ceinture: member.couleur_ceinture || null, numero_licence: member.numero_licence || null,
           urgence_nom: member.urgence_nom, urgence_telephone: member.urgence_telephone, urgence_lien: member.urgence_lien,
           annuaire_visible: Number(member.annuaire_visible ?? 0) === 1,
+          notation_disponible: !!member.pdf_storage_path,
+          notation_nom_fichier: member.pdf_nom_fichier || null,
         },
         error: null,
       });
@@ -1669,6 +1672,30 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
         headers: {
           'Content-Type': r2ContentType(diplome.pdf_storage_path, object.httpMetadata?.contentType),
           'Content-Disposition': `inline; filename="${safeName}.pdf"`,
+          'Cache-Control': 'private, no-store',
+        },
+      });
+    }
+
+    // GET /api/member/documents/notation — téléchargement de la fiche de
+    // notation du membre connecté. PDF téléversé manuellement par un
+    // coach/secrétaire depuis gestion (colonnes pdf_storage_path /
+    // pdf_nom_fichier de `adherents` — distinctes de pdf_inscription_* et du
+    // diplôme, cf. migration 0015). inline plutôt qu'attachment pour ouvrir
+    // directement le PDF dans le navigateur et permettre l'impression.
+    if (method === 'GET' && path === '/api/member/documents/notation') {
+      const member = await getCurrentMemberFromBearer(request, env);
+      if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+      if (!env.R2_PDF) return err('Stockage indisponible', 503);
+      if (!member.pdf_storage_path) return err('Aucune fiche de notation disponible pour le moment', 404);
+
+      const object = await env.R2_PDF.get(member.pdf_storage_path);
+      if (!object) return err('Fichier introuvable', 404);
+      const safeName = String(member.pdf_nom_fichier || 'fiche-notation.pdf').replace(/[^A-Za-z0-9 _.-]/g, '') || 'fiche-notation.pdf';
+      return new Response(object.body, {
+        headers: {
+          'Content-Type': r2ContentType(member.pdf_storage_path, object.httpMetadata?.contentType),
+          'Content-Disposition': `inline; filename="${safeName}"`,
           'Cache-Control': 'private, no-store',
         },
       });
@@ -1974,6 +2001,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
   "/api/member/password/change",
   "/api/member/diplomes",
   "/api/member/annuaire",
+  "/api/member/documents/notation",
 ]);
 
 if (path.startsWith("/api/") && !publicApiRoutes.has(path)) {
