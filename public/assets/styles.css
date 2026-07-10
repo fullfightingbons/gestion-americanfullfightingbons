@@ -1,5 +1,5 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Great+Vibes&family=Montserrat:wght@400;500;600;700&family=Oswald:wght@400;500;600&family=Petit+Formal+Script&family=Playfair+Display:wght@400;500;600;700&display=swap');
+/* Polices chargées via <link> dans le <head> de chaque page (plus rapide qu'un @import, qui bloque le rendu et double la requête réseau) */
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:var(--font-body);background:
   radial-gradient(circle at top left,rgba(214,172,84,.16),transparent 28%),
