@@ -1544,6 +1544,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
           certificat: member.certificat, certificat_date: member.certificat_date, certificat_expire_le: certificatExpireLe,
           ceinture: member.couleur_ceinture || null, numero_licence: member.numero_licence || null,
           urgence_nom: member.urgence_nom, urgence_telephone: member.urgence_telephone, urgence_lien: member.urgence_lien,
+          annuaire_visible: Number(member.annuaire_visible ?? 0) === 1,
         },
         error: null,
       });
@@ -1559,10 +1560,14 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
 
       const body = await request.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-      const updates: Record<string, string> = {};
+      const updates: Record<string, string | number> = {};
       for (const field of MEMBER_EDITABLE_FIELDS) {
         if (body[field] !== undefined) updates[field] = String(body[field] ?? '').trim().slice(0, 255);
       }
+      // Champ booléen (consentement annuaire) : traité à part des champs
+      // texte ci-dessus, sinon `true`/`false` serait tronqué en la chaîne
+      // "true"/"false" plutôt que stocké comme 1/0 (colonne INTEGER).
+      if (body.annuaire_visible !== undefined) updates.annuaire_visible = body.annuaire_visible ? 1 : 0;
       if (!Object.keys(updates).length) return err('Aucun champ modifiable fourni', 400);
 
       const setSql = Object.keys(updates).map((f) => `${f} = ?`).join(', ');
@@ -1575,6 +1580,24 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       }));
 
       return json({ data: { ok: true, ...updates }, error: null });
+    }
+
+    // GET /api/member/annuaire — liste (nom + prénom uniquement) des
+    // adhérents ayant explicitement activé la visibilité annuaire
+    // (annuaire_visible = 1, consentement distinct de droit_image — cf.
+    // migration 0019). Accessible à tout membre connecté : ce n'est pas une
+    // donnée administrative, donc pas de permission staff ici, juste une
+    // session membre valide.
+    if (method === 'GET' && path === '/api/member/annuaire') {
+      const member = await getCurrentMemberFromBearer(request, env);
+      if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+
+      const { results } = await env.DB.prepare(
+        `SELECT prenom, nom FROM adherents
+         WHERE annuaire_visible = 1 AND statut = 'Actif'
+         ORDER BY nom COLLATE NOCASE, prenom COLLATE NOCASE`
+      ).all();
+      return json({ data: results || [], error: null });
     }
 
     // POST /api/member/documents/certificat — l'adhérent dépose lui-même un
@@ -1950,6 +1973,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
   "/api/member/password/reset",
   "/api/member/password/change",
   "/api/member/diplomes",
+  "/api/member/annuaire",
 ]);
 
 if (path.startsWith("/api/") && !publicApiRoutes.has(path)) {
