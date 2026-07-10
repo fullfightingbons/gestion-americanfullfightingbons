@@ -1754,7 +1754,7 @@ function adherentMatchesSpecialFilter(adherent, special){
   return true;
 }
 
-function renderBarChart(series,color='#B33627'){
+function renderBarChart(series,color='#d84a2f'){
   const width=320, height=120, pad=10, barW=32;
   const max=Math.max(...series.map(s=>s.value),1);
   const gap=(width-pad*2-barW*series.length)/Math.max(series.length-1,1);
@@ -1763,10 +1763,10 @@ function renderBarChart(series,color='#B33627'){
     const x=pad+index*(barW+gap);
     const y=84-h;
     return `<rect x="${x}" y="${y}" width="${barW}" height="${h}" rx="8" fill="${color}" opacity="${index===series.length-1?'1':'0.72'}"></rect>
-    <text x="${x+barW/2}" y="98" text-anchor="middle" font-size="10" fill="#6d6259">${esc(item.label)}</text>`;
+    <text x="${x+barW/2}" y="98" text-anchor="middle" font-size="10" fill="#607080">${esc(item.label)}</text>`;
   }).join('');
   return `<svg viewBox="0 0 ${width} ${height}" aria-hidden="true">
-  <line x1="${pad}" y1="84.5" x2="${width-pad}" y2="84.5" stroke="rgba(62,39,24,.18)" />
+  <line x1="${pad}" y1="84.5" x2="${width-pad}" y2="84.5" stroke="rgba(15,23,32,.18)" />
   ${bars}
   </svg>`;
 }
@@ -1784,7 +1784,7 @@ function renderLineChart(series,color='#245a9b'){
   return `<svg viewBox="0 0 ${width} ${height}" aria-hidden="true">
   <polyline fill="none" stroke="${color}" stroke-width="3" points="${polyline}" />
   ${points.map((p,index)=>`<circle cx="${p.x}" cy="${p.y}" r="${index===points.length-1?4:3}" fill="${color}" />
-  <text x="${p.x}" y="${height-14}" text-anchor="middle" font-size="10" fill="#6d6259">${esc(p.item.label)}</text>`).join('')}
+  <text x="${p.x}" y="${height-14}" text-anchor="middle" font-size="10" fill="#607080">${esc(p.item.label)}</text>`).join('')}
   </svg>`;
 }
 
@@ -1793,11 +1793,11 @@ function renderGauge(value,total,color='#1e7e34'){
   const ratio=Math.max(0,Math.min(1,(value||0)/safeTotal));
   const radius=42, circumference=2*Math.PI*radius, offset=circumference*(1-ratio);
   return `<svg viewBox="0 0 120 120" aria-hidden="true">
-  <circle cx="60" cy="60" r="${radius}" fill="none" stroke="rgba(62,39,24,.12)" stroke-width="12"></circle>
+  <circle cx="60" cy="60" r="${radius}" fill="none" stroke="rgba(15,23,32,.12)" stroke-width="12"></circle>
   <circle cx="60" cy="60" r="${radius}" fill="none" stroke="${color}" stroke-width="12" stroke-linecap="round"
   stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" transform="rotate(-90 60 60)"></circle>
-  <text x="60" y="56" text-anchor="middle" font-size="24" font-weight="700" fill="#26160f">${Math.round(ratio*100)}%</text>
-  <text x="60" y="74" text-anchor="middle" font-size="10" fill="#6d6259">complet</text>
+  <text x="60" y="56" text-anchor="middle" font-size="24" font-weight="700" fill="#1a2430">${Math.round(ratio*100)}%</text>
+  <text x="60" y="74" text-anchor="middle" font-size="10" fill="#607080">complet</text>
   </svg>`;
 }
 
@@ -2135,13 +2135,13 @@ function vDashboard(){
   <div class="dash-viz-title">Ventes 6 mois</div>
   <div class="dash-viz-value">${hasPerm('perm_facturation')?euro(d.monthInvoiceAmount):'—'}</div>
   <div class="dash-viz-sub">${hasPerm('perm_facturation')?'Ce mois':'Rubrique non accessible.'}</div>
-  ${hasPerm('perm_facturation')?`<div class="dash-chart">${renderBarChart(invoiceSeries,'#B33627')}<div class="dash-chart-legend"><span>${esc(invoiceSeries[0]?.label||'')}</span><span>${esc(invoiceSeries.at(-1)?.label||'')}</span></div></div>`:''}
+  ${hasPerm('perm_facturation')?`<div class="dash-chart">${renderBarChart(invoiceSeries,'#d84a2f')}<div class="dash-chart-legend"><span>${esc(invoiceSeries[0]?.label||'')}</span><span>${esc(invoiceSeries.at(-1)?.label||'')}</span></div></div>`:''}
   </div>
   <div class="dash-viz-card">
   <div class="dash-viz-title">Achats 6 mois</div>
   <div class="dash-viz-value">${hasPerm('perm_achats')?euro(d.monthBuyAmount):'—'}</div>
   <div class="dash-viz-sub">${hasPerm('perm_achats')?'Ce mois':'Rubrique non accessible.'}</div>
-  ${hasPerm('perm_achats')?`<div class="dash-chart">${renderLineChart(buySeries,'#8E6A0C')}<div class="dash-chart-legend"><span>${esc(buySeries[0]?.label||'')}</span><span>${esc(buySeries.at(-1)?.label||'')}</span></div></div>`:''}
+  ${hasPerm('perm_achats')?`<div class="dash-chart">${renderLineChart(buySeries,'#a67c2e')}<div class="dash-chart-legend"><span>${esc(buySeries[0]?.label||'')}</span><span>${esc(buySeries.at(-1)?.label||'')}</span></div></div>`:''}
   </div>
   <div class="dash-viz-card">
   <div class="dash-viz-title">Qualité des données</div>
