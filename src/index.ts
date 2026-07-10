@@ -109,7 +109,8 @@ async function getCurrentMemberFromBearer(request: Request, env: Env): Promise<R
             a.telephone, a.adresse, a.code_postal, a.ville,
             a.couleur_ceinture, a.numero_licence,
             a.urgence_nom, a.urgence_telephone, a.urgence_lien,
-            a.annuaire_visible, a.pdf_storage_path, a.pdf_nom_fichier
+            a.annuaire_visible, a.pdf_storage_path, a.pdf_nom_fichier,
+            a.pdf_inscription_storage_path, a.pdf_inscription_nom_fichier
      FROM adherent_comptes ac
      JOIN adherents a ON a.id = ac.adherent_id
      WHERE ac.id = ?`
@@ -1548,6 +1549,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
           annuaire_visible: Number(member.annuaire_visible ?? 0) === 1,
           notation_disponible: !!member.pdf_storage_path,
           notation_nom_fichier: member.pdf_nom_fichier || null,
+          bulletin_disponible: !!member.pdf_inscription_storage_path,
+          bulletin_nom_fichier: member.pdf_inscription_nom_fichier || null,
         },
         error: null,
       });
@@ -1695,6 +1698,32 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       return new Response(object.body, {
         headers: {
           'Content-Type': r2ContentType(member.pdf_storage_path, object.httpMetadata?.contentType),
+          'Content-Disposition': `inline; filename="${safeName}"`,
+          'Cache-Control': 'private, no-store',
+        },
+      });
+    }
+
+    // GET /api/member/documents/bulletin — bulletin d'inscription (reçu de
+    // paiement HelloAsso ou confirmation d'inscription gratuite), généré
+    // automatiquement par le worker inscription-americanfullfightingbons à
+    // la confirmation. Colonnes pdf_inscription_* de `adherents` — bien
+    // distinctes de pdf_storage_path (fiche de notation) et de la table
+    // diplomes, cf. migration 0015. Même schéma d'accès que la fiche de
+    // notation : vérification de propriété implicite (member.adherent_id),
+    // inline pour impression directe.
+    if (method === 'GET' && path === '/api/member/documents/bulletin') {
+      const member = await getCurrentMemberFromBearer(request, env);
+      if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+      if (!env.R2_PDF) return err('Stockage indisponible', 503);
+      if (!member.pdf_inscription_storage_path) return err("Aucun bulletin d'inscription disponible pour le moment", 404);
+
+      const object = await env.R2_PDF.get(member.pdf_inscription_storage_path);
+      if (!object) return err('Fichier introuvable', 404);
+      const safeName = String(member.pdf_inscription_nom_fichier || 'bulletin-inscription.pdf').replace(/[^A-Za-z0-9 _.-]/g, '') || 'bulletin-inscription.pdf';
+      return new Response(object.body, {
+        headers: {
+          'Content-Type': r2ContentType(member.pdf_inscription_storage_path, object.httpMetadata?.contentType),
           'Content-Disposition': `inline; filename="${safeName}"`,
           'Cache-Control': 'private, no-store',
         },
@@ -2002,6 +2031,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
   "/api/member/diplomes",
   "/api/member/annuaire",
   "/api/member/documents/notation",
+  "/api/member/documents/bulletin",
 ]);
 
 if (path.startsWith("/api/") && !publicApiRoutes.has(path)) {
