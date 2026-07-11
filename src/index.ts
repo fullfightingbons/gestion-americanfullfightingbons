@@ -96,6 +96,35 @@ function clearMemberSessionCookie(request: Request): string {
   return `${MEMBER_SESSION_COOKIE}=; HttpOnly;${secure} SameSite=Strict; Path=/; Max-Age=0`;
 }
 
+// Construit la charge utile "profil membre" telle que renvoyée par
+// /api/member/me — extrait ici pour être réutilisée telle quelle par
+// /api/member/dashboard, sans dupliquer le calcul de certificat_expire_le.
+async function memberProfilePayload(member: Record<string, any>, env: Env) {
+  let certificatExpireLe: string | null = null;
+  if (member.certificat_date) {
+    const d = new Date(member.certificat_date);
+    if (!isNaN(d.getTime())) {
+      const dureeMois = await getCertificatDureeMois(env);
+      d.setMonth(d.getMonth() + dureeMois);
+      certificatExpireLe = d.toISOString().slice(0, 10);
+    }
+  }
+  return {
+    nom: member.nom, prenom: member.prenom, email: member.adherent_email,
+    telephone: member.telephone, adresse: member.adresse, code_postal: member.code_postal, ville: member.ville,
+    statut: member.statut, cotisation: member.cotisation, paiement: member.paiement,
+    date_inscription: member.date_inscription, date_fin_adhesion: member.date_fin_adhesion,
+    certificat: member.certificat, certificat_date: member.certificat_date, certificat_expire_le: certificatExpireLe,
+    ceinture: member.couleur_ceinture || null, numero_licence: member.numero_licence || null,
+    urgence_nom: member.urgence_nom, urgence_telephone: member.urgence_telephone, urgence_lien: member.urgence_lien,
+    annuaire_visible: Number(member.annuaire_visible ?? 0) === 1,
+    notation_disponible: !!member.pdf_storage_path,
+    notation_nom_fichier: member.pdf_nom_fichier || null,
+    bulletin_disponible: !!member.pdf_inscription_storage_path,
+    bulletin_nom_fichier: member.pdf_inscription_nom_fichier || null,
+  };
+}
+
 async function getCurrentMemberFromBearer(request: Request, env: Env): Promise<Record<string, any> | null> {
   const token = getMemberSessionToken(request);
   if (!token) return null;
@@ -1526,31 +1555,41 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
     if (method === 'GET' && path === '/api/member/me') {
       const member = await getCurrentMemberFromBearer(request, env);
       if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+      return json({ data: await memberProfilePayload(member, env), error: null });
+    }
 
-      let certificatExpireLe: string | null = null;
-      if (member.certificat_date) {
-        const d = new Date(member.certificat_date);
-        if (!isNaN(d.getTime())) {
-          const dureeMois = await getCertificatDureeMois(env);
-          d.setMonth(d.getMonth() + dureeMois);
-          certificatExpireLe = d.toISOString().slice(0, 10);
-        }
-      }
+    // GET /api/member/dashboard — agrège en un seul aller-retour ce que
+    // l'espace membre (espace-membre.*) chargeait jusqu'ici via trois appels
+    // distincts (/me, /diplomes, /annuaire), chacun repassant indépendamment
+    // par getCurrentMemberFromBearer (une jointure D1 adherent_comptes ×
+    // adherents à chaque fois). Ici l'authentification n'a lieu qu'une fois,
+    // et diplomes/annuaire réutilisent member.adherent_id déjà en main — même
+    // requêtes SQL que les routes individuelles ci-dessous, juste regroupées.
+    // Les routes /api/member/me, /diplomes, /annuaire sont conservées telles
+    // quelles (pas de breaking change pour d'éventuels autres appelants),
+    // /dashboard est un ajout, pas un remplacement.
+    if (method === 'GET' && path === '/api/member/dashboard') {
+      const member = await getCurrentMemberFromBearer(request, env);
+      if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+
+      const [me, diplomesResult, annuaireResult] = await Promise.all([
+        memberProfilePayload(member, env),
+        env.DB.prepare(
+          `SELECT id, titre, ceinture, date_emission, saison, delivre_par
+           FROM diplomes WHERE adherent_id = ? ORDER BY date_emission DESC`
+        ).bind(member.adherent_id).all(),
+        env.DB.prepare(
+          `SELECT prenom, nom FROM adherents
+           WHERE annuaire_visible = 1 AND statut = 'Actif'
+           ORDER BY nom COLLATE NOCASE, prenom COLLATE NOCASE`
+        ).all(),
+      ]);
 
       return json({
         data: {
-          nom: member.nom, prenom: member.prenom, email: member.adherent_email,
-          telephone: member.telephone, adresse: member.adresse, code_postal: member.code_postal, ville: member.ville,
-          statut: member.statut, cotisation: member.cotisation, paiement: member.paiement,
-          date_inscription: member.date_inscription, date_fin_adhesion: member.date_fin_adhesion,
-          certificat: member.certificat, certificat_date: member.certificat_date, certificat_expire_le: certificatExpireLe,
-          ceinture: member.couleur_ceinture || null, numero_licence: member.numero_licence || null,
-          urgence_nom: member.urgence_nom, urgence_telephone: member.urgence_telephone, urgence_lien: member.urgence_lien,
-          annuaire_visible: Number(member.annuaire_visible ?? 0) === 1,
-          notation_disponible: !!member.pdf_storage_path,
-          notation_nom_fichier: member.pdf_nom_fichier || null,
-          bulletin_disponible: !!member.pdf_inscription_storage_path,
-          bulletin_nom_fichier: member.pdf_inscription_nom_fichier || null,
+          me,
+          diplomes: diplomesResult.results || [],
+          annuaire: annuaireResult.results || [],
         },
         error: null,
       });
@@ -2024,6 +2063,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
   "/api/member/login",
   "/api/member/logout",
   "/api/member/me",
+  "/api/member/dashboard",
   "/api/member/documents/certificat",
   "/api/member/password/forgot",
   "/api/member/password/reset",
