@@ -118,6 +118,7 @@ async function memberProfilePayload(member: Record<string, any>, env: Env) {
     ceinture: member.couleur_ceinture || null, numero_licence: member.numero_licence || null,
     urgence_nom: member.urgence_nom, urgence_telephone: member.urgence_telephone, urgence_lien: member.urgence_lien,
     annuaire_visible: Number(member.annuaire_visible ?? 0) === 1,
+    pref_email_feedback: Number(member.pref_email_feedback ?? 1) === 1,
     notation_disponible: !!member.pdf_storage_path,
     notation_nom_fichier: member.pdf_nom_fichier || null,
     bulletin_disponible: !!member.pdf_inscription_storage_path,
@@ -204,6 +205,25 @@ async function getCertificatDureeMois(env: Env): Promise<number> {
     return Number(row?.valeur) || 12;
   } catch {
     return 12;
+  }
+}
+
+// Emails ayant désactivé la réception des sondages (préférence portée par
+// adherent_comptes, cf. migration 0020 — n'existe donc que pour les
+// adhérents ayant activé un compte espace-membre ; les autres continuent de
+// recevoir les campagnes normalement, comme avant l'introduction de ce
+// réglage). Interrogé à chaque envoi (invitation initiale, envoi manuel des
+// invitations en attente, relance) plutôt que filtré une seule fois en
+// amont, pour qu'un changement de préférence soit respecté immédiatement
+// même sur une campagne déjà créée.
+async function getFeedbackOptedOutEmails(env: Env): Promise<Set<string>> {
+  try {
+    const { results } = await env.DB
+      .prepare(`SELECT email FROM adherent_comptes WHERE pref_email_feedback = 0`)
+      .all<{ email: string }>();
+    return new Set((results || []).map((r) => String(r.email).trim().toLowerCase()));
+  } catch {
+    return new Set(); // ne jamais bloquer un envoi par erreur si D1 a un souci ponctuel
   }
 }
 
@@ -940,9 +960,11 @@ async function triggerEndOfSeasonFeedback(
     .bind(campaignId)
     .all<{ id: string; email: string; token: string }>();
 
+  const optedOut = await getFeedbackOptedOutEmails(env);
   let sent = 0;
   let failed = 0;
   for (const recipient of pending || []) {
+    if (optedOut.has(String(recipient.email).trim().toLowerCase())) continue;
     const link = `${origin}/feedback.html?token=${recipient.token}`;
     const result = await sendBrevoEmail(env, {
       to: [{ email: recipient.email }],
@@ -1147,9 +1169,11 @@ async function handleSendPendingInvites(request: Request, env: Env, origin: stri
     .bind(campaignId)
     .all<{ id: string; email: string; token: string }>();
 
+  const optedOut = await getFeedbackOptedOutEmails(env);
   let sent = 0;
   let failed = 0;
   for (const recipient of pending || []) {
+    if (optedOut.has(String(recipient.email).trim().toLowerCase())) continue;
     const link = `${origin}/feedback.html?token=${recipient.token}`;
     const result = await sendBrevoEmail(env, {
       to: [{ email: recipient.email }],
@@ -1194,9 +1218,11 @@ async function handleSendReminder(request: Request, env: Env, origin: string): P
     .bind(campaignId)
     .all<{ id: string; email: string; token: string }>();
 
+  const optedOut = await getFeedbackOptedOutEmails(env);
   let sent = 0;
   let failed = 0;
   for (const recipient of toRemind || []) {
+    if (optedOut.has(String(recipient.email).trim().toLowerCase())) continue;
     const link = `${origin}/feedback.html?token=${recipient.token}`;
     const result = await sendBrevoEmail(env, {
       to: [{ email: recipient.email }],
@@ -1572,7 +1598,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       const member = await getCurrentMemberFromBearer(request, env);
       if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
 
-      const [me, diplomesResult, annuaireResult] = await Promise.all([
+      const [me, diplomesResult, annuaireResult, cotisationsResult] = await Promise.all([
         memberProfilePayload(member, env),
         env.DB.prepare(
           `SELECT id, titre, ceinture, date_emission, saison, delivre_par
@@ -1583,6 +1609,19 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
            WHERE annuaire_visible = 1 AND statut = 'Actif'
            ORDER BY nom COLLATE NOCASE, prenom COLLATE NOCASE`
         ).all(),
+        // Historique multi-saisons : `adherents` a une ligne par saison (une
+        // par exercice_id, cf. réinscription), reliées ici par email plutôt
+        // que par adherent_id — adherent_comptes.adherent_id ne pointe que
+        // vers UNE de ces lignes (celle en cours au moment de l'activation
+        // du compte, cf. migration 0018), donc remonter depuis member.adherent_id
+        // ne donnerait que la saison courante. Aucune nouvelle table requise :
+        // la donnée existe déjà, seule l'agrégation manquait.
+        env.DB.prepare(
+          `SELECT a.cotisation, a.paiement, a.date_inscription, a.exercice_id, e.libelle AS saison
+           FROM adherents a LEFT JOIN exercices e ON e.id = a.exercice_id
+           WHERE LOWER(TRIM(a.email)) = LOWER(TRIM(?))
+           ORDER BY a.date_inscription DESC`
+        ).bind(member.adherent_email).all(),
       ]);
 
       return json({
@@ -1590,9 +1629,52 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
           me,
           diplomes: diplomesResult.results || [],
           annuaire: annuaireResult.results || [],
+          cotisations: cotisationsResult.results || [],
         },
         error: null,
       });
+    }
+
+    // GET /api/member/cotisations — historique de cotisation multi-saisons,
+    // même requête que dans /dashboard mais exposée seule pour un
+    // rafraîchissement ciblé sans recharger tout le tableau de bord.
+    if (method === 'GET' && path === '/api/member/cotisations') {
+      const member = await getCurrentMemberFromBearer(request, env);
+      if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+
+      const { results } = await env.DB.prepare(
+        `SELECT a.cotisation, a.paiement, a.date_inscription, a.exercice_id, e.libelle AS saison
+         FROM adherents a LEFT JOIN exercices e ON e.id = a.exercice_id
+         WHERE LOWER(TRIM(a.email)) = LOWER(TRIM(?))
+         ORDER BY a.date_inscription DESC`
+      ).bind(member.adherent_email).all();
+      return json({ data: results || [], error: null });
+    }
+
+    // GET /api/member/preferences — préférences de notification de l'adhérent.
+    // PUT  /api/member/preferences — mise à jour (un seul réglage pour l'instant :
+    // pref_email_feedback, cf. migration 0020). Porté par adherent_comptes
+    // (identité stable) plutôt qu'adherents (une ligne par saison).
+    if (method === 'GET' && path === '/api/member/preferences') {
+      const member = await getCurrentMemberFromBearer(request, env);
+      if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+      return json({
+        data: { pref_email_feedback: Number(member.pref_email_feedback ?? 1) === 1 },
+        error: null,
+      });
+    }
+    if (method === 'PUT' && path === '/api/member/preferences') {
+      const member = await getCurrentMemberFromBearer(request, env);
+      if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+
+      const body = await request.json<{ pref_email_feedback?: unknown }>().catch(() => ({} as Record<string, unknown>));
+      if (body.pref_email_feedback === undefined) return err('Aucun réglage fourni', 400);
+
+      const value = body.pref_email_feedback ? 1 : 0;
+      await env.DB.prepare(`UPDATE adherent_comptes SET pref_email_feedback = ? WHERE id = ?`)
+        .bind(value, member.id).run();
+
+      return json({ data: { pref_email_feedback: value === 1 }, error: null });
     }
 
     // PATCH /api/member/me — l'adhérent met à jour lui-même ses coordonnées et
@@ -2070,6 +2152,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
   "/api/member/password/change",
   "/api/member/diplomes",
   "/api/member/annuaire",
+  "/api/member/cotisations",
+  "/api/member/preferences",
   "/api/member/documents/notation",
   "/api/member/documents/bulletin",
 ]);
