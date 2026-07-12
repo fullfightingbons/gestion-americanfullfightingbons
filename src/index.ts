@@ -111,6 +111,7 @@ async function memberProfilePayload(member: Record<string, any>, env: Env) {
   }
   return {
     nom: member.nom, prenom: member.prenom, email: member.adherent_email,
+    naissance: member.naissance || null,
     telephone: member.telephone, adresse: member.adresse, code_postal: member.code_postal, ville: member.ville,
     statut: member.statut, cotisation: member.cotisation, paiement: member.paiement,
     date_inscription: member.date_inscription, date_fin_adhesion: member.date_fin_adhesion,
@@ -141,7 +142,7 @@ async function memberProfilePayload(member: Record<string, any>, env: Env) {
 // ambiguë pour SQLite ("ambiguous column name: email"). Les deux requêtes
 // qui réutilisent cette constante aliasent désormais systématiquement la
 // table `adherents` en `a` pour rester compatibles.
-const MEMBER_ADHERENT_FIELDS = `nom, prenom, a.email AS adherent_email, statut, cotisation, paiement,
+const MEMBER_ADHERENT_FIELDS = `nom, prenom, a.email AS adherent_email, a.naissance, statut, cotisation, paiement,
             date_inscription, date_fin_adhesion, certificat, certificat_date,
             telephone, adresse, code_postal, ville,
             couleur_ceinture, numero_licence,
