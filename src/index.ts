@@ -2531,9 +2531,15 @@ export default {
       // r.json() et affiche un message trompeur ("Erreur de connexion")
       // qui masque la vraie cause. On renvoie ici une vraie réponse JSON
       // avec le détail de l'erreur, visible dans les logs (wrangler tail).
+      const detail = e instanceof Error ? e.message : String(e);
       console.error('[fetch:unhandled]', e instanceof Error ? e.stack || e.message : String(e));
+      // TEMPORAIRE (diagnostic) : `detail` expose e.message dans la réponse
+      // pour identifier la cause exacte d'un 500 sans avoir besoin de
+      // `wrangler tail`. À retirer une fois la cause trouvée et corrigée —
+      // ne pas laisser un message d'erreur brut de la base de données
+      // exposé au client en fonctionnement normal.
       return withSecurityHeaders(
-        json({ data: null, error: { message: 'Erreur interne du serveur' } }, 500),
+        json({ data: null, error: { message: 'Erreur interne du serveur', detail } }, 500),
         request
       );
     }
