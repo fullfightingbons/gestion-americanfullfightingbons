@@ -202,6 +202,90 @@ async function loadMemberRecord(
   return record;
 }
 
+// ─── Génération PDF minimale (attestation de cotisation) ────────────────────
+// Pas de bibliothèque PDF disponible côté gestion (contrairement à
+// inscription-americanfullfightingbons, qui a son propre générateur pour le
+// bulletin d'inscription avec photo). Ici on n'a besoin que de texte simple
+// sur une page, donc un PDF minimal assemblé à la main suffit — même esprit
+// que src/routes/_lib/pdf.js côté inscription, en beaucoup plus court car
+// pas de photo ni de mise en page complexe à reproduire.
+function pdfEscapeText(str: string): string {
+  return str.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+}
+
+// Caractères Unicode dont le point de code diffère de l'octet WinAnsi
+// correspondant (plage 0x80-0x9F de Windows-1252). Le reste de la plage
+// Latin1 (0xA0-0xFF, dont tous les accents français) a un point de code
+// Unicode identique à son octet WinAnsi, donc pas besoin de table pour ça.
+const WINANSI_SPECIALS: Record<string, number> = {
+  '\u2018': 0x91, '\u2019': 0x92, '\u201C': 0x93, '\u201D': 0x94,
+  '\u2013': 0x96, '\u2014': 0x97, '\u2026': 0x85, '\u20AC': 0x80,
+};
+
+function toWinAnsiBytes(str: string): Uint8Array {
+  const bytes = new Uint8Array(str.length);
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    const code = str.charCodeAt(i);
+    if (code < 256) bytes[i] = code;
+    else if (WINANSI_SPECIALS[ch] !== undefined) bytes[i] = WINANSI_SPECIALS[ch];
+    else bytes[i] = 0x3f; // '?' de repli si caractère hors plage WinAnsi
+  }
+  return bytes;
+}
+
+function pdfTextOp(text: string, x: number, y: number, size: number): string {
+  return `BT /F1 ${size} Tf ${x} ${y} Td (${pdfEscapeText(text)}) Tj ET\n`;
+}
+
+function generateSimplePdf(opts: { title: string; lines: string[]; footer: string }): Uint8Array {
+  const pageWidth = 595.28, pageHeight = 841.89; // A4 en points
+  let content = '';
+  content += pdfTextOp(opts.title, 50, pageHeight - 80, 16);
+  let y = pageHeight - 130;
+  for (const line of opts.lines) {
+    content += pdfTextOp(line, 50, y, 11);
+    y -= 22;
+  }
+  content += pdfTextOp(opts.footer, 50, 50, 8);
+  const contentBytes = toWinAnsiBytes(content);
+
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
+  ];
+
+  const encoder = new TextEncoder();
+  const parts: Uint8Array[] = [];
+  let offset = 0;
+  const offsets: number[] = [];
+  const push = (bytes: Uint8Array) => { parts.push(bytes); offset += bytes.length; };
+
+  push(encoder.encode('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n'));
+  for (let i = 0; i < objects.length; i++) {
+    offsets.push(offset);
+    push(encoder.encode(`${i + 1} 0 obj\n${objects[i]}\nendobj\n`));
+  }
+  offsets.push(offset);
+  push(encoder.encode(`5 0 obj\n<< /Length ${contentBytes.length} >>\nstream\n`));
+  push(contentBytes);
+  push(encoder.encode('\nendstream\nendobj\n'));
+
+  const xrefOffset = offset;
+  let xref = `xref\n0 ${objects.length + 2}\n0000000000 65535 f \n`;
+  for (const o of offsets) xref += String(o).padStart(10, '0') + ' 00000 n \n';
+  push(encoder.encode(xref));
+  push(encoder.encode(`trailer\n<< /Size ${objects.length + 2} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`));
+
+  const total = parts.reduce((n, p) => n + p.length, 0);
+  const result = new Uint8Array(total);
+  let pos = 0;
+  for (const p of parts) { result.set(p, pos); pos += p.length; }
+  return result;
+}
+
 async function getCurrentMemberFromBearer(request: Request, env: Env): Promise<Record<string, any> | null> {
   const token = getMemberSessionToken(request);
   if (!token) return null;
@@ -1665,7 +1749,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       const member = await getCurrentMemberFromBearer(request, env);
       if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
 
-      const [me, diplomesResult, annuaireResult, cotisationsResult] = await Promise.all([
+      const [me, diplomesResult, annuaireResult, cotisationsResult, feedbackResult] = await Promise.all([
         memberProfilePayload(member, env),
         env.DB.prepare(
           `SELECT id, titre, ceinture, date_emission, saison, delivre_par
@@ -1689,6 +1773,19 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
            WHERE LOWER(TRIM(a.email)) = LOWER(TRIM(?))
            ORDER BY a.date_inscription DESC`
         ).bind(member.adherent_email).all(),
+        // Enquête de satisfaction en attente pour ce membre, s'il y en a une.
+        // Réutilise le token déjà généré dans feedback_recipients (même
+        // mécanisme que le lien envoyé par email) plutôt que d'inventer un
+        // second système d'accès : le front peut pointer directement vers
+        // /feedback.html?token=... (page publique existante), sans dupliquer
+        // la logique de soumission de réponse.
+        env.DB.prepare(
+          `SELECT fr.token, fc.titre, fc.description
+           FROM feedback_recipients fr
+           JOIN feedback_campaigns fc ON fc.id = fr.campaign_id
+           WHERE fr.adherent_id = ? AND fr.repondu = 0 AND fc.statut = 'active'
+           ORDER BY fc.created_at DESC LIMIT 1`
+        ).bind(member.adherent_id).all(),
       ]);
 
       return json({
@@ -1697,6 +1794,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
           diplomes: diplomesResult.results || [],
           annuaire: annuaireResult.results || [],
           cotisations: cotisationsResult.results || [],
+          feedback: feedbackResult.results?.[0] || null,
         },
         error: null,
       });
@@ -1918,6 +2016,56 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       });
     }
 
+    // GET /api/member/documents/attestation-cotisation — attestation de
+    // cotisation générée à la volée (PDF texte simple, cf. generateSimplePdf
+    // ci-dessus) à partir des données déjà en base, aucun fichier à stocker
+    // ni à téléverser manuellement contrairement à /notation et /bulletin.
+    // Ne délivre l'attestation que si la cotisation est effectivement à
+    // jour, pour ne pas produire un document trompeur.
+    if (method === 'GET' && path === '/api/member/documents/attestation-cotisation') {
+      const member = await getCurrentMemberFromBearer(request, env);
+      if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+
+      const paiement = String(member.paiement || '').toLowerCase();
+      const paiementOk = paiement.includes('pay') || paiement.includes('sold');
+      if (!paiementOk) {
+        return err("Aucune cotisation à jour ne permet de générer une attestation pour le moment", 404);
+      }
+
+      const nomComplet = `${member.prenom || ''} ${member.nom || ''}`.trim() || 'Adhérent·e';
+      const montant = member.cotisation != null && member.cotisation !== ''
+        ? `${Number(member.cotisation).toFixed(2)} €` : null;
+      const dateInscription = member.date_inscription
+        ? new Date(member.date_inscription).toLocaleDateString('fr-FR') : null;
+      const dateFin = member.date_fin_adhesion
+        ? new Date(member.date_fin_adhesion).toLocaleDateString('fr-FR') : null;
+      const aujourdhui = new Date().toLocaleDateString('fr-FR');
+
+      const lines = [
+        'Nous soussignés attestons que :',
+        '',
+        nomComplet,
+        'est adhérent(e) du club American Full Fighting Bons en Chablais,',
+        `à jour de sa cotisation${montant ? ' d\u2019un montant de ' + montant : ''}${dateInscription ? ', inscription du ' + dateInscription : ''}${dateFin ? ' au ' + dateFin : ''}.`,
+        '',
+        `Attestation délivrée le ${aujourdhui} pour valoir ce que de droit.`,
+      ];
+
+      const pdfBytes = generateSimplePdf({
+        title: 'Attestation de cotisation \u2014 AFFBC',
+        lines,
+        footer: 'AFFBC \u2014 Document généré automatiquement, ne nécessite pas de signature.',
+      });
+
+      return new Response(pdfBytes, {
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': 'inline; filename="attestation-cotisation.pdf"',
+          'Cache-Control': 'private, no-store',
+        },
+      });
+    }
+
     // POST /api/member/logout
     if (method === 'POST' && path === '/api/member/logout') {
       return json({ data: { ok: true }, error: null }, 200, { 'Set-Cookie': clearMemberSessionCookie(request) });
@@ -2024,10 +2172,10 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       const member = await getCurrentMemberFromBearer(request, env);
       if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
 
-      const [ownRecord, childrenResult] = await Promise.all([
+      const [ownRecord, childrenResult, dureeMois] = await Promise.all([
         loadMemberRecord(member.id, undefined, env),
         env.DB.prepare(
-          `SELECT id, nom, prenom, statut, couleur_ceinture
+          `SELECT id, nom, prenom, statut, couleur_ceinture, paiement, certificat_date
            FROM adherents a
            WHERE guardian_compte_id = ?
              AND date_inscription = (
@@ -2036,14 +2184,30 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
              )
            ORDER BY prenom COLLATE NOCASE, nom COLLATE NOCASE`
         ).bind(member.id, member.id).all<Record<string, any>>(),
+        getCertificatDureeMois(env),
       ]);
+
+      // Vue famille : même calcul de date d'expiration que memberProfilePayload
+      // (dureeMois récupéré une seule fois, réutilisé pour chaque profil), pour
+      // que le sélecteur de profils puisse afficher un badge par enfant sans
+      // que le front n'ait à deviner la règle de calcul.
+      const certificatExpireLe = (certificatDate: string | null | undefined): string | null => {
+        if (!certificatDate) return null;
+        const d = new Date(certificatDate);
+        if (isNaN(d.getTime())) return null;
+        d.setMonth(d.getMonth() + dureeMois);
+        return d.toISOString().slice(0, 10);
+      };
 
       const profiles = [
         ...(ownRecord ? [{
           id: ownRecord.loginAdherentId, nom: ownRecord.nom, prenom: ownRecord.prenom,
           statut: ownRecord.statut, couleur_ceinture: ownRecord.couleur_ceinture, isSelf: true,
+          paiement: ownRecord.paiement, certificat_expire_le: certificatExpireLe(ownRecord.certificat_date),
         }] : []),
-        ...((childrenResult.results || []).map((r) => ({ ...r, isSelf: false }))),
+        ...((childrenResult.results || []).map((r) => ({
+          ...r, isSelf: false, certificat_expire_le: certificatExpireLe(r.certificat_date),
+        }))),
       ];
 
       return json({ data: { profiles, activeAdherentId: member.adherent_id }, error: null });
@@ -2399,6 +2563,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
   "/api/member/preferences",
   "/api/member/documents/notation",
   "/api/member/documents/bulletin",
+  "/api/member/documents/attestation-cotisation",
   "/api/member/profiles",
   "/api/member/profiles/switch",
   "/api/member/contact",
