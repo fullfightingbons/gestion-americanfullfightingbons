@@ -123,7 +123,76 @@ async function memberProfilePayload(member: Record<string, any>, env: Env) {
     notation_nom_fichier: member.pdf_nom_fichier || null,
     bulletin_disponible: !!member.pdf_inscription_storage_path,
     bulletin_nom_fichier: member.pdf_inscription_nom_fichier || null,
+    // Gestion multi-comptes / parent-enfant (migration 0021) : permet au
+    // front de savoir si le profil actuellement affiché est celui du compte
+    // connecté ou celui d'un enfant sous tutelle, et de proposer le
+    // sélecteur de profils uniquement quand c'est pertinent.
+    is_guardian_view: !!member.isGuardianView,
+    active_adherent_id: member.adherent_id,
   };
+}
+
+// Champs adhérent communs aux deux requêtes ci-dessous (profil du compte
+// connecté, ou profil actif sous tutelle) — factorisés pour que les deux
+// jeux de colonnes restent forcément synchronisés.
+const MEMBER_ADHERENT_FIELDS = `nom, prenom, email AS adherent_email, statut, cotisation, paiement,
+            date_inscription, date_fin_adhesion, certificat, certificat_date,
+            telephone, adresse, code_postal, ville,
+            couleur_ceinture, numero_licence,
+            urgence_nom, urgence_telephone, urgence_lien,
+            annuaire_visible, pdf_storage_path, pdf_nom_fichier,
+            pdf_inscription_storage_path, pdf_inscription_nom_fichier`;
+
+// Charge le compte espace-membre (identité de connexion) et, le cas échéant,
+// le profil actuellement "actif" si différent — cf. gestion multi-comptes /
+// parent-enfant (migration 0021) : un tuteur connecté avec son propre
+// email/mot de passe peut consulter/gérer le profil d'un adhérent placé
+// sous sa tutelle (adherents.guardian_compte_id) sans ressaisir d'identifiants.
+// `activeAdherentId` n'est honoré que s'il correspond bien à un adhérent
+// rattaché à CE compte — toute autre valeur est silencieusement ignorée
+// (repli sur le profil du compte lui-même) plutôt que de faire échouer
+// l'authentification, pour ne jamais bloquer un membre à cause d'un jeton
+// local désynchronisé (ex. enfant retiré de la tutelle entre-temps).
+//
+// Champs renvoyés à connaître pour le reste du fichier :
+// - `id`            → toujours l'id du COMPTE (adherent_comptes.id), jamais
+//                      celui du profil actif — utilisé pour mot de passe,
+//                      préférences, contact, etc. (propres au compte connecté).
+// - `adherent_id`    → id de l'adhérent du profil actuellement actif — utilisé
+//                      partout ailleurs (fiche, diplômes, documents...).
+// - `loginAdherentId`→ id de l'adhérent du compte connecté lui-même (jamais
+//                      celui d'un enfant), pour reconstruire "mon profil".
+async function loadMemberRecord(
+  compteId: string,
+  activeAdherentId: string | undefined,
+  env: Env,
+): Promise<Record<string, any> | null> {
+  const compte = await env.DB.prepare(
+    `SELECT ac.*, ${MEMBER_ADHERENT_FIELDS}
+     FROM adherent_comptes ac
+     JOIN adherents a ON a.id = ac.adherent_id
+     WHERE ac.id = ?`
+  ).bind(compteId).first<Record<string, any>>();
+  if (!compte) return null;
+
+  const loginAdherentId = compte.adherent_id;
+  let record: Record<string, any> = {
+    ...compte,
+    id: compte.id,
+    adherent_id: loginAdherentId,
+    loginAdherentId,
+    isGuardianView: false,
+  };
+
+  if (activeAdherentId && activeAdherentId !== loginAdherentId) {
+    const active = await env.DB.prepare(
+      `SELECT id, ${MEMBER_ADHERENT_FIELDS} FROM adherents WHERE id = ? AND guardian_compte_id = ?`
+    ).bind(activeAdherentId, compte.id).first<Record<string, any>>();
+    if (active) {
+      record = { ...record, ...active, id: compte.id, adherent_id: active.id, loginAdherentId, isGuardianView: true };
+    }
+  }
+  return record;
 }
 
 async function getCurrentMemberFromBearer(request: Request, env: Env): Promise<Record<string, any> | null> {
@@ -133,24 +202,14 @@ async function getCurrentMemberFromBearer(request: Request, env: Env): Promise<R
   if (!session || session.kind !== 'member' || !session.adherentCompteId || Number(session.expiresAt) < Date.now()) {
     return null;
   }
-  const compte = await env.DB.prepare(
-    `SELECT ac.*, a.nom, a.prenom, a.email AS adherent_email, a.statut, a.cotisation, a.paiement,
-            a.date_inscription, a.date_fin_adhesion, a.certificat, a.certificat_date,
-            a.telephone, a.adresse, a.code_postal, a.ville,
-            a.couleur_ceinture, a.numero_licence,
-            a.urgence_nom, a.urgence_telephone, a.urgence_lien,
-            a.annuaire_visible, a.pdf_storage_path, a.pdf_nom_fichier,
-            a.pdf_inscription_storage_path, a.pdf_inscription_nom_fichier
-     FROM adherent_comptes ac
-     JOIN adherents a ON a.id = ac.adherent_id
-     WHERE ac.id = ?`
-  ).bind(session.adherentCompteId).first<Record<string, any>>();
-  if (!compte) return null;
+  const activeAdherentId = typeof session.activeAdherentId === 'string' ? session.activeAdherentId : undefined;
+  const member = await loadMemberRecord(String(session.adherentCompteId), activeAdherentId, env);
+  if (!member) return null;
   if (session.pwdStamp !== undefined) {
-    const currentStamp = String(compte.password_changed_at || '');
+    const currentStamp = String(member.password_changed_at || '');
     if (String(session.pwdStamp) !== currentStamp) return null;
   }
-  return compte;
+  return member;
 }
 
 // Rate-limiting persistant (D1, cf. migration 0018) — même logique que le
@@ -716,7 +775,7 @@ async function handleStorageApi(request: Request, env: Env, bucketName: string, 
 
 async function sendBrevoEmail(
   env: Env,
-  opts: { to: Array<{ email: string; name?: string }>; subject: string; html: string }
+  opts: { to: Array<{ email: string; name?: string }>; subject: string; html: string; replyTo?: { email: string; name?: string } }
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!env.BREVO_API_KEY) {
     return { ok: false, error: 'BREVO_API_KEY manquant' };
@@ -732,6 +791,7 @@ async function sendBrevoEmail(
       to: opts.to,
       subject: opts.subject,
       htmlContent: opts.html,
+      ...(opts.replyTo ? { replyTo: opts.replyTo } : {}),
     }),
   });
 
@@ -1947,6 +2007,182 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       );
     }
 
+    // ── Multi-comptes / parent-enfant ───────────────────────────────────────
+    // GET /api/member/profiles — liste les profils que le compte connecté
+    // peut consulter : lui-même, plus tout adhérent dont il est le tuteur
+    // (adherents.guardian_compte_id, migration 0021). Un adhérent peut avoir
+    // plusieurs lignes (une par saison, cf. réinscription) : on ne garde que
+    // la plus récente par email pour ne pas lister le même enfant deux fois.
+    if (method === 'GET' && path === '/api/member/profiles') {
+      const member = await getCurrentMemberFromBearer(request, env);
+      if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+
+      const [ownRecord, childrenResult] = await Promise.all([
+        loadMemberRecord(member.id, undefined, env),
+        env.DB.prepare(
+          `SELECT id, nom, prenom, statut, couleur_ceinture
+           FROM adherents a
+           WHERE guardian_compte_id = ?
+             AND date_inscription = (
+               SELECT MAX(date_inscription) FROM adherents a2
+               WHERE a2.email = a.email AND a2.guardian_compte_id = ?
+             )
+           ORDER BY prenom COLLATE NOCASE, nom COLLATE NOCASE`
+        ).bind(member.id, member.id).all<Record<string, any>>(),
+      ]);
+
+      const profiles = [
+        ...(ownRecord ? [{
+          id: ownRecord.loginAdherentId, nom: ownRecord.nom, prenom: ownRecord.prenom,
+          statut: ownRecord.statut, couleur_ceinture: ownRecord.couleur_ceinture, isSelf: true,
+        }] : []),
+        ...((childrenResult.results || []).map((r) => ({ ...r, isSelf: false }))),
+      ];
+
+      return json({ data: { profiles, activeAdherentId: member.adherent_id }, error: null });
+    }
+
+    // POST /api/member/profiles/switch — { adherentId } — bascule le profil
+    // actif de la session courante vers son propre profil ou celui d'un
+    // enfant sous tutelle. Réémet un jeton (comme password/change) plutôt que
+    // de modifier une session stockée côté serveur : ce Worker n'a pas de
+    // notion de session révocable individuellement en dehors du pwdStamp, un
+    // nouveau jeton signé est donc le mécanisme normal ici.
+    if (method === 'POST' && path === '/api/member/profiles/switch') {
+      const member = await getCurrentMemberFromBearer(request, env);
+      if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+
+      const body = await request.json<{ adherentId?: string }>().catch(() => ({} as { adherentId?: string }));
+      const targetId = String(body?.adherentId || '').trim();
+      if (!targetId) return err('adherentId manquant', 400);
+
+      const isSelf = targetId === member.loginAdherentId;
+      if (!isSelf) {
+        const guarded = await env.DB.prepare(
+          `SELECT id FROM adherents WHERE id = ? AND guardian_compte_id = ?`
+        ).bind(targetId, member.id).first<any>();
+        if (!guarded) return err('Profil introuvable ou non autorisé', 403);
+      }
+
+      const target = await loadMemberRecord(member.id, isSelf ? undefined : targetId, env);
+      if (!target) return err('Profil introuvable', 404);
+
+      const maxAgeSeconds = MEMBER_TOKEN_TTL_SEC;
+      const sessionToken = await createSessionToken(
+        {
+          kind: 'member', adherentCompteId: member.id, email: member.email,
+          expiresAt: Date.now() + maxAgeSeconds * 1000, pwdStamp: member.password_changed_at || '',
+          ...(isSelf ? {} : { activeAdherentId: targetId }),
+        },
+        env as any,
+      );
+
+      return json(
+        {
+          data: {
+            ok: true, token: sessionToken, expiresAt: Date.now() + maxAgeSeconds * 1000,
+            me: await memberProfilePayload(target, env),
+          },
+          error: null,
+        },
+        200,
+        { 'Set-Cookie': buildMemberSessionCookie(request, sessionToken, maxAgeSeconds) },
+      );
+    }
+
+    // POST /api/adherents/:id/guardian — pose ou retire un lien de tutelle
+    // (staff, perm_adherents en écriture). { guardianEmail: string | null } —
+    // résout l'email vers un compte espace-membre existant (peu importe qu'il
+    // soit déjà activé) et pose adherents.guardian_compte_id ; null/absent
+    // délie. Volontairement staff-only : ni l'adhérent ni le futur tuteur ne
+    // peuvent s'auto-attribuer cet accès.
+    const guardianRouteMatch = path.match(/^\/api\/adherents\/([^/]+)\/guardian$/);
+    if (method === 'POST' && guardianRouteMatch) {
+      const user = await getCurrentUserFromBearer(request, env);
+      if (!user) return err('Unauthorized', 401);
+      const rolePerms = await getRolePerms(env);
+      if (!dbHasPermission(user, 'perm_adherents', 'write', rolePerms)) return err('Permission refusée', 403);
+
+      const adherentId = guardianRouteMatch[1];
+      const adherent = await env.DB.prepare(`SELECT id FROM adherents WHERE id = ?`).bind(adherentId).first<any>();
+      if (!adherent) return err('Adhérent introuvable', 404);
+
+      const body = await request.json<{ guardianEmail?: string | null }>().catch(() => ({} as { guardianEmail?: string | null }));
+      const guardianEmail = body?.guardianEmail ? String(body.guardianEmail).trim().toLowerCase() : '';
+
+      let guardianCompteId: string | null = null;
+      if (guardianEmail) {
+        const guardianCompte = await env.DB.prepare(
+          `SELECT id, adherent_id FROM adherent_comptes WHERE LOWER(TRIM(email)) = ?`
+        ).bind(guardianEmail).first<any>();
+        if (!guardianCompte) return err("Aucun compte espace-membre n'existe pour cet e-mail", 404);
+        if (guardianCompte.adherent_id === adherentId) return err('Un adhérent ne peut pas être son propre tuteur', 400);
+        guardianCompteId = guardianCompte.id;
+      }
+
+      await env.DB.prepare(`UPDATE adherents SET guardian_compte_id = ? WHERE id = ?`).bind(guardianCompteId, adherentId).run();
+      ctx.waitUntil(writeAuditLog(env, {
+        userId: user.id, action: guardianCompteId ? 'adherent_guardian_link' : 'adherent_guardian_unlink',
+        entityType: 'adherents', entityId: adherentId,
+        details: { guardianCompteId }, ip: request.headers.get('CF-Connecting-IP'),
+      }));
+
+      return json({ data: { ok: true, guardianCompteId }, error: null });
+    }
+
+    // ── Messagerie / contact rapide avec le bureau ──────────────────────────
+    // POST /api/member/contact — { subject, message } — envoie un email au
+    // bureau (club_info.email) via Brevo, sans jamais exposer cette adresse
+    // au membre côté client. Reply-To posé sur l'adhérent : le bureau peut
+    // répondre directement depuis sa messagerie. Anti-abus léger (5
+    // messages/heure/compte, cf. migration 0021) : un formulaire authentifié
+    // reste une cible de spam possible vers l'adresse du club.
+    if (method === 'POST' && path === '/api/member/contact') {
+      const member = await getCurrentMemberFromBearer(request, env);
+      if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+
+      const body = await request.json<{ subject?: string; message?: string }>().catch(() => ({} as { subject?: string; message?: string }));
+      const subject = String(body?.subject || '').trim().slice(0, 150);
+      const message = String(body?.message || '').trim().slice(0, 4000);
+      if (!subject || !message) return err('Objet et message sont requis', 400);
+
+      const windowStart = new Date(Date.now() - 3600 * 1000).toISOString();
+      const recent = await env.DB.prepare(
+        `SELECT COUNT(*) AS n FROM contact_messages WHERE adherent_compte_id = ? AND created_at >= ?`
+      ).bind(member.id, windowStart).first<{ n: number }>();
+      if (Number(recent?.n || 0) >= 5) {
+        return err('Trop de messages envoyés récemment. Réessayez plus tard.', 429);
+      }
+
+      const clubRow = await env.DB.prepare(`SELECT valeur FROM club_info WHERE cle = 'email'`).first<{ valeur: string }>();
+      const clubEmail = String(clubRow?.valeur || '').trim();
+      if (!clubEmail) return err("Aucune adresse de contact n'est configurée pour le club.", 503);
+
+      const senderName = `${member.prenom || ''} ${member.nom || ''}`.trim() || 'Adhérent AFFBC';
+      const html = `
+        <p>Nouveau message depuis l'espace membre.</p>
+        <p><b>De :</b> ${escapeHtmlLite(senderName)} (${escapeHtmlLite(member.adherent_email || '')})</p>
+        <p><b>Objet :</b> ${escapeHtmlLite(subject)}</p>
+        <p style="white-space:pre-wrap">${escapeHtmlLite(message)}</p>`;
+
+      const result = await sendBrevoEmail(env, {
+        to: [{ email: clubEmail }],
+        subject: `[Espace membre] ${subject}`,
+        html,
+        replyTo: member.adherent_email ? { email: member.adherent_email, name: senderName } : undefined,
+      });
+      if (!result.ok) {
+        console.error('[member:contact:email]', result.error);
+        return err('Envoi impossible pour le moment, réessayez plus tard.', 502);
+      }
+
+      await env.DB.prepare(
+        `INSERT INTO contact_messages (id, adherent_compte_id, subject, created_at) VALUES (?, ?, ?, datetime('now'))`
+      ).bind(crypto.randomUUID(), member.id, subject).run();
+
+      return json({ data: { ok: true }, error: null }, 201);
+    }
+
     // POST /api/feedback/trigger-season — relance manuelle complète (re-scan
     // des adhérents + envoi) pour un exercice donné. Voir le commentaire de
     // handleTriggerSeasonFeedback ci-dessus.
@@ -2156,6 +2392,9 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
   "/api/member/preferences",
   "/api/member/documents/notation",
   "/api/member/documents/bulletin",
+  "/api/member/profiles",
+  "/api/member/profiles/switch",
+  "/api/member/contact",
 ]);
 
 if (path.startsWith("/api/") && !publicApiRoutes.has(path)) {
