@@ -4,8 +4,8 @@
 	"devDependencies": {
 		"esbuild": "^0.27.3",
 		"typescript": "5.9.3",
-		"wrangler": "4.97.0",
-		"vitest": "^2.1.0"
+		"vitest": "^2.1.0",
+		"wrangler": "^4.110.0"
 	},
 	"scripts": {
 		"cf-typegen": "wrangler types",
