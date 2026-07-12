@@ -135,7 +135,13 @@ async function memberProfilePayload(member: Record<string, any>, env: Env) {
 // Champs adhérent communs aux deux requêtes ci-dessous (profil du compte
 // connecté, ou profil actif sous tutelle) — factorisés pour que les deux
 // jeux de colonnes restent forcément synchronisés.
-const MEMBER_ADHERENT_FIELDS = `nom, prenom, email AS adherent_email, statut, cotisation, paiement,
+// `email` est préfixé par l'alias `a.` : adherent_comptes a elle aussi une
+// colonne `email` (l'email de connexion), et la première requête ci-dessous
+// joint les deux tables — une référence non qualifiée à `email` y est donc
+// ambiguë pour SQLite ("ambiguous column name: email"). Les deux requêtes
+// qui réutilisent cette constante aliasent désormais systématiquement la
+// table `adherents` en `a` pour rester compatibles.
+const MEMBER_ADHERENT_FIELDS = `nom, prenom, a.email AS adherent_email, statut, cotisation, paiement,
             date_inscription, date_fin_adhesion, certificat, certificat_date,
             telephone, adresse, code_postal, ville,
             couleur_ceinture, numero_licence,
@@ -186,7 +192,7 @@ async function loadMemberRecord(
 
   if (activeAdherentId && activeAdherentId !== loginAdherentId) {
     const active = await env.DB.prepare(
-      `SELECT id, ${MEMBER_ADHERENT_FIELDS} FROM adherents WHERE id = ? AND guardian_compte_id = ?`
+      `SELECT a.id, ${MEMBER_ADHERENT_FIELDS} FROM adherents a WHERE a.id = ? AND a.guardian_compte_id = ?`
     ).bind(activeAdherentId, compte.id).first<Record<string, any>>();
     if (active) {
       record = { ...record, ...active, id: compte.id, adherent_id: active.id, loginAdherentId, isGuardianView: true };
@@ -2531,15 +2537,9 @@ export default {
       // r.json() et affiche un message trompeur ("Erreur de connexion")
       // qui masque la vraie cause. On renvoie ici une vraie réponse JSON
       // avec le détail de l'erreur, visible dans les logs (wrangler tail).
-      const detail = e instanceof Error ? e.message : String(e);
       console.error('[fetch:unhandled]', e instanceof Error ? e.stack || e.message : String(e));
-      // TEMPORAIRE (diagnostic) : `detail` expose e.message dans la réponse
-      // pour identifier la cause exacte d'un 500 sans avoir besoin de
-      // `wrangler tail`. À retirer une fois la cause trouvée et corrigée —
-      // ne pas laisser un message d'erreur brut de la base de données
-      // exposé au client en fonctionnement normal.
       return withSecurityHeaders(
-        json({ data: null, error: { message: 'Erreur interne du serveur', detail } }, 500),
+        json({ data: null, error: { message: 'Erreur interne du serveur' } }, 500),
         request
       );
     }
