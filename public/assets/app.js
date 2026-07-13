@@ -223,6 +223,7 @@ const UI = {
   bankTxDateFrom:'',
   bankTxDateTo:'',
   pdfTarget:null,
+  guardianInfo:null,
   diplome:{adherentId:'',date:td(),templatePath:'',titre:'Diplôme de ceinture',selectedField:'nomComplet',delivrePar:'',commentaire:''},
   diplomeArchive:{saison:'current',search:''},
   invState:{numero:'FAC-001',date:td(),destinataire:'',adresse:'',objet:'',lignes:[{desc:'',qte:1,pu:0}],notes:''},
@@ -6098,6 +6099,37 @@ function vBackup(){
 // ═══════════════════════════════════════════════════
 // MODALS
 // ═══════════════════════════════════════════════════
+// Section "Lien familial (tutelle)" du modal fiche adhérent : statut actuel,
+// suggestions par nom de famille (jamais liées automatiquement — cf.
+// commentaire de /api/adherents/:id/guardian-suggestions côté serveur), et
+// liaison/déliaison manuelle par e-mail.
+function renderGuardianSection(a){
+  if(!a.id) return `<p style="font-size:12px;color:var(--txt2)">Enregistrez d'abord l'adhérent, puis gérez son lien familial.</p>`;
+  const info=UI.guardianInfo;
+  if(!info) return `<p style="font-size:12px;color:var(--txt2)">Chargement…</p>`;
+  if(info.error) return `<p style="font-size:12px;color:var(--red,#b3261e)">${esc(info.error)}</p>`;
+  const current=info.current;
+  const suggestions=(info.suggestions||[]).filter(s=>!current||s.compteId!==current.compteId);
+  return `
+  ${current
+    ? `<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+        <div style="font-size:13px">Sous la tutelle de <strong>${esc(current.prenom)} ${esc(current.nom)}</strong> <span style="color:var(--txt2)">(${esc(current.email)})</span></div>
+        <button type="button" class="btn sm danger" onclick="unlinkGuardian('${a.id}')">Délier</button>
+        </div>`
+    : `<p style="font-size:12px;color:var(--txt2);margin-bottom:8px">Aucun lien de tutelle actuellement.</p>`}
+  ${suggestions.length?`<div style="margin-bottom:8px">
+    <p style="font-size:11px;color:var(--txt2);margin-bottom:4px">Suggéré par nom de famille — à confirmer, rien n'est lié automatiquement :</p>
+    ${suggestions.map(s=>`<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;padding:4px 0">
+      <span style="font-size:13px">${esc(s.prenom)} ${esc(s.nom)} <span style="color:var(--txt2)">(${esc(s.email)})</span></span>
+      <button type="button" class="btn sm" onclick="linkGuardian('${a.id}','${esc(s.email)}')">Lier</button>
+      </div>`).join('')}
+    </div>`:''}
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+    <div class="fg" style="flex:1;min-width:200px;margin:0"><label style="font-size:11px">Ou lier par e-mail</label><input id="f-guardian-email" placeholder="email du parent/tuteur"></div>
+    <button type="button" class="btn sm" onclick="linkGuardian('${a.id}',document.getElementById('f-guardian-email').value.trim())">Lier</button>
+  </div>`;
+}
+
 function renderModal(){
   document.querySelector('.modal-bg')?.remove();
   if(!UI.modal) return;
@@ -6151,6 +6183,10 @@ function renderModal(){
     <div class="fg"><label>Téléphone</label><input id="f-urt" value="${esc(a.urgence_telephone||'')}"></div>
     <div class="fg"><label>Lien (parent, conjoint...)</label><input id="f-url" value="${esc(a.urgence_lien||'')}"></div>
     </div>
+    </div>
+    <div class="fg full" style="background:var(--bg2);padding:10px;border-radius:var(--r)">
+    <p style="font-size:12px;font-weight:500;margin-bottom:8px">Lien familial (tutelle)</p>
+    ${renderGuardianSection(a)}
     </div>
     <div class="fg full" style="background:var(--bg2);padding:10px;border-radius:var(--r)">
     <p style="font-size:12px;font-weight:500;margin-bottom:8px">Documents &amp; justificatifs</p>
@@ -6527,7 +6563,7 @@ function openEcritureType(type){
 function openModal(t,id){
   const permMap={adh:'perm_adherents',compte:'perm_banque',ecr:'perm_comptabilite',achat:'perm_achats',user:'perm_administration',exo:'perm_comptabilite',exo_close:'perm_comptabilite',feedback_campaign:'perm_feedback',feedback_invite:'perm_feedback'};
   if(permMap[t] && !requireWritePerm(permMap[t])) return;
-  UI.modal=t;UI.editObj=null;
+  UI.modal=t;UI.editObj=null;UI.guardianInfo=null;
   if(id){
     if(t==='adh')   UI.editObj=D.adherents.find(a=>a.id===id);
     if(t==='achat') UI.editObj=D.achats.find(a=>a.id===id);
@@ -6536,7 +6572,36 @@ function openModal(t,id){
     if(t==='exo_close') UI.editObj=D.exercices.find(e=>e.id===id);
     if(t==='feedback_campaign') UI.editObj=D.feedbackCampaigns.find(c=>c.id===id);
   }
+  if(t==='adh' && id) loadGuardianInfo(id);
   renderModal();
+}
+
+// Lien familial (tutelle) : suggestions par nom de famille + liaison/déliaison
+// manuelle. Chargé à part (pas dans D.adherents) car spécifique à la fiche
+// ouverte et pas nécessaire pour la liste — évite un aller-retour à chaque
+// rendu de la liste des adhérents.
+async function loadGuardianInfo(adherentId){
+  const res=await apiRequest(`/api/adherents/${adherentId}/guardian-suggestions`);
+  if(UI.modal==='adh' && UI.editObj?.id===adherentId){
+    UI.guardianInfo=res.error?{error:res.error.message||'Chargement impossible.'}:res.data;
+    renderModal();
+  }
+}
+
+async function linkGuardian(adherentId,email){
+  if(!email) return alert('Adresse e-mail requise.');
+  const res=await apiRequest(`/api/adherents/${adherentId}/guardian`,{method:'POST',body:JSON.stringify({guardianEmail:email})});
+  if(res.error) return alert('Liaison impossible : '+res.error.message);
+  notify('success','Lien familial mis à jour.','Tutelle');
+  loadGuardianInfo(adherentId);
+}
+
+async function unlinkGuardian(adherentId){
+  if(!confirm('Retirer le lien de tutelle pour cet adhérent ?')) return;
+  const res=await apiRequest(`/api/adherents/${adherentId}/guardian`,{method:'POST',body:JSON.stringify({guardianEmail:null})});
+  if(res.error) return alert('Déliaison impossible : '+res.error.message);
+  notify('success','Lien familial retiré.','Tutelle');
+  loadGuardianInfo(adherentId);
 }
 function openPasswordModal(){
   if(!UI.currentUser?.id) return;
