@@ -120,6 +120,7 @@ async function memberProfilePayload(member: Record<string, any>, env: Env) {
     urgence_nom: member.urgence_nom, urgence_telephone: member.urgence_telephone, urgence_lien: member.urgence_lien,
     annuaire_visible: Number(member.annuaire_visible ?? 0) === 1,
     pref_email_feedback: Number(member.pref_email_feedback ?? 1) === 1,
+    family_role: member.family_role ?? null,
     notation_disponible: !!member.pdf_storage_path,
     notation_nom_fichier: member.pdf_nom_fichier || null,
     bulletin_disponible: !!member.pdf_inscription_storage_path,
@@ -1816,15 +1817,21 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       return json({ data: results || [], error: null });
     }
 
-    // GET /api/member/preferences — préférences de notification de l'adhérent.
-    // PUT  /api/member/preferences — mise à jour (un seul réglage pour l'instant :
-    // pref_email_feedback, cf. migration 0020). Porté par adherent_comptes
-    // (identité stable) plutôt qu'adherents (une ligne par saison).
+    // GET /api/member/preferences — préférences de notification et rôle
+    // familial de l'adhérent.
+    // PUT  /api/member/preferences — mise à jour (pref_email_feedback,
+    // cf. migration 0020 ; family_role, cf. migration 0022). Porté par
+    // adherent_comptes (identité stable) plutôt qu'adherents (une ligne par
+    // saison).
+    const FAMILY_ROLES = new Set(['pere', 'mere', null]);
     if (method === 'GET' && path === '/api/member/preferences') {
       const member = await getCurrentMemberFromBearer(request, env);
       if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
       return json({
-        data: { pref_email_feedback: Number(member.pref_email_feedback ?? 1) === 1 },
+        data: {
+          pref_email_feedback: Number(member.pref_email_feedback ?? 1) === 1,
+          family_role: member.family_role ?? null,
+        },
         error: null,
       });
     }
@@ -1832,14 +1839,33 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       const member = await getCurrentMemberFromBearer(request, env);
       if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
 
-      const body = await request.json<{ pref_email_feedback?: unknown }>().catch(() => ({} as Record<string, unknown>));
-      if (body.pref_email_feedback === undefined) return err('Aucun réglage fourni', 400);
+      const body = await request.json<{ pref_email_feedback?: unknown; family_role?: unknown }>().catch(() => ({} as Record<string, unknown>));
+      if (body.pref_email_feedback === undefined && body.family_role === undefined) {
+        return err('Aucun réglage fourni', 400);
+      }
 
-      const value = body.pref_email_feedback ? 1 : 0;
-      await env.DB.prepare(`UPDATE adherent_comptes SET pref_email_feedback = ? WHERE id = ?`)
-        .bind(value, member.id).run();
+      const updates: string[] = [];
+      const values: unknown[] = [];
+      const responseData: Record<string, unknown> = {};
 
-      return json({ data: { pref_email_feedback: value === 1 }, error: null });
+      if (body.pref_email_feedback !== undefined) {
+        const value = body.pref_email_feedback ? 1 : 0;
+        updates.push('pref_email_feedback = ?');
+        values.push(value);
+        responseData.pref_email_feedback = value === 1;
+      }
+      if (body.family_role !== undefined) {
+        const role = body.family_role === null || body.family_role === '' ? null : String(body.family_role);
+        if (!FAMILY_ROLES.has(role)) return err('Rôle familial invalide', 400);
+        updates.push('family_role = ?');
+        values.push(role);
+        responseData.family_role = role;
+      }
+
+      values.push(member.id);
+      await env.DB.prepare(`UPDATE adherent_comptes SET ${updates.join(', ')} WHERE id = ?`).bind(...values).run();
+
+      return json({ data: responseData, error: null });
     }
 
     // PATCH /api/member/me — l'adhérent met à jour lui-même ses coordonnées et
@@ -2204,6 +2230,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
           id: ownRecord.loginAdherentId, nom: ownRecord.nom, prenom: ownRecord.prenom,
           statut: ownRecord.statut, couleur_ceinture: ownRecord.couleur_ceinture, isSelf: true,
           paiement: ownRecord.paiement, certificat_expire_le: certificatExpireLe(ownRecord.certificat_date),
+          family_role: ownRecord.family_role ?? null,
         }] : []),
         ...((childrenResult.results || []).map((r) => ({
           ...r, isSelf: false, certificat_expire_le: certificatExpireLe(r.certificat_date),
@@ -2259,6 +2286,47 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
         200,
         { 'Set-Cookie': buildMemberSessionCookie(request, sessionToken, maxAgeSeconds) },
       );
+    }
+
+    // GET /api/adherents/:id/guardian-suggestions — candidats de liaison
+    // familiale suggérés par correspondance de nom de famille (staff,
+    // perm_adherents en lecture). Volontairement une SUGGESTION à confirmer
+    // en un clic par le staff, jamais une liaison automatique : un nom de
+    // famille partagé (ex. "Martin") ne prouve rien, et lier à tort donnerait
+    // à un compte la visibilité sur les données d'un mineur (certificat
+    // médical, coordonnées...) qui n'est pas le sien. Le nom seul ne suffit
+    // pas à autoriser, seulement à faire gagner du temps de recherche.
+    const guardianSuggestionsMatch = path.match(/^\/api\/adherents\/([^/]+)\/guardian-suggestions$/);
+    if (method === 'GET' && guardianSuggestionsMatch) {
+      const user = await getCurrentUserFromBearer(request, env);
+      if (!user) return err('Unauthorized', 401);
+      const rolePerms = await getRolePerms(env);
+      if (!dbHasPermission(user, 'perm_adherents', 'read', rolePerms)) return err('Permission refusée', 403);
+
+      const adherentId = guardianSuggestionsMatch[1];
+      const adherent = await env.DB.prepare(`SELECT id, nom, guardian_compte_id FROM adherents WHERE id = ?`)
+        .bind(adherentId).first<any>();
+      if (!adherent) return err('Adhérent introuvable', 404);
+
+      const [current, suggestions] = await Promise.all([
+        adherent.guardian_compte_id
+          ? env.DB.prepare(
+              `SELECT ac.id AS compteId, ac.email, a.nom, a.prenom
+               FROM adherent_comptes ac JOIN adherents a ON a.id = ac.adherent_id
+               WHERE ac.id = ?`
+            ).bind(adherent.guardian_compte_id).first<any>()
+          : Promise.resolve(null),
+        env.DB.prepare(
+          `SELECT ac.id AS compteId, ac.email, a.nom, a.prenom
+           FROM adherent_comptes ac
+           JOIN adherents a ON a.id = ac.adherent_id
+           WHERE LOWER(TRIM(a.nom)) = LOWER(TRIM(?))
+             AND ac.adherent_id != ?
+             AND (ac.id != ? OR ? IS NULL)`
+        ).bind(adherent.nom, adherentId, adherent.guardian_compte_id, adherent.guardian_compte_id).all(),
+      ]);
+
+      return json({ data: { current: current || null, suggestions: suggestions.results || [] }, error: null });
     }
 
     // POST /api/adherents/:id/guardian — pose ou retire un lien de tutelle
