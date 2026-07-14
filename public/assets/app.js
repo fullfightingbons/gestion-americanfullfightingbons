@@ -8217,8 +8217,10 @@ function exportGLCSV(){
   dl('\uFEFF'+rows.map(r=>r.join(';')).join('\n'),`grand_livre_${exoLabel.replace(/\s/g,'_')}_${td()}.csv`,'text/csv;charset=utf-8');
   notify('success','Grand livre exporté en CSV.','Export');
 }
-function backupJSON(){
-  dl(JSON.stringify({version:'5.2',date:new Date().toISOString(),adherents:D.adherents,comptes:D.comptes,journal:D.journal,achats:D.achats,factures:D.factures,users:D.users,clubInfo:D.clubInfo,exercices:D.exercices},null,2),`affbc_backup_${td()}.json`,'application/json');
+async function backupJSON(){
+  const res=await SB.from('deletion_requests').select('*');
+  const deletionRequests=res.error?[]:(res.data||[]);
+  dl(JSON.stringify({version:'5.2',date:new Date().toISOString(),adherents:D.adherents,comptes:D.comptes,journal:D.journal,achats:D.achats,factures:D.factures,users:D.users,clubInfo:D.clubInfo,exercices:D.exercices,deletion_requests:deletionRequests},null,2),`affbc_backup_${td()}.json`,'application/json');
 }
 
 function triggerBackupImport(){
