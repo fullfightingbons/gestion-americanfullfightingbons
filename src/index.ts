@@ -417,7 +417,7 @@ type PermissionMatrix = Record<string, Record<string, string>>;
 const DB_TABLES = new Set([
   'adherents', 'achats', 'audit_logs', 'club_info', 'comptes_bancaires',
   'diplomes', 'exercices', 'factures', 'feedback_campaigns', 'feedback_recipients', 'feedback_responses',
-  'inscriptions_publiques',
+  'inscriptions_publiques', 'deletion_requests',
   'journal_comptable', 'transactions', 'utilisateurs',
 ]);
 
@@ -426,7 +426,7 @@ const DB_PRIMARY_KEYS: Record<string, string> = {
   comptes_bancaires: 'id', diplomes: 'id', exercices: 'id', factures: 'id',
   feedback_campaigns: 'id', feedback_recipients: 'id', feedback_responses: 'id',
   inscriptions_publiques: 'id', journal_comptable: 'id', transactions: 'id',
-  utilisateurs: 'id',
+  utilisateurs: 'id', deletion_requests: 'id',
 };
 
 const DB_TABLE_PERMISSIONS: Record<string, { read: string; write: string }> = {
@@ -442,6 +442,7 @@ const DB_TABLE_PERMISSIONS: Record<string, { read: string; write: string }> = {
   feedback_recipients: { read: 'perm_feedback', write: 'perm_feedback' },
   feedback_responses: { read: 'perm_feedback', write: 'perm_feedback' },
   inscriptions_publiques: { read: 'perm_administration', write: 'perm_administration' },
+  deletion_requests: { read: 'perm_administration', write: 'perm_administration' },
   journal_comptable: { read: 'perm_comptabilite', write: 'perm_comptabilite' },
   transactions: { read: 'perm_banque', write: 'perm_banque' },
   utilisateurs: { read: 'perm_administration', write: 'perm_administration' },
@@ -1408,6 +1409,72 @@ async function handleSendReminder(request: Request, env: Env, origin: string): P
 // inscription-americanfullfightingbons (actuellement il pointe par erreur
 // vers le même database_id que DB, donc vers affbc-production).
 
+// ─── RGPD : suppression des données membre (art. 17, droit à l'effacement) ──
+//
+// Le délai de conservation court à partir de la FIN de la dernière adhésion
+// active connue (date_fin_adhesion la plus récente sur toutes les lignes
+// adherents liées à cet email), pas depuis la date de la demande : un
+// membre encore inscrit ne peut pas voir ses données supprimées sans casser
+// le service en cours. Si aucune date_fin_adhesion n'est renseignée
+// (adhésion jamais formellement close), on retombe sur date_inscription la
+// plus récente.
+async function computeDeletionEligibleDate(email: string, env: Env): Promise<string> {
+  const row = await env.DB.prepare(
+    `SELECT MAX(COALESCE(date_fin_adhesion, date_inscription)) AS lastDate
+     FROM adherents WHERE LOWER(TRIM(email)) = LOWER(TRIM(?))`
+  ).bind(email).first<{ lastDate: string | null }>();
+  const base = row?.lastDate ? new Date(row.lastDate) : new Date();
+  if (isNaN(base.getTime())) base.setTime(Date.now());
+  base.setFullYear(base.getFullYear() + 5);
+  return base.toISOString().slice(0, 10);
+}
+
+// Anonymise plutôt que supprime les lignes `adherents` : la comptabilité
+// associative a ses propres obligations de conservation (cotisation,
+// paiement, exercice_id) indépendantes de la demande RGPD, donc on ne
+// détruit que ce qui identifie la personne. Le compte de connexion
+// (adherent_comptes), lui, est entièrement supprimé — aucune raison de
+// garder des identifiants de connexion pour un compte qui ne doit plus être
+// utilisable. Les PDF en R2 (certificat, bulletin) sont aussi effacés :
+// les laisser après anonymisation de la ligne serait une fuite résiduelle
+// de données personnelles.
+async function anonymizeAdherentData(compteId: string, email: string, env: Env): Promise<void> {
+  const rows = await env.DB.prepare(
+    `SELECT id, pdf_storage_path, pdf_inscription_storage_path FROM adherents
+     WHERE LOWER(TRIM(email)) = LOWER(TRIM(?))`
+  ).bind(email).all<{ id: string; pdf_storage_path: string | null; pdf_inscription_storage_path: string | null }>();
+
+  for (const r of rows.results || []) {
+    if (r.pdf_storage_path) await env.R2_PDF?.delete(r.pdf_storage_path).catch(() => {});
+    if (r.pdf_inscription_storage_path) await env.R2_PDF?.delete(r.pdf_inscription_storage_path).catch(() => {});
+  }
+
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE adherents SET
+         nom = 'Anonymisé', prenom = '', naissance = NULL, email = NULL,
+         telephone = NULL, adresse = NULL, code_postal = NULL, ville = NULL,
+         urgence_nom = NULL, urgence_telephone = NULL, urgence_lien = NULL,
+         notes = NULL, numero_licence = NULL,
+         certificat_date = NULL,
+         pdf_storage_path = NULL, pdf_public_url = NULL, pdf_nom_fichier = NULL,
+         pdf_inscription_storage_path = NULL, pdf_inscription_nom_fichier = NULL
+       WHERE LOWER(TRIM(email)) = LOWER(TRIM(?))`
+    ).bind(email),
+    // Les diplômes ont leur propre copie de nom/prénom (dénormalisée pour la
+    // génération du PDF, cf. migration 0004) — pas de FK vers adherents.email
+    // à ce stade donc on cible par adherent_id.
+    ...(rows.results || []).map((r) =>
+      env.DB.prepare(`UPDATE diplomes SET nom = 'Anonymisé', prenom = '' WHERE adherent_id = ?`).bind(r.id)
+    ),
+    // Un enfant peut avoir été sous la tutelle de ce compte : le lien
+    // devient orphelin une fois le compte supprimé, autant le retirer
+    // proprement plutôt que laisser un guardian_compte_id pointant vers rien.
+    env.DB.prepare(`UPDATE adherents SET guardian_compte_id = NULL WHERE guardian_compte_id = ?`).bind(compteId),
+    env.DB.prepare(`DELETE FROM adherent_comptes WHERE id = ?`).bind(compteId),
+  ]);
+}
+
 // ─── Handler principal ───────────────────────────────────────────────────────
 
 async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -1866,6 +1933,59 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       await env.DB.prepare(`UPDATE adherent_comptes SET ${updates.join(', ')} WHERE id = ?`).bind(...values).run();
 
       return json({ data: responseData, error: null });
+    }
+
+    // POST /api/member/deletion-request — demande de suppression RGPD.
+    // Idempotent : une demande déjà en attente est simplement renvoyée
+    // plutôt que dupliquée. eligible_at est calculé une fois à la création
+    // (cf. computeDeletionEligibleDate) — pas recalculé ensuite, pour que
+    // la date annoncée au membre ne bouge pas sous ses pieds.
+    // GET /api/member/deletion-request — statut de la demande en cours, s'il
+    // y en a une.
+    // DELETE /api/member/deletion-request — annulation par le membre lui-même,
+    // uniquement tant qu'elle est encore 'pending' (pas déjà traitée).
+    if (path === '/api/member/deletion-request') {
+      const member = await getCurrentMemberFromBearer(request, env);
+      if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+
+      if (method === 'GET') {
+        const existing = await env.DB.prepare(
+          `SELECT id, requested_at, eligible_at, statut FROM deletion_requests
+           WHERE adherent_compte_id = ? ORDER BY created_at DESC LIMIT 1`
+        ).bind(member.id).first();
+        return json({ data: existing || null, error: null });
+      }
+
+      if (method === 'POST') {
+        const pending = await env.DB.prepare(
+          `SELECT id, requested_at, eligible_at, statut FROM deletion_requests
+           WHERE adherent_compte_id = ? AND statut = 'pending'`
+        ).bind(member.id).first();
+        if (pending) return json({ data: pending, error: null });
+
+        const now = new Date().toISOString();
+        const eligibleAt = await computeDeletionEligibleDate(member.adherent_email, env);
+        const id = crypto.randomUUID();
+        await env.DB.prepare(
+          `INSERT INTO deletion_requests (id, adherent_compte_id, email, requested_at, eligible_at, statut, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`
+        ).bind(id, member.id, member.adherent_email, now, eligibleAt, now, now).run();
+
+        return json({ data: { id, requested_at: now, eligible_at: eligibleAt, statut: 'pending' }, error: null });
+      }
+
+      if (method === 'DELETE') {
+        const existing = await env.DB.prepare(
+          `SELECT id, statut FROM deletion_requests WHERE adherent_compte_id = ? AND statut = 'pending'`
+        ).bind(member.id).first<{ id: string; statut: string }>();
+        if (!existing) return err('Aucune demande en attente à annuler', 404);
+        await env.DB.prepare(
+          `UPDATE deletion_requests SET statut = 'cancelled', updated_at = ? WHERE id = ?`
+        ).bind(new Date().toISOString(), existing.id).run();
+        return json({ data: { statut: 'cancelled' }, error: null });
+      }
+
+      return err('Méthode non supportée', 405);
     }
 
     // PATCH /api/member/me — l'adhérent met à jour lui-même ses coordonnées et
@@ -2369,6 +2489,69 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       return json({ data: { ok: true, guardianCompteId }, error: null });
     }
 
+    // POST /api/deletion-requests/:id/execute — exécute l'anonymisation
+    // (staff, perm_administration en écriture — action irréversible, on la
+    // réserve volontairement à un niveau d'habilitation plus restreint que
+    // perm_adherents). Refuse si le délai de conservation n'est pas encore
+    // écoulé : eligible_at n'est jamais court-circuité depuis l'admin, même
+    // par un administrateur — le seul moyen de supprimer plus tôt est de
+    // changer la donnée source (date_fin_adhesion) et attendre le
+    // recalcul, pas de bypasser la vérification ici.
+    const deletionExecuteMatch = path.match(/^\/api\/deletion-requests\/([^/]+)\/execute$/);
+    if (method === 'POST' && deletionExecuteMatch) {
+      const user = await getCurrentUserFromBearer(request, env);
+      if (!user) return err('Unauthorized', 401);
+      const rolePerms = await getRolePerms(env);
+      if (!dbHasPermission(user, 'perm_administration', 'write', rolePerms)) return err('Permission refusée', 403);
+
+      const reqId = deletionExecuteMatch[1];
+      const reqRow = await env.DB.prepare(`SELECT * FROM deletion_requests WHERE id = ?`).bind(reqId).first<any>();
+      if (!reqRow) return err('Demande introuvable', 404);
+      if (reqRow.statut !== 'pending') return err(`Cette demande est déjà '${reqRow.statut}'`, 400);
+      if (new Date(reqRow.eligible_at).getTime() > Date.now()) {
+        return err(`Délai de conservation non écoulé (éligible le ${reqRow.eligible_at})`, 400);
+      }
+
+      await anonymizeAdherentData(reqRow.adherent_compte_id, reqRow.email, env);
+
+      const now = new Date().toISOString();
+      await env.DB.prepare(
+        `UPDATE deletion_requests SET statut = 'done', processed_at = ?, processed_by = ?, updated_at = ? WHERE id = ?`
+      ).bind(now, user.id, now, reqId).run();
+
+      ctx.waitUntil(writeAuditLog(env, {
+        userId: user.id, action: 'deletion_request_executed',
+        entityType: 'deletion_requests', entityId: reqId,
+        details: { adherentCompteId: reqRow.adherent_compte_id }, ip: request.headers.get('CF-Connecting-IP'),
+      }));
+
+      return json({ data: { ok: true }, error: null });
+    }
+
+    // POST /api/deletion-requests/:id/reject — refuse une demande (staff,
+    // perm_administration en écriture), ex. litige en cours. { notes }
+    // conservé pour justifier le refus si le membre revient dessus.
+    const deletionRejectMatch = path.match(/^\/api\/deletion-requests\/([^/]+)\/reject$/);
+    if (method === 'POST' && deletionRejectMatch) {
+      const user = await getCurrentUserFromBearer(request, env);
+      if (!user) return err('Unauthorized', 401);
+      const rolePerms = await getRolePerms(env);
+      if (!dbHasPermission(user, 'perm_administration', 'write', rolePerms)) return err('Permission refusée', 403);
+
+      const reqId = deletionRejectMatch[1];
+      const body = await request.json<{ notes?: string }>().catch(() => ({} as { notes?: string }));
+      const reqRow = await env.DB.prepare(`SELECT id, statut FROM deletion_requests WHERE id = ?`).bind(reqId).first<any>();
+      if (!reqRow) return err('Demande introuvable', 404);
+      if (reqRow.statut !== 'pending') return err(`Cette demande est déjà '${reqRow.statut}'`, 400);
+
+      const now = new Date().toISOString();
+      await env.DB.prepare(
+        `UPDATE deletion_requests SET statut = 'rejected', staff_notes = ?, processed_at = ?, processed_by = ?, updated_at = ? WHERE id = ?`
+      ).bind(body.notes || null, now, user.id, now, reqId).run();
+
+      return json({ data: { ok: true }, error: null });
+    }
+
     // ── Messagerie / contact rapide avec le bureau ──────────────────────────
     // POST /api/member/contact — { subject, message } — envoie un email au
     // bureau (club_info.email) via Brevo, sans jamais exposer cette adresse
@@ -2632,6 +2815,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
   "/api/member/documents/notation",
   "/api/member/documents/bulletin",
   "/api/member/documents/attestation-cotisation",
+  "/api/member/deletion-request",
   "/api/member/profiles",
   "/api/member/profiles/switch",
   "/api/member/contact",
