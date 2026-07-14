@@ -224,6 +224,7 @@ const UI = {
   bankTxDateTo:'',
   pdfTarget:null,
   guardianInfo:null,
+  rgpdRequests:null,
   diplome:{adherentId:'',date:td(),templatePath:'',titre:'Diplôme de ceinture',selectedField:'nomComplet',delivrePar:'',commentaire:''},
   diplomeArchive:{saison:'current',search:''},
   invState:{numero:'FAC-001',date:td(),destinataire:'',adresse:'',objet:'',lignes:[{desc:'',qte:1,pu:0}],notes:''},
@@ -5606,8 +5607,9 @@ function vAdmin(){
   <button class="stab ${sub==='imp_adh'?'active':''}" onclick="showST('admin','imp_adh')">📥 Import adhérents</button>
   <button class="stab ${sub==='imp_ecr'?'active':''}" onclick="showST('admin','imp_ecr')">📥 Import écritures</button>
   <button class="stab ${sub==='backup'?'active':''}" onclick="showST('admin','backup')">Sauvegarde</button>
+  <button class="stab ${sub==='rgpd'?'active':''}" onclick="showST('admin','rgpd')">🔒 RGPD</button>
   </div>
-  ${sub==='users'?vUsers():sub==='audit'?vAudit():sub==='club'?vClub():sub==='logo'?vLogo():sub==='tarifs'?vTarifs():sub==='imp_adh'?vImpAdh():sub==='imp_ecr'?vImpEcr():vBackup()}`;
+  ${sub==='users'?vUsers():sub==='audit'?vAudit():sub==='club'?vClub():sub==='logo'?vLogo():sub==='tarifs'?vTarifs():sub==='imp_adh'?vImpAdh():sub==='imp_ecr'?vImpEcr():sub==='rgpd'?vRgpd():vBackup()}`;
 }
 
 function vUsers(){
@@ -6093,6 +6095,73 @@ function vBackup(){
   </div>
   </div>
   <p style="font-size:12px;color:var(--txt2);margin-top:12px">✓ Données sauvegardées automatiquement dans la base (Cloudflare D1) à chaque action.</p>
+  </div>`;
+}
+
+// Demandes de suppression RGPD : chargées à part (pas dans le bootstrap
+// initial), au moment où l'onglet est ouvert — même logique que
+// loadGuardianInfo pour la fiche adhérent, pour ne pas alourdir le
+// chargement initial d'une donnée consultée occasionnellement.
+async function loadRgpdRequests(){
+  const res=await SB.from('deletion_requests').select('*').order('created_at',{ascending:false});
+  UI.rgpdRequests=res.error?{error:res.error.message||'Chargement impossible.'}:(res.data||[]);
+  render();
+}
+
+async function executeDeletionRequest(id){
+  if(!confirm("Exécuter la suppression maintenant ? Cette action anonymise les données personnelles et supprime le compte de connexion — irréversible."))return;
+  const res=await apiRequest(`/api/deletion-requests/${id}/execute`,{method:'POST'});
+  if(res.error) return alert('Suppression impossible : '+res.error.message);
+  notify('success','Données anonymisées.','RGPD');
+  loadRgpdRequests();
+}
+
+async function rejectDeletionRequest(id){
+  const notes=prompt('Motif du refus (visible en interne uniquement) :');
+  if(notes===null)return;
+  const res=await apiRequest(`/api/deletion-requests/${id}/reject`,{method:'POST',body:JSON.stringify({notes})});
+  if(res.error) return alert('Refus impossible : '+res.error.message);
+  notify('success','Demande refusée.','RGPD');
+  loadRgpdRequests();
+}
+
+function vRgpd(){
+  if(UI.rgpdRequests===null){ loadRgpdRequests(); return `<div class="empty">Chargement…</div>`; }
+  if(UI.rgpdRequests.error) return `<div class="empty">${esc(UI.rgpdRequests.error)}</div>`;
+  const rows=UI.rgpdRequests;
+  const pending=rows.filter(r=>r.statut==='pending');
+  const others=rows.filter(r=>r.statut!=='pending');
+  const today=new Date().toISOString().slice(0,10);
+  const renderRow=(r)=>{
+    const ready=r.statut==='pending' && r.eligible_at<=today;
+    return `<div class="card" style="margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center">
+    <div>
+    <p style="font-weight:500">${esc(r.email)}</p>
+    <p style="font-size:12px;color:var(--txt2)">Demandée le ${esc(new Date(r.requested_at).toLocaleDateString('fr-FR'))} ·
+    ${ready?`<span style="color:var(--green,#1a7f37)">éligible depuis le ${esc(new Date(r.eligible_at).toLocaleDateString('fr-FR'))}</span>`
+           :`éligible le ${esc(new Date(r.eligible_at).toLocaleDateString('fr-FR'))} (conservation légale en cours)`}
+    ${r.statut!=='pending'?` · statut : <strong>${esc(r.statut)}</strong>`:''}
+    ${r.staff_notes?` · note : ${esc(r.staff_notes)}`:''}
+    </p>
+    </div>
+    ${r.statut==='pending'?`<div style="display:flex;gap:8px">
+      <button class="btn sm" ${ready?'':'disabled title="Délai de conservation légale non écoulé"'} onclick="executeDeletionRequest('${r.id}')">Exécuter la suppression</button>
+      <button class="btn sm danger" onclick="rejectDeletionRequest('${r.id}')">Refuser</button>
+      </div>`:''}
+    </div>
+    </div>`;
+  };
+  return `<div>
+  <div class="view-head">
+  <div>
+  <div class="eyebrow">Conformité</div>
+  <h2>Demandes de suppression RGPD</h2>
+  <p>Droit à l'effacement (art. 17) — les données personnelles ne sont anonymisées qu'une fois le délai de conservation légal écoulé (5 ans après la fin de la dernière adhésion active). L'historique comptable (cotisation, paiement) est conservé, seules les données identifiantes sont effacées.</p>
+  </div>
+  </div>
+  ${pending.length?`<p style="font-size:11px;font-weight:500;color:var(--txt2);margin-bottom:8px">EN ATTENTE (${pending.length})</p>${pending.map(renderRow).join('')}`:`<div class="empty">Aucune demande en attente.</div>`}
+  ${others.length?`<p style="font-size:11px;font-weight:500;color:var(--txt2);margin:16px 0 8px">TRAITÉES</p>${others.map(renderRow).join('')}`:''}
   </div>`;
 }
 
