@@ -2709,7 +2709,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
         'exercices', 'adherents', 'comptes_bancaires', 'transactions',
         'journal_comptable', 'achats', 'factures', 'diplomes',
         'feedback_campaigns', 'feedback_recipients', 'feedback_responses',
-        'inscriptions_publiques', 'club_info',
+        'inscriptions_publiques', 'club_info', 'deletion_requests',
       ];
 
       for (const table of RESTORE_ORDER) {
