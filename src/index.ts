@@ -15,9 +15,10 @@ export interface Env {
   R2_STORAGE?: R2Bucket;
   R2_PDF?: R2Bucket;
   MEMBER_PORTAL_URL?: string;  // ex. https://espace-membre.americanfullfightingbons.fr (liens d'activation/réinitialisation par email)
+  BOUTIQUE_SALES_SYNC_TOKEN?: string; // wrangler secret put BOUTIQUE_SALES_SYNC_TOKEN — doit avoir EXACTEMENT la même valeur que GESTION_SYNC_TOKEN côté worker boutique. Protège POST /api/internal/sales/sync/boutique.
 }
 
-import {verifyPassword, createSessionToken, parseSessionToken, hashPassword, prepareUserWriteValues, hasStoragePermission, isPublicStorageObject} from './lib/security';
+import {verifyPassword, createSessionToken, parseSessionToken, hashPassword, prepareUserWriteValues, hasStoragePermission, isPublicStorageObject, secureEquals} from './lib/security';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -1475,6 +1476,236 @@ async function anonymizeAdherentData(compteId: string, email: string, env: Env):
   ]);
 }
 
+// ─── Synchronisation des ventes boutique (t-shirts, pantalons, etc.) ────────
+//
+// La boutique (worker séparé, base D1 distincte) n'avait jusqu'ici aucun lien
+// avec la comptabilité de gestion : les commandes y restaient enfermées.
+// Ce bloc reproduit fidèlement le modèle déjà utilisé pour les ventes liées
+// à l'inscription web (facture + écritures 411/707/512, cf.
+// insertInscriptionSales / insertVenteTenueJournal / upsertHelloAssoPaymentJournal
+// dans inscription-web/.../status.js) afin que les deux circuits de vente
+// alimentent la même comptabilité de la même façon.
+//
+// Appelé par POST /api/internal/sales/sync/boutique, protégé par le secret
+// partagé BOUTIQUE_SALES_SYNC_TOKEN (jamais par le cookie/token staff : c'est
+// un appel serveur-à-serveur depuis le worker boutique, cf. finalizePaidOrder
+// dans boutique/src/worker.js).
+//
+// Idempotence : la commande boutique est identifiée par son id (source_id,
+// source_type='boutique_order'). Les écritures du journal sont upsertées par
+// "piece" (déterministe à partir de l'id de commande) donc un retry après
+// échec réseau ne crée jamais de doublon. La facture est retrouvée via une
+// marque insérée dans `notes` (pas de colonne dédiée dans factures).
+
+async function findActiveExercise(db: D1Database): Promise<Record<string, any> | null> {
+  const active = await db
+    .prepare(`SELECT * FROM exercices WHERE statut = 'actif' ORDER BY date_debut DESC LIMIT 1`)
+    .first<Record<string, any>>();
+  if (active?.id) return active;
+  return db.prepare(`SELECT * FROM exercices ORDER BY date_debut DESC LIMIT 1`).first<Record<string, any>>();
+}
+
+async function nextFactureNumero(db: D1Database, exerciceId: string | null): Promise<string> {
+  const year = new Date().getFullYear();
+  const result = await db.prepare(`SELECT COUNT(*) as cnt FROM factures WHERE exercice_id = ?`).bind(exerciceId).first<Record<string, any>>();
+  const n = (Number(result?.cnt) || 0) + 1;
+  const ts = Date.now().toString(36).slice(-4).toUpperCase();
+  return `VTE-${year}-${String(n).padStart(3, '0')}-${ts}`;
+}
+
+async function upsertJournalEntryByPiece(db: D1Database, entry: Record<string, any>): Promise<string> {
+  const existing = await db.prepare(`SELECT id FROM journal_comptable WHERE piece = ? LIMIT 1`).bind(entry.piece).first<Record<string, any>>();
+  const columns = Object.keys(entry);
+  if (existing?.id) {
+    const assignments = columns.map((c) => `"${c}" = ?`).join(', ');
+    await db.prepare(`UPDATE journal_comptable SET ${assignments} WHERE id = ?`).bind(...columns.map((c) => entry[c]), existing.id).run();
+    return String(existing.id);
+  }
+  await db.prepare(
+    `INSERT INTO journal_comptable (${columns.map((c) => `"${c}"`).join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`
+  ).bind(...columns.map((c) => entry[c])).run();
+  return String(entry.id);
+}
+
+interface BoutiqueSaleItem { name: string; quantity: number; unitPrice: number }
+
+interface BoutiqueSalePayload {
+  orderId: number | string;
+  customerName: string;
+  customerEmail: string;
+  total: number;
+  paidAt?: string;
+  items: BoutiqueSaleItem[];
+}
+
+// Crée (ou retrouve, si déjà synchronisée) la facture correspondant à une
+// commande boutique payée.
+async function upsertBoutiqueSaleFacture(db: D1Database, payload: BoutiqueSalePayload, exercise: Record<string, any> | null): Promise<{ id: string; created: boolean }> {
+  const marker = `[boutique_order:${payload.orderId}]`;
+  const existing = await db.prepare(`SELECT id FROM factures WHERE notes LIKE ? LIMIT 1`).bind(`%${marker}%`).first<Record<string, any>>();
+  if (existing?.id) return { id: String(existing.id), created: false };
+
+  const now = new Date().toISOString();
+  const id = crypto.randomUUID();
+  const numero = await nextFactureNumero(db, exercise?.id || null);
+  const lignes = (payload.items || [])
+    .filter((item) => Number(item.quantity || 0) > 0)
+    .map((item) => ({ desc: item.name, qte: Number(item.quantity), pu: Number(item.unitPrice) }));
+
+  const row = {
+    id,
+    numero,
+    date_op: String(payload.paidAt || now).slice(0, 10),
+    destinataire: payload.customerName || 'Client boutique',
+    adresse: '',
+    objet: 'Vente boutique en ligne',
+    lignes: JSON.stringify(lignes),
+    statut: 'Payée',
+    notes: `Vente générée automatiquement depuis la boutique en ligne. Paiement HelloAsso validé. ${marker} Email client : ${payload.customerEmail || ''}`,
+    exercice_id: exercise?.id || null,
+    created_at: now,
+    updated_at: now,
+  };
+  const columns = Object.keys(row);
+  await db.prepare(
+    `INSERT INTO factures (${columns.map((c) => `"${c}"`).join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`
+  ).bind(...columns.map((c) => (row as Record<string, any>)[c])).run();
+
+  return { id, created: true };
+}
+
+// Écritures de reconnaissance du chiffre d'affaires (411 débit / 707 crédit),
+// symétriques à insertVenteTenueJournal côté inscription.
+async function upsertBoutiqueSaleJournal(db: D1Database, factureId: string, payload: BoutiqueSalePayload, exercise: Record<string, any> | null): Promise<string | null> {
+  const total = Number(payload.total || 0);
+  if (!(total > 0)) return null;
+  const now = new Date().toISOString();
+  const dateOp = String(payload.paidAt || now).slice(0, 10);
+  const piece = `VTE-BTQ-${String(payload.orderId)}`;
+  const libelleBase = `Vente boutique - ${payload.customerName || 'Client'} - commande #${payload.orderId}`;
+  const common = {
+    date_op: dateOp,
+    piece,
+    source_type: 'boutique_order',
+    source_id: String(payload.orderId),
+    source_logiciel: 'boutique-web',
+    exercice_id: exercise?.id || null,
+    updated_at: now,
+  };
+
+  await upsertJournalEntryByPiece(db, {
+    id: crypto.randomUUID(),
+    ...common,
+    compte: '411 - Adhérents et clients',
+    libelle: `${libelleBase} - Vente`,
+    debit: total,
+    credit: 0,
+    created_at: now,
+  });
+  await upsertJournalEntryByPiece(db, {
+    id: crypto.randomUUID(),
+    ...common,
+    piece: `${piece}-VTE`,
+    compte: '707 - Ventes vêtements et équipements',
+    libelle: `${libelleBase} - Produits boutique`,
+    debit: 0,
+    credit: total,
+    created_at: now,
+  });
+
+  return piece;
+}
+
+// Écritures d'encaissement (512 débit / 411 crédit), symétriques à
+// upsertHelloAssoPaymentJournal côté inscription : la commande boutique n'est
+// synchronisée qu'une fois payée (cf. finalizePaidOrder côté boutique), donc
+// le paiement est toujours intégral au moment de l'appel.
+async function upsertBoutiquePaymentJournal(db: D1Database, payload: BoutiqueSalePayload, exercise: Record<string, any> | null): Promise<string | null> {
+  const total = Number(payload.total || 0);
+  if (!(total > 0)) return null;
+  const now = new Date().toISOString();
+  const dateOp = String(payload.paidAt || now).slice(0, 10);
+  const pieceBase = `PAY-BTQ-${String(payload.orderId)}`;
+  const libelle = `Encaissement HelloAsso boutique - ${payload.customerName || 'Client'} - commande #${payload.orderId}`;
+  const common = {
+    date_op: dateOp,
+    source_type: 'boutique_order',
+    source_id: String(payload.orderId),
+    source_logiciel: 'boutique-web',
+    exercice_id: exercise?.id || null,
+    updated_at: now,
+  };
+
+  await upsertJournalEntryByPiece(db, {
+    id: crypto.randomUUID(),
+    ...common,
+    piece: `${pieceBase}-BNQ`,
+    compte: '512 - Banque',
+    libelle,
+    debit: total,
+    credit: 0,
+    created_at: now,
+  });
+  await upsertJournalEntryByPiece(db, {
+    id: crypto.randomUUID(),
+    ...common,
+    piece: `${pieceBase}-CLI`,
+    compte: '411 - Adhérents et clients',
+    libelle,
+    debit: 0,
+    credit: total,
+    created_at: now,
+  });
+
+  return pieceBase;
+}
+
+async function handleBoutiqueSalesSync(request: Request, env: Env): Promise<Response> {
+  const expected = String(env.BOUTIQUE_SALES_SYNC_TOKEN || '');
+  const provided = request.headers.get('X-Boutique-Sales-Token') || '';
+  if (!expected || expected.length < 16 || !secureEquals(provided, expected)) {
+    return json({ data: null, error: { message: 'Non autorisé' } }, 401);
+  }
+
+  let body: BoutiqueSalePayload;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ data: null, error: { message: 'JSON invalide' } }, 400);
+  }
+
+  if (!body?.orderId || !(Number(body.total) > 0) || !Array.isArray(body.items)) {
+    return json({ data: null, error: { message: 'orderId, total et items sont obligatoires' } }, 400);
+  }
+
+  try {
+    const exercise = await findActiveExercise(env.DB);
+    const facture = await upsertBoutiqueSaleFacture(env.DB, body, exercise);
+    // Les écritures ne sont créées qu'à la première synchronisation de cette
+    // facture : sur un retry (facture déjà trouvée), le journal a forcément
+    // déjà été écrit lui aussi la première fois (les deux sont créés dans la
+    // même requête, cf. ci-dessous), donc pas besoin de les rejouer — mais
+    // upsertJournalEntryByPiece est de toute façon idempotent si jamais un
+    // appel précédent avait échoué entre les deux étapes.
+    const ventePiece = await upsertBoutiqueSaleJournal(env.DB, facture.id, body, exercise);
+    const paymentPiece = await upsertBoutiquePaymentJournal(env.DB, body, exercise);
+
+    return json({
+      data: {
+        synced: true,
+        factureId: facture.id,
+        factureCreated: facture.created,
+        ventePiece,
+        paymentPiece,
+      },
+      error: null,
+    });
+  } catch (e) {
+    console.error('[sales/sync/boutique] échec', e instanceof Error ? e.stack || e.message : String(e));
+    return json({ data: null, error: { message: 'Synchronisation impossible' } }, 500);
+  }
+}
+
 // ─── Handler principal ───────────────────────────────────────────────────────
 
 async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -2819,6 +3050,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
   "/api/member/profiles",
   "/api/member/profiles/switch",
   "/api/member/contact",
+  "/api/internal/sales/sync/boutique",
 ]);
 
 if (path.startsWith("/api/") && !publicApiRoutes.has(path)) {
@@ -2827,6 +3059,14 @@ if (path.startsWith("/api/") && !publicApiRoutes.has(path)) {
         return err("Non autorisé", 401);
     }
 }
+
+    // POST /api/internal/sales/sync/boutique — appelé par le worker boutique
+    // (jamais par un navigateur) juste après confirmation d'un paiement
+    // HelloAsso, pour enregistrer la vente dans la comptabilité (facture +
+    // journal). Protégé par secret partagé, pas par le cookie/token staff.
+    if (method === 'POST' && path === '/api/internal/sales/sync/boutique') {
+        return handleBoutiqueSalesSync(request, env);
+    }
 
     // POST /api/admin/certificats/verifier — déclenche manuellement la même
     // vérification que le cron quotidien (utile pour tester ou forcer un envoi
