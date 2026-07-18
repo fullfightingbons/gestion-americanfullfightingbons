@@ -5734,6 +5734,8 @@ function vTarifs(){
   const ci = D.clubInfo||{};
   const isOpen = ci.public_inscription_enabled===undefined ? true : !['0','false','non','off'].includes(String(ci.public_inscription_enabled).trim().toLowerCase());
   const closedMessage = ci.public_inscription_closed_message || '';
+  const DEFAULT_HORAIRES = 'Lundi : 19h00 - 20h30\nMercredi : 20h30 - 22h30\nVendredi : 20h30 - 22h30';
+  const horaires = ci.public_inscription_horaires || DEFAULT_HORAIRES;
   const fields = [
     {key:'base',           label:'Tarif de base',               desc:'Cotisation standard'},
     {key:'family',         label:'Tarif famille',               desc:'Par membre, 2 minimum'},
@@ -5760,6 +5762,15 @@ function vTarifs(){
   <textarea id="insc-closed-message" rows="2" placeholder="Les inscriptions sont actuellement fermées. Revenez bientôt !" ${canWrite?'':'readonly'}>${esc(closedMessage)}</textarea>
   </div>
   ${canWrite?`<button class="btn primary" style="margin-top:10px" onclick="saveInscriptionStatus()">💾 Sauvegarder</button>`:''}
+  </div>
+  <div class="card">
+  <p style="font-size:11px;font-weight:500;color:var(--txt2);letter-spacing:.06em;margin-bottom:4px">HORAIRES DES ENTRAÎNEMENTS</p>
+  <p style="font-size:12px;color:var(--txt2);margin-bottom:12px">Un horaire par ligne, affiché tel quel sur <strong>inscription.americanfullfightingbons.fr</strong> (page d'inscription). Format libre, par exemple <code>Lundi : 19h00 - 20h30</code>.</p>
+  <div class="fg">
+  <label>Jours et horaires</label>
+  <textarea id="insc-horaires" rows="4" placeholder="${esc(DEFAULT_HORAIRES)}" ${canWrite?'':'readonly'}>${esc(horaires)}</textarea>
+  </div>
+  ${canWrite?`<button class="btn primary" style="margin-top:10px" onclick="saveHoraires()">💾 Sauvegarder et publier</button>`:''}
   </div>
   <div class="card">
   <p style="font-size:11px;font-weight:500;color:var(--txt2);letter-spacing:.06em;margin-bottom:4px">TARIFS DU FORMULAIRE D'INSCRIPTION${updated}</p>
@@ -5810,6 +5821,24 @@ async function saveInscriptionStatus(){
   D.clubInfo.public_inscription_enabled = isOpen ? '1' : '0';
   D.clubInfo.public_inscription_closed_message = message;
   notify('success', isOpen ? 'Inscriptions rouvertes — le site les accepte de nouveau ✓' : 'Inscriptions fermées — le site refuse désormais toute nouvelle inscription ✓');
+  render();
+}
+
+// Un horaire par ligne (ex. "Lundi : 19h00 - 20h30"), même format que celui
+// déjà lu côté serveur par inscription-config.js
+// (clubInfo.public_inscription_horaires.split("\n")) — donc aucune
+// modification requise côté inscription, la valeur est déjà branchée.
+async function saveHoraires(){
+  if(!requireWritePerm('perm_administration')) return;
+  const raw = document.getElementById('insc-horaires')?.value || '';
+  const lines = raw.split('\n').map(l=>l.trim()).filter(Boolean);
+  if(!lines.length) return notify('warn','Renseignez au moins un horaire.');
+  const valeur = lines.join('\n');
+  const {error} = await SB.from('club_info').upsert({cle:'public_inscription_horaires',valeur},{onConflict:'cle'});
+  if(error) return notify('error','Erreur : '+error.message);
+  D.clubInfo=D.clubInfo||{};
+  D.clubInfo.public_inscription_horaires = valeur;
+  notify('success','Horaires publiés — le site d\'inscription les applique immédiatement ✓');
   render();
 }
 
