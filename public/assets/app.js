@@ -6114,6 +6114,7 @@ function vRgpd(){
            :`éligible le ${esc(new Date(r.eligible_at).toLocaleDateString('fr-FR'))} (conservation légale en cours)`}
     ${r.statut!=='pending'?` · statut : <strong>${esc(r.statut)}</strong>`:''}
     ${r.staff_notes?` · note : ${esc(r.staff_notes)}`:''}
+    ${r.staff_notified_at?` · <span title="Signalée automatiquement par le rappel quotidien">🔔 signalée le ${esc(new Date(r.staff_notified_at).toLocaleDateString('fr-FR'))}</span>`:''}
     </p>
     </div>
     ${r.statut==='pending'?`<div style="display:flex;gap:8px">
