@@ -972,6 +972,71 @@ async function checkCertificatsExpirants(env: Env): Promise<{ checked: number; s
   return { checked: results?.length || 0, sent, errors };
 }
 
+// Cron RGPD (droit à l'effacement, art. 17) : signale au bureau les demandes
+// devenues éligibles (délai légal de 5 ans écoulé) mais pas encore traitées.
+// Volontairement PAS d'exécution automatique de l'anonymisation — cf.
+// commentaire de la route /api/deletion-requests/:id/execute, l'exécution
+// reste un geste manuel d'un membre du bureau ayant les droits
+// perm_administration. Ce cron ne fait qu'éviter qu'une demande éligible
+// passe inaperçue en l'absence de consultation régulière de l'onglet RGPD.
+//
+// Une seule notification par demande (staff_notified_at, migration 0024) :
+// sans ce garde-fou, le mail reviendrait chaque jour tant que le staff n'a
+// pas traité la demande depuis l'admin — même logique que
+// certificat_rappels pour les certificats médicaux.
+//
+// Un seul email récapitulatif (et non un email par demande) : ce cron
+// s'adresse au bureau, pas aux adhérents — inutile de saturer sa boîte mail
+// d'un message par demande le jour où plusieurs deviennent éligibles le
+// même jour.
+async function checkDeletionRequestsEligibility(env: Env): Promise<{ checked: number; notified: boolean; error?: string }> {
+  const { results } = await env.DB.prepare(
+    `SELECT dr.id, dr.email, dr.eligible_at, dr.requested_at, a.nom, a.prenom
+     FROM deletion_requests dr
+     JOIN adherent_comptes ac ON ac.id = dr.adherent_compte_id
+     LEFT JOIN adherents a ON a.id = ac.adherent_id
+     WHERE dr.statut = 'pending' AND dr.eligible_at <= date('now') AND dr.staff_notified_at IS NULL`
+  ).all<{ id: string; email: string; eligible_at: string; requested_at: string; nom: string | null; prenom: string | null }>();
+
+  const rows = results || [];
+  if (!rows.length) return { checked: 0, notified: false };
+
+  const clubEmail = await getClubContactEmail(env);
+  const items = rows.map((r) => {
+    const nomComplet = `${r.prenom || ''} ${r.nom || ''}`.trim() || '(fiche adhérent introuvable)';
+    const eligibleFr = new Date(r.eligible_at).toLocaleDateString('fr-FR');
+    return `<li>${nomComplet} — ${r.email} — éligible depuis le ${eligibleFr}</li>`;
+  }).join('');
+
+  const html = `
+    <p>Bonjour,</p>
+    <p>${rows.length > 1 ? `${rows.length} demandes de suppression RGPD sont` : 'Une demande de suppression RGPD est'}
+    désormais éligible${rows.length > 1 ? 's' : ''} (délai légal de conservation écoulé) et en attente de traitement :</p>
+    <ul>${items}</ul>
+    <p>Rendez-vous dans le back-office, onglet <strong>Administration → RGPD</strong>, pour exécuter ou refuser
+    ${rows.length > 1 ? 'ces demandes' : 'cette demande'}.</p>
+    <p>AFFBC — notification automatique</p>`;
+
+  const result = await sendBrevoEmail(env, {
+    to: [{ email: clubEmail, name: 'AFFBC — Bureau' }],
+    subject: `RGPD : ${rows.length} demande${rows.length > 1 ? 's' : ''} de suppression éligible${rows.length > 1 ? 's' : ''}`,
+    html,
+  });
+
+  if (!result.ok) {
+    return { checked: rows.length, notified: false, error: result.error };
+  }
+
+  const now = new Date().toISOString();
+  await env.DB.batch(
+    rows.map((r) =>
+      env.DB.prepare(`UPDATE deletion_requests SET staff_notified_at = ? WHERE id = ?`).bind(now, r.id)
+    ),
+  );
+
+  return { checked: rows.length, notified: true };
+}
+
 // Questionnaire par défaut utilisé pour la campagne de fin de saison
 // auto-créée. Modifiable ensuite depuis l'admin (onglet Feedback → Modifier),
 // le champ `questions` étant du JSON libre interprété par le front
@@ -3338,6 +3403,15 @@ export default {
       checkCertificatsExpirants(env).then(
         (r) => console.log('[cron:certificats]', JSON.stringify(r)),
         (e) => console.error('[cron:certificats] échec', e instanceof Error ? e.stack || e.message : String(e)),
+      ),
+    );
+    // Signalement quotidien au bureau des demandes RGPD devenues éligibles
+    // (cf. checkDeletionRequestsEligibility) — même trigger cron, pas besoin
+    // d'un déclencheur séparé dans wrangler.json.
+    ctx.waitUntil(
+      checkDeletionRequestsEligibility(env).then(
+        (r) => console.log('[cron:rgpd]', JSON.stringify(r)),
+        (e) => console.error('[cron:rgpd] échec', e instanceof Error ? e.stack || e.message : String(e)),
       ),
     );
   },
