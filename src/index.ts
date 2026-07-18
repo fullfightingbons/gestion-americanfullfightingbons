@@ -19,6 +19,8 @@ export interface Env {
 }
 
 import {verifyPassword, createSessionToken, parseSessionToken, hashPassword, prepareUserWriteValues, hasStoragePermission, isPublicStorageObject, secureEquals} from './lib/security';
+import { buildDocumentPdfBytes, type DocumentInput, type DocumentLigne } from './lib/pdf/document-template';
+import { bytesToBase64 } from './lib/pdf/pdf-engine';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -202,90 +204,6 @@ async function loadMemberRecord(
     }
   }
   return record;
-}
-
-// ─── Génération PDF minimale (attestation de cotisation) ────────────────────
-// Pas de bibliothèque PDF disponible côté gestion (contrairement à
-// inscription-americanfullfightingbons, qui a son propre générateur pour le
-// bulletin d'inscription avec photo). Ici on n'a besoin que de texte simple
-// sur une page, donc un PDF minimal assemblé à la main suffit — même esprit
-// que src/routes/_lib/pdf.js côté inscription, en beaucoup plus court car
-// pas de photo ni de mise en page complexe à reproduire.
-function pdfEscapeText(str: string): string {
-  return str.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
-}
-
-// Caractères Unicode dont le point de code diffère de l'octet WinAnsi
-// correspondant (plage 0x80-0x9F de Windows-1252). Le reste de la plage
-// Latin1 (0xA0-0xFF, dont tous les accents français) a un point de code
-// Unicode identique à son octet WinAnsi, donc pas besoin de table pour ça.
-const WINANSI_SPECIALS: Record<string, number> = {
-  '\u2018': 0x91, '\u2019': 0x92, '\u201C': 0x93, '\u201D': 0x94,
-  '\u2013': 0x96, '\u2014': 0x97, '\u2026': 0x85, '\u20AC': 0x80,
-};
-
-function toWinAnsiBytes(str: string): Uint8Array {
-  const bytes = new Uint8Array(str.length);
-  for (let i = 0; i < str.length; i++) {
-    const ch = str[i];
-    const code = str.charCodeAt(i);
-    if (code < 256) bytes[i] = code;
-    else if (WINANSI_SPECIALS[ch] !== undefined) bytes[i] = WINANSI_SPECIALS[ch];
-    else bytes[i] = 0x3f; // '?' de repli si caractère hors plage WinAnsi
-  }
-  return bytes;
-}
-
-function pdfTextOp(text: string, x: number, y: number, size: number): string {
-  return `BT /F1 ${size} Tf ${x} ${y} Td (${pdfEscapeText(text)}) Tj ET\n`;
-}
-
-function generateSimplePdf(opts: { title: string; lines: string[]; footer: string }): Uint8Array {
-  const pageWidth = 595.28, pageHeight = 841.89; // A4 en points
-  let content = '';
-  content += pdfTextOp(opts.title, 50, pageHeight - 80, 16);
-  let y = pageHeight - 130;
-  for (const line of opts.lines) {
-    content += pdfTextOp(line, 50, y, 11);
-    y -= 22;
-  }
-  content += pdfTextOp(opts.footer, 50, 50, 8);
-  const contentBytes = toWinAnsiBytes(content);
-
-  const objects = [
-    '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>`,
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
-  ];
-
-  const encoder = new TextEncoder();
-  const parts: Uint8Array[] = [];
-  let offset = 0;
-  const offsets: number[] = [];
-  const push = (bytes: Uint8Array) => { parts.push(bytes); offset += bytes.length; };
-
-  push(encoder.encode('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n'));
-  for (let i = 0; i < objects.length; i++) {
-    offsets.push(offset);
-    push(encoder.encode(`${i + 1} 0 obj\n${objects[i]}\nendobj\n`));
-  }
-  offsets.push(offset);
-  push(encoder.encode(`5 0 obj\n<< /Length ${contentBytes.length} >>\nstream\n`));
-  push(contentBytes);
-  push(encoder.encode('\nendstream\nendobj\n'));
-
-  const xrefOffset = offset;
-  let xref = `xref\n0 ${objects.length + 2}\n0000000000 65535 f \n`;
-  for (const o of offsets) xref += String(o).padStart(10, '0') + ' 00000 n \n';
-  push(encoder.encode(xref));
-  push(encoder.encode(`trailer\n<< /Size ${objects.length + 2} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`));
-
-  const total = parts.reduce((n, p) => n + p.length, 0);
-  const result = new Uint8Array(total);
-  let pos = 0;
-  for (const p of parts) { result.set(p, pos); pos += p.length; }
-  return result;
 }
 
 async function getCurrentMemberFromBearer(request: Request, env: Env): Promise<Record<string, any> | null> {
@@ -894,6 +812,102 @@ async function sendBrevoEmail(
     return { ok: false, error: `Brevo ${res.status}: ${detail}` };
   }
   return { ok: true };
+}
+
+// Variante avec pièce(s) jointe(s) — utilisée pour l'envoi de factures, reçus
+// de don et reçus de cotisation en PDF. Même principe que la route générique
+// POST /api/email/send (attachment.content en base64), mais appelable
+// directement côté serveur pour ne pas dépendre d'un aller-retour front
+// (le PDF est généré ici, pas dans le navigateur).
+async function sendBrevoEmailWithAttachment(
+  env: Env,
+  opts: {
+    to: Array<{ email: string; name?: string }>;
+    subject: string;
+    html: string;
+    attachment: { name: string; content: string; type?: string };
+  },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!env.BREVO_API_KEY) {
+    return { ok: false, error: 'BREVO_API_KEY manquant' };
+  }
+  const fromEmail = env.BREVO_FROM_EMAIL || 'noreply@americanfullfightingbons.fr';
+  const fromName = env.BREVO_FROM_NAME || 'AFFBC — Gestion du club';
+
+  const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: { 'api-key': env.BREVO_API_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sender: { email: fromEmail, name: fromName },
+      to: opts.to,
+      subject: opts.subject,
+      htmlContent: opts.html,
+      attachment: [{
+        name: opts.attachment.name,
+        content: opts.attachment.content,
+        type: opts.attachment.type || 'application/pdf',
+      }],
+    }),
+  });
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    return { ok: false, error: `Brevo ${res.status}: ${detail}` };
+  }
+  return { ok: true };
+}
+
+// Adresse de contact du club (club_info.cle = 'email'), utilisée pour copier
+// systématiquement le bureau sur les documents envoyés aux tiers (factures,
+// dons, reçus de cotisation) — cf. demande explicite de Teddy du 18/07/2026 :
+// tout document doit partir à la fois vers le destinataire ET vers le club.
+async function getClubContactEmail(env: Env): Promise<string> {
+  const row = await env.DB.prepare(`SELECT valeur FROM club_info WHERE cle = 'email'`).first<{ valeur: string }>();
+  return String(row?.valeur || '').trim() || 'fullfightingbons@gmail.com';
+}
+
+// Convertit une ligne de la table `factures` (vente OU reçu de don — même
+// table, distingués par isDonationReceipt côté front, cf. app.js) en entrée
+// pour le gabarit PDF harmonisé. `lignes` est stocké en JSON (colonne TEXT).
+function factureRowToDocumentInput(f: Record<string, any>): DocumentInput {
+  const lignesRaw: Array<{ desc?: string; qte?: number; pu?: number }> = (() => {
+    try { return typeof f.lignes === 'string' ? JSON.parse(f.lignes) : (f.lignes || []); }
+    catch { return []; }
+  })();
+  const isDon = String(f.numero || '').startsWith('DON-') || /reçu de don/i.test(String(f.objet || ''));
+  const lignes: DocumentLigne[] = lignesRaw.map((l) => ({
+    designation: String(l.desc || '—'),
+    qte: Number(l.qte || 0) || undefined,
+    pu: Number(l.pu || 0) || undefined,
+    total: Number(l.qte || 0) * Number(l.pu || 0),
+  }));
+  const total = lignes.reduce((s, l) => s + l.total, 0);
+  const dateLabel = `Emis le ${f.date_op ? new Date(f.date_op).toLocaleDateString('fr-FR') : new Date().toLocaleDateString('fr-FR')}`;
+
+  const destLignes = String(f.adresse || '').split('\n').map((s: string) => s.trim()).filter(Boolean);
+
+  if (isDon) {
+    return {
+      type: 'don',
+      numero: f.numero || String(f.id).slice(0, 8).toUpperCase(),
+      dateLabel,
+      destinataire: { nom: f.destinataire || '—', lignes: destLignes },
+      montantDon: total,
+      footerNote: f.notes || undefined,
+    };
+  }
+  return {
+    type: 'facture',
+    numero: f.numero || String(f.id).slice(0, 8).toUpperCase(),
+    dateLabel,
+    destinataire: { nom: f.destinataire || '—', lignes: destLignes },
+    objet: f.objet || undefined,
+    lignes,
+    sousTotal: total,
+    total,
+    tvaLabel: 'TVA (exoneree art. 293 B du CGI)',
+    footerNote: f.notes || undefined,
+  };
 }
 
 // ── Rappels d'échéance du certificat médical / questionnaire de santé ──────
@@ -2417,21 +2431,20 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       const dateFin = member.date_fin_adhesion
         ? new Date(member.date_fin_adhesion).toLocaleDateString('fr-FR') : null;
       const aujourdhui = new Date().toLocaleDateString('fr-FR');
+      const numeroAdherent = String(member.adherent_id || member.id || '').slice(0, 8).toUpperCase();
 
-      const lines = [
-        'Nous soussignés attestons que :',
-        '',
-        nomComplet,
-        'est adhérent(e) du club American Full Fighting Bons en Chablais,',
-        `à jour de sa cotisation${montant ? ' d\u2019un montant de ' + montant : ''}${dateInscription ? ', inscription du ' + dateInscription : ''}${dateFin ? ' au ' + dateFin : ''}.`,
-        '',
-        `Attestation délivrée le ${aujourdhui} pour valoir ce que de droit.`,
-      ];
-
-      const pdfBytes = generateSimplePdf({
-        title: 'Attestation de cotisation \u2014 AFFBC',
-        lines,
-        footer: 'AFFBC \u2014 Document généré automatiquement, ne nécessite pas de signature.',
+      const pdfBytes = buildDocumentPdfBytes({
+        type: 'attestation',
+        numero: `ATT-${new Date().getFullYear()}-${numeroAdherent}`,
+        dateLabel: `Emis le ${aujourdhui}`,
+        dateCourte: aujourdhui,
+        destinataire: { nom: nomComplet, lignes: [`Adherent n°${numeroAdherent}`] },
+        paragraphs: [
+          `Je soussigne Teddy, secretaire de l'association American Full Fighting Bons en Chablais (loi 1901, RNA W744007210, SIREN 924 704 612), atteste que ${nomComplet} est membre licencie de notre club.`,
+          `A jour de sa cotisation${montant ? ' d\u2019un montant de ' + montant : ''}${dateInscription ? ', inscription du ' + dateInscription : ''}${dateFin ? ' au ' + dateFin : ''}.`,
+          'Cette attestation est delivree pour servir et valoir ce que de droit.',
+        ],
+        signataire: 'Teddy — Secretaire AFFBC',
       });
 
       return new Response(pdfBytes, {
@@ -2441,6 +2454,122 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
           'Cache-Control': 'private, no-store',
         },
       });
+    }
+
+    // GET /api/member/documents/recu-cotisation — reçu de cotisation PDF
+    // généré à la volée depuis les données déjà en base (même principe que
+    // l'attestation ci-dessus). Remplace l'ancien flux 100% client
+    // (buildCotisationReceiptHTML + window.print() dans espace-membre), qui
+    // ne produisait pas un vrai fichier PDF et ne passait par aucune
+    // vérification serveur.
+    if (method === 'GET' && path === '/api/member/documents/recu-cotisation') {
+      const member = await getCurrentMemberFromBearer(request, env);
+      if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+
+      const nomComplet = `${member.prenom || ''} ${member.nom || ''}`.trim() || 'Adhérent·e';
+      const numeroAdherent = String(member.adherent_id || member.id || '').slice(0, 8).toUpperCase();
+      const saison = member.date_fin_adhesion
+        ? `${new Date(member.date_fin_adhesion).getFullYear() - 1}-${new Date(member.date_fin_adhesion).getFullYear()}`
+        : String(new Date().getFullYear());
+      const cotisation = Number(member.cotisation || 0);
+      const passRegion = Number(member.montant_pass_region || 0);
+      if (!(cotisation > 0)) {
+        return err('Aucune cotisation enregistrée pour le moment', 404);
+      }
+
+      const lignes: DocumentLigne[] = [
+        { designation: `Cotisation ${member.discipline || 'Club'} — saison ${saison}`, total: cotisation },
+      ];
+      if (passRegion > 0) lignes.push({ designation: 'Pass Région', total: passRegion });
+      const total = cotisation + passRegion;
+      const aujourdhui = new Date().toLocaleDateString('fr-FR');
+
+      const pdfBytes = buildDocumentPdfBytes({
+        type: 'cotisation',
+        numero: `COT-${new Date().getFullYear()}-${numeroAdherent}`,
+        dateLabel: `Emis le ${aujourdhui}`,
+        destinataire: { nom: nomComplet, lignes: [`Adherent n°${numeroAdherent}`, `Saison ${saison}`] },
+        lignes,
+        total,
+        tvaLabel: 'Association loi 1901 - non assujettie a la TVA',
+        footerNote: member.paiement ? `Mode de paiement : ${member.paiement}` : undefined,
+      });
+
+      return new Response(pdfBytes, {
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': 'inline; filename="recu-cotisation.pdf"',
+          'Cache-Control': 'private, no-store',
+        },
+      });
+    }
+
+    // GET /api/factures/:id/pdf — document PDF harmonisé (facture de vente OU
+    // reçu de don, cf. factureRowToDocumentInput) pour une ligne de la table
+    // `factures`. Réservé au back-office (staff), remplace l'ancienne
+    // génération 100% client (genFacturePDFBlob, jsPDF minimal sans charte).
+    const factureePdfMatch = path.match(/^\/api\/factures\/([^/]+)\/pdf$/);
+    if (factureePdfMatch && method === 'GET') {
+      const user = await getCurrentUserFromBearer(request, env);
+      if (!user) return err('Unauthorized', 401);
+
+      const facture = await env.DB.prepare(`SELECT * FROM factures WHERE id = ?`).bind(factureePdfMatch[1]).first<Record<string, any>>();
+      if (!facture) return err('Document introuvable', 404);
+
+      const pdfBytes = buildDocumentPdfBytes(factureRowToDocumentInput(facture));
+      const safeNumero = String(facture.numero || facture.id).replace(/[^A-Za-z0-9_-]/g, '');
+      return new Response(pdfBytes, {
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `inline; filename="${safeNumero}.pdf"`,
+          'Cache-Control': 'private, no-store',
+        },
+      });
+    }
+
+    // POST /api/factures/:id/send-email — génère le PDF harmonisé et l'envoie
+    // par Brevo à la fois au destinataire (facture.client_email) ET au club
+    // (club_info.email), en pièce jointe. Remplace sendFactureEmail() côté
+    // front qui n'envoyait qu'au client, jamais en copie au club.
+    const factureSendMatch = path.match(/^\/api\/factures\/([^/]+)\/send-email$/);
+    if (factureSendMatch && method === 'POST') {
+      const user = await getCurrentUserFromBearer(request, env);
+      if (!user) return err('Unauthorized', 401);
+      if (!env.BREVO_API_KEY) return err('Service email non configuré (BREVO_API_KEY manquant)', 503);
+
+      const facture = await env.DB.prepare(`SELECT * FROM factures WHERE id = ?`).bind(factureSendMatch[1]).first<Record<string, any>>();
+      if (!facture) return err('Document introuvable', 404);
+
+      const clientEmail = String(facture.client_email || '').trim();
+      if (!clientEmail) return err('Aucun email destinataire renseigné pour ce document', 400);
+
+      const doc = factureRowToDocumentInput(facture);
+      const isDon = doc.type === 'don';
+      const pdfBytes = buildDocumentPdfBytes(doc);
+      const pdfBase64 = bytesToBase64(pdfBytes);
+      const clubEmail = await getClubContactEmail(env);
+      const clubNom = 'American Full Fighting Bons en Chablais';
+      const safeNumero = String(facture.numero || facture.id).replace(/[^A-Za-z0-9_-]/g, '');
+
+      const html = `<p>Bonjour,</p><p>Veuillez trouver ci-joint votre ${isDon ? 'reçu de don' : 'document'} <strong>${doc.numero}</strong>.</p><p>Cordialement,<br>${clubNom}</p>`;
+
+      const recipients = [
+        { email: clientEmail, name: facture.destinataire || clientEmail },
+        ...(clubEmail && clubEmail.toLowerCase() !== clientEmail.toLowerCase() ? [{ email: clubEmail, name: 'Club AFFBC' }] : []),
+      ];
+
+      const result = await sendBrevoEmailWithAttachment(env, {
+        to: recipients,
+        subject: `${doc.numero} — ${clubNom}`,
+        html,
+        attachment: { name: `${safeNumero}.pdf`, content: pdfBase64, type: 'application/pdf' },
+      });
+      if (!result.ok) {
+        console.error('[factures:send-email]', result.error);
+        return err('Envoi impossible pour le moment, réessayez plus tard.', 502);
+      }
+
+      return json({ data: { ok: true, recipients: recipients.map((r) => r.email) }, error: null });
     }
 
     // POST /api/member/logout
