@@ -4980,7 +4980,13 @@ async function delFac(id){
   try{await deleteJournalAuto(autoPiece('vente',id));}catch(e){return alert('Vente supprimée, mais écriture comptable non supprimée : '+e.message);}
   D.factures=D.factures.filter(f=>f.id!==id);render();
 }
-function printFac(id){const f=D.factures.find(x=>x.id===id);if(f)pwPrint(buildFacHTML(f),`Vente ${f.numero}`)}
+function printFac(id){
+  // Ouvre le vrai PDF harmonisé généré côté serveur (gabarit noir/doré),
+  // au lieu de l'ancien aperçu HTML client (buildFacHTML+pwPrint), qui ne
+  // produisait pas un fichier réel. printFacEditor() ci-dessous garde
+  // l'aperçu client pour un document non encore enregistré (pas d'id).
+  window.open(`/api/factures/${id}/pdf`, '_blank');
+}
 function printFacEditor(){pwPrint(buildFacHTML(UI.invState),'Aperçu vente')}
 function pwPrint(html,title){
   const w=window.open('','_blank');
@@ -5040,64 +5046,29 @@ async function sendFactureEmail(id){
     return;
   }
   const num=esc(f.numero||f.id.slice(0,8).toUpperCase());
-  const clubNom=esc(D.clubInfo?.nom||DEFAULT_CLUB_NAME);
-  if(!await confirmModal(`Envoyer le document ${num} par email à ${email} ?`)) return;
+  if(!await confirmModal(`Envoyer le document ${num} par email à ${email} (et en copie au club) ?`)) return;
   notify('info',`Génération et envoi en cours...`,'Ventes');
   try{
-    // Générer le PDF côté client puis envoyer via backend
-    const pdfBlob=await genFacturePDFBlob(id);
-    if(!pdfBlob){notify('error','Impossible de générer le PDF.','Ventes');return;}
-    const reader=new FileReader();
-    reader.onload=async()=>{
-      const base64=reader.result.split(',')[1];
-      const res=await fetch('/api/email/send',{
-        method:'POST',
-        credentials:'same-origin',
-        headers:{'Content-Type':'application/json',...(AUTH_TOKEN?{'Authorization':'Bearer '+AUTH_TOKEN}:{})},
-        body:JSON.stringify({
-          to:[{email,name:f.client_nom||email}],
-          subject:`${num} — ${clubNom}`,
-          html:`<p>Bonjour,</p><p>Veuillez trouver ci-joint votre document <strong>${num}</strong>.</p><p>Cordialement,<br>${clubNom}</p>`,
-          attachments:[{name:`${num}.pdf`,content:base64,type:'application/pdf'}]
-        })
-      });
-      if(res.ok){
-        notify('success',`Document envoyé à ${email}.`,'Ventes');
-      } else {
-        const err=await res.json().catch(()=>({}));
-        notify('error','Échec envoi : '+(err?.error?.message||res.status),'Email');
-      }
-    };
-    reader.readAsDataURL(pdfBlob);
+    // Le PDF harmonisé (gabarit noir/doré) est généré et envoyé côté serveur
+    // via Brevo, au client ET au club en une seule requête — cf.
+    // POST /api/factures/:id/send-email dans index.ts. Remplace l'ancienne
+    // génération jsPDF minimale côté navigateur (genFacturePDFBlob, supprimée)
+    // qui ne suivait pas la charte du club et n'envoyait jamais au club.
+    const res=await fetch(`/api/factures/${id}/send-email`,{
+      method:'POST',
+      credentials:'same-origin',
+      headers:{'Content-Type':'application/json',...(AUTH_TOKEN?{'Authorization':'Bearer '+AUTH_TOKEN}:{})},
+    });
+    if(res.ok){
+      const {data}=await res.json().catch(()=>({data:null}));
+      const recipients=(data?.recipients||[email]).join(', ');
+      notify('success',`Document envoyé à ${recipients}.`,'Ventes');
+    } else {
+      const errBody=await res.json().catch(()=>({}));
+      notify('error','Échec envoi : '+(errBody?.error?.message||res.status),'Email');
+    }
   }catch(e){
     notify('error','Erreur : '+e.message,'Ventes');
-  }
-}
-
-// Générer le blob PDF d'une facture sans déclencher le téléchargement
-async function genFacturePDFBlob(id){
-  try{
-    const jsPDF=await ensureJsPDF();
-    const f=D.factures.find(x=>x.id===id);
-    if(!f) return null;
-    // Réutiliser la logique de genFacturePDF mais retourner un blob
-    const doc=new jsPDF({unit:'mm',format:'a4'});
-    // Construction minimale du PDF (identique à genFacturePDF existant)
-    doc.setFontSize(10);
-    doc.text(D.clubInfo?.nom||DEFAULT_CLUB_NAME,14,14);
-    doc.text(f.client_nom||'',14,24);
-    doc.text(`N° ${f.numero||f.id.slice(0,8).toUpperCase()} — ${fd(f.date_op)}`,14,34);
-    const lignes=Array.isArray(f.lignes)?f.lignes:[];
-    let y=44;
-    lignes.forEach(l=>{
-      doc.text(`${l.desc||''} — Qté: ${l.qte||1} × ${(+l.pu||0).toFixed(2)} €`,14,y);
-      y+=7;
-    });
-    doc.text(`Total : ${(+f.montant_total||0).toFixed(2)} €`,14,y+4);
-    return doc.output('blob');
-  }catch(e){
-    console.error('genFacturePDFBlob',e);
-    return null;
   }
 }
 
