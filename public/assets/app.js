@@ -56,10 +56,8 @@ const MATERIEL_ETATS = ['Neuf','Bon','Usagé','À réviser','Hors service'];
 
 const ALL_TABS = [
   {id:'dashboard',    icon:'🏁',label:'Pilotage'},
-{id:'services',     icon:'🟢',label:'Services',     perm:'perm_services'},
 {id:'adherents',    icon:'👥',label:'Adhérents',    perm:'perm_adherents'},
-{id:'presences',    icon:'✅',label:'Présences',    perm:'perm_presences'},
-{id:'planning',     icon:'🗓️',label:'Planning',     perm:'perm_planning'},
+{id:'suivi',        icon:'✅',label:'Présences & Planning', perms:['perm_presences','perm_planning']},
 {id:'diplomes',     icon:'🎓',label:'Diplômes',     perm:'perm_diplomes'},
 {id:'banque',       icon:'🏦',label:'Banque',        perm:'perm_banque'},
 {id:'comptabilite', icon:'📊',label:'Comptabilité',  perm:'perm_comptabilite'},
@@ -80,7 +78,6 @@ const PERM_META = [
 ['perm_materiel','🥊 Matériel'],
 ['perm_facturation','💸 Ventes'],
 ['perm_feedback','💬 Feedback'],
-['perm_services','🟢 Services'],
 ['perm_administration','⚙️ Administration'],
 ];
 const PERM_LEVELS = {
@@ -210,7 +207,7 @@ const D = {
 };
 const UI = {
   tab:'dashboard',
-  subTab:{banque:'comptes',compta:'journal',facture:'liste',achat:'liste',admin:'users',feedback:'liste'},
+  subTab:{banque:'comptes',compta:'journal',facture:'liste',achat:'liste',admin:'users',feedback:'liste',suivi:'presences'},
   modal:null, editObj:null, currentUser:null,
   notices:[],
   search:{adherents:'',achats:'',factures:'',feedback:''},
@@ -456,7 +453,7 @@ function normalizeUserRow(row){
   });
   // Permissions : conserver la valeur string "read"/"write"/"none" si présente
   // Ne normaliser en booléen que si la valeur est 0/1/true/false
-  ['perm_adherents','perm_diplomes','perm_banque','perm_comptabilite','perm_achats','perm_facturation','perm_feedback','perm_services','perm_administration'].forEach(key=>{
+  ['perm_adherents','perm_diplomes','perm_banque','perm_comptabilite','perm_achats','perm_facturation','perm_feedback','perm_presences','perm_materiel','perm_planning','perm_administration'].forEach(key=>{
     const v=next[key];
     if(typeof v==='string' && (v==='read'||v==='write'||v==='none')) return; // OK, laisser tel quel
     if(v===true || v===1 || v==='1') next[key]='write';
@@ -1387,18 +1384,25 @@ async function loadAll(){
 // NAVIGATION
 // ═══════════════════════════════════════════════════
 function renderTabs(){
-  const vis=ALL_TABS.filter(t=>!t.perm || hasPerm(t.perm));
+  const vis=ALL_TABS.filter(t=>{
+    if(t.perms) return t.perms.some(p=>hasPerm(p));
+    return !t.perm || hasPerm(t.perm);
+  });
   document.getElementById('tabs-bar').innerHTML=vis.map(t=>`<button class="tab-btn ${UI.tab===t.id?'active':''}" onclick="showTab('${t.id}')">${t.icon} ${t.label}</button>`).join('');
   if(!vis.find(t=>t.id===UI.tab)&&vis.length>0) UI.tab=vis[0].id;
 }
 function needsLoadedTab(tab){
-  return ['dashboard','adherents','diplomes','banque','comptabilite','achat','facture','administration','feedback','presences','materiel','planning'].includes(tab);
+  return ['dashboard','adherents','diplomes','banque','comptabilite','achat','facture','administration','feedback','suivi','materiel'].includes(tab);
 }
 async function ensureCurrentTabData(){
   const target=UI.tab==='diplomes'?'adherents':UI.tab;
   if(!needsLoadedTab(UI.tab)) return;
   if(target==='adherents' && UI.tab==='diplomes' && !D.diplomeTemplates.length){
     await Promise.all([loadTabData(target),loadDiplomeTemplates()]);
+    return;
+  }
+  if(UI.tab==='suivi'){
+    await Promise.all([loadTabData('presences'),loadTabData('planning')]);
     return;
   }
   await loadTabData(target);
@@ -1419,80 +1423,21 @@ function canWriteCurrentTab(){
 function render(){
   if(!UI.currentUser) return;
   const c=document.getElementById('tab-content');
-  if(needsLoadedTab(UI.tab) && !D.loaded[UI.tab==='diplomes'?'adherents':UI.tab] && D.loading[UI.tab==='diplomes'?'adherents':UI.tab]){
+  const loadKey=UI.tab==='diplomes'?'adherents':UI.tab==='suivi'?'presences':UI.tab;
+  if(needsLoadedTab(UI.tab) && !D.loaded[loadKey] && D.loading[loadKey]){
     c.innerHTML=`<div class="empty">Chargement de la rubrique…</div>`;
     return;
   }
-  const map={dashboard:vDashboard,services:vServices,adherents:vAdh,diplomes:vDiplomes,banque:vBanque,comptabilite:vCompta,achat:vAchat,facture:vFacture,feedback:vFeedback,administration:vAdmin,presences:vPresences,materiel:vMateriel,planning:vPlanning};
+  const map={dashboard:vDashboard,adherents:vAdh,diplomes:vDiplomes,banque:vBanque,comptabilite:vCompta,achat:vAchat,facture:vFacture,feedback:vFeedback,administration:vAdmin,suivi:vSuivi,materiel:vMateriel};
   c.innerHTML=(map[UI.tab]||vAdh)();
   renderModal();
   updLogo();
   if(UI.tab==='diplomes') refreshDiplomePreviewCanvas();
-  if(UI.tab==='services' && !UI.servicesAutoChecked){
-    UI.servicesAutoChecked=true;
-    checkServiceStatus();
-  }
-  if(UI.tab!=='services') UI.servicesAutoChecked=false; // permet une nouvelle auto-vérification à la prochaine visite de l'onglet
 }
 
 function updLogo(){
   D.logoUrl=clubLogoUrl();
   renderLogoNode(document.getElementById('global-logo'),D.logoUrl,'100%',false);
-}
-
-const AFFBC_SERVICES = [
-  {id:'site', label:'Site public', url:'https://americanfullfightingbons.fr', version:'https://americanfullfightingbons.fr/api/version'},
-{id:'inscription', label:'Inscriptions', url:'https://inscription.americanfullfightingbons.fr', version:'https://inscription.americanfullfightingbons.fr/api/version'},
-{id:'calendrier', label:'Calendrier', url:'https://calendrier.americanfullfightingbons.fr', version:'https://calendrier.americanfullfightingbons.fr/api/version'},
-{id:'boutique', label:'Boutique', url:'https://boutique.americanfullfightingbons.fr', version:'https://boutique.americanfullfightingbons.fr/api/version'},
-{id:'gestion', label:'Gestion', url:'https://gestion.americanfullfightingbons.fr', version:'https://gestion.americanfullfightingbons.fr/api/version'},
-];
-
-function vServices(){
-  return `<div class="view-head">
-  <div>
-  <div class="eyebrow">Supervision</div>
-  <h2>État des services AFFBC</h2>
-  <p>Contrôlez rapidement que chaque site répond et ouvrez les interfaces publiées.</p>
-  </div>
-  <button class="btn primary" onclick="checkServiceStatus()">Vérifier maintenant</button>
-  </div>
-  <div class="grid">
-  ${AFFBC_SERVICES.map(service=>`<div class="dash-card" id="service-${service.id}">
-  <h3>${esc(service.label)}</h3>
-  <div class="dash-stat-value" id="service-${service.id}-state">Non vérifié</div>
-  <p id="service-${service.id}-detail">${esc(service.url)}</p>
-  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
-  <a class="btn sm" href="${esc(service.url)}" target="_blank" rel="noopener noreferrer">Ouvrir</a>
-  <button class="btn sm" onclick="checkOneService('${service.id}')">Tester</button>
-  </div>
-  </div>`).join('')}
-  </div>`;
-}
-
-async function checkOneService(id){
-  const service=AFFBC_SERVICES.find(item=>item.id===id);
-  if(!service) return;
-  const state=document.getElementById(`service-${id}-state`);
-  const detail=document.getElementById(`service-${id}-detail`);
-  if(state) state.textContent='Vérification...';
-  try{
-    const started=performance.now();
-    const res=await fetch(service.version,{cache:'no-store'});
-    const json=await res.json().catch(()=>null);
-    const payload=json?.data||json||{};
-    const ms=Math.round(performance.now()-started);
-    if(!res.ok || json?.ok===false) throw new Error(`HTTP ${res.status}`);
-    if(state) state.textContent='OK';
-    if(detail) detail.textContent=`${payload.service||service.label} · ${payload.version||'version inconnue'} · ${ms} ms`;
-  }catch(error){
-    if(state) state.textContent='Erreur';
-    if(detail) detail.textContent=error?.message||'Service indisponible';
-  }
-}
-
-function checkServiceStatus(){
-  AFFBC_SERVICES.forEach(service=>checkOneService(service.id));
 }
 
 // ═══════════════════════════════════════════════════
@@ -4762,8 +4707,24 @@ function vAchat(){
 }
 
 // ═══════════════════════════════════════════════════
-// PRÉSENCES
+// PRÉSENCES & PLANNING (onglet fusionné)
 // ═══════════════════════════════════════════════════
+function vSuivi(){
+  const canSeePresences=hasPerm('perm_presences');
+  const canSeePlanning=hasPerm('perm_planning');
+  // Si l'utilisateur n'a accès qu'à l'un des deux volets, on saute directement
+  // dessus plutôt que d'afficher un sous-onglet inutile vers une page vide.
+  let sub=UI.subTab.suivi;
+  if(sub==='presences' && !canSeePresences && canSeePlanning) sub=UI.subTab.suivi='planning';
+  if(sub==='planning' && !canSeePlanning && canSeePresences) sub=UI.subTab.suivi='presences';
+  const showTabs=canSeePresences && canSeePlanning;
+  return`${showTabs?`<div class="stabs">
+  <button class="stab ${sub==='presences'?'active':''}" onclick="showST('suivi','presences')">✅ Présences</button>
+  <button class="stab ${sub==='planning'?'active':''}" onclick="showST('suivi','planning')">🗓️ Planning</button>
+  </div>`:''}
+  ${sub==='planning'&&canSeePlanning?vPlanning():canSeePresences?vPresences():vPlanning()}`;
+}
+
 function vPresences(){
   const canWrite=hasPerm('perm_presences','write');
   const rows=[...D.presences].sort((a,b)=>(b.date_seance||'').localeCompare(a.date_seance||''));
