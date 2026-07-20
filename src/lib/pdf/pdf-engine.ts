@@ -29,7 +29,11 @@ export function safe(v: unknown): string {
     .replace(/[\u2018\u2019\u02BC]/g, "'")
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^\x20-\x7E]/g, ' ')
+    // \u00B0 (°) est conservé : même code point en Latin-1/WinAnsi, donc un
+    // octet unique — strToBytes ci-dessous l'encode correctement. Le strip
+    // ASCII générique ne doit pas l'emporter (cf. bug "N " au lieu de "N°"
+    // sur tous les numéros de document).
+    .replace(/[^\x20-\x7E\u00B0]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -39,7 +43,14 @@ function esc(v: unknown): string {
 }
 
 function strToBytes(str: string): Uint8Array {
-  return new TextEncoder().encode(str);
+  // Encodage octet-par-caractere (Latin-1/WinAnsi), PAS TextEncoder/UTF-8 :
+  // les chaines PDF (Tj) sont en 1 octet par caractere, pas en UTF-8. Avec
+  // TextEncoder, tout caractere hors ASCII (ex. \u00B0 degre) partait en 2
+  // octets UTF-8 et s'affichait mal — d'où le strip ASCII strict qui
+  // existait dans `safe()` jusqu'ici.
+  const bytes = new Uint8Array(str.length);
+  for (let i = 0; i < str.length; i++) bytes[i] = str.charCodeAt(i) & 0xFF;
+  return bytes;
 }
 
 function concatBytes(chunks: Uint8Array[]): Uint8Array {
