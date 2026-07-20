@@ -51,25 +51,33 @@ const MODES_PAIE = ['Virement','Chèque','Espèces','CB','Prélèvement','HelloA
 const ADH_TYPES = ['Club','CSE Thalès','Membre du Bureau'];
 const ADH_STATUTS = ['Actif','Renouvellement','Inactif','Adhésion annulée'];
 const CEINTURE_COLORS = ['Blanche','Jaune','Orange','Verte','Bleue','Marron','Noire'];
+const JOUR_LABELS = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+const MATERIEL_ETATS = ['Neuf','Bon','Usagé','À réviser','Hors service'];
 
 const ALL_TABS = [
   {id:'dashboard',    icon:'🏁',label:'Pilotage'},
 {id:'services',     icon:'🟢',label:'Services',     perm:'perm_services'},
 {id:'adherents',    icon:'👥',label:'Adhérents',    perm:'perm_adherents'},
+{id:'presences',    icon:'✅',label:'Présences',    perm:'perm_presences'},
+{id:'planning',     icon:'🗓️',label:'Planning',     perm:'perm_planning'},
 {id:'diplomes',     icon:'🎓',label:'Diplômes',     perm:'perm_diplomes'},
 {id:'banque',       icon:'🏦',label:'Banque',        perm:'perm_banque'},
 {id:'comptabilite', icon:'📊',label:'Comptabilité',  perm:'perm_comptabilite'},
 {id:'achat',        icon:'🛒',label:'Achats',         perm:'perm_achats'},
+{id:'materiel',     icon:'🥊',label:'Matériel',       perm:'perm_materiel'},
 {id:'facture',      icon:'💸',label:'Ventes',        perm:'perm_facturation'},
 {id:'feedback',     icon:'💬',label:'Feedback',      perm:'perm_feedback'},
 {id:'administration',icon:'⚙️',label:'Administration',perm:'perm_administration'},
 ];
 const PERM_META = [
   ['perm_adherents','👥 Adhérents'],
+['perm_presences','✅ Présences'],
+['perm_planning','🗓️ Planning'],
 ['perm_diplomes','🎓 Diplômes'],
 ['perm_banque','🏦 Banque'],
 ['perm_comptabilite','📊 Comptabilité'],
 ['perm_achats','🛒 Achats'],
+['perm_materiel','🥊 Matériel'],
 ['perm_facturation','💸 Ventes'],
 ['perm_feedback','💬 Feedback'],
 ['perm_services','🟢 Services'],
@@ -81,11 +89,11 @@ const PERM_LEVELS = {
   write:{label:'Lecture / écriture',rank:2},
 };
 const DEFAULT_ROLE_PERMS = {
-  admin:{perm_adherents:'write',perm_diplomes:'write',perm_banque:'write',perm_comptabilite:'write',perm_achats:'write',perm_facturation:'write',perm_feedback:'write',perm_services:'write',perm_administration:'write'},
-  tresorier:{perm_adherents:'write',perm_diplomes:'read',perm_banque:'write',perm_comptabilite:'write',perm_achats:'write',perm_facturation:'write',perm_feedback:'none',perm_services:'none',perm_administration:'none'},
-  secretaire:{perm_adherents:'write',perm_diplomes:'write',perm_banque:'none',perm_comptabilite:'none',perm_achats:'none',perm_facturation:'none',perm_feedback:'none',perm_services:'none',perm_administration:'none'},
-  entraineur:{perm_adherents:'read',perm_diplomes:'read',perm_banque:'none',perm_comptabilite:'none',perm_achats:'none',perm_facturation:'none',perm_feedback:'none',perm_services:'none',perm_administration:'none'},
-  membre:{perm_adherents:'none',perm_diplomes:'none',perm_banque:'none',perm_comptabilite:'none',perm_achats:'none',perm_facturation:'none',perm_feedback:'none',perm_services:'none',perm_administration:'none'},
+  admin:{perm_adherents:'write',perm_diplomes:'write',perm_banque:'write',perm_comptabilite:'write',perm_achats:'write',perm_facturation:'write',perm_feedback:'write',perm_services:'write',perm_administration:'write',perm_presences:'write',perm_materiel:'write',perm_planning:'write'},
+  tresorier:{perm_adherents:'write',perm_diplomes:'read',perm_banque:'write',perm_comptabilite:'write',perm_achats:'write',perm_facturation:'write',perm_feedback:'none',perm_services:'none',perm_administration:'none',perm_presences:'none',perm_materiel:'write',perm_planning:'read'},
+  secretaire:{perm_adherents:'write',perm_diplomes:'write',perm_banque:'none',perm_comptabilite:'none',perm_achats:'none',perm_facturation:'none',perm_feedback:'none',perm_services:'none',perm_administration:'none',perm_presences:'read',perm_materiel:'none',perm_planning:'write'},
+  entraineur:{perm_adherents:'read',perm_diplomes:'read',perm_banque:'none',perm_comptabilite:'none',perm_achats:'none',perm_facturation:'none',perm_feedback:'none',perm_services:'none',perm_administration:'none',perm_presences:'write',perm_materiel:'read',perm_planning:'read'},
+  membre:{perm_adherents:'none',perm_diplomes:'none',perm_banque:'none',perm_comptabilite:'none',perm_achats:'none',perm_facturation:'none',perm_feedback:'none',perm_services:'none',perm_administration:'none',perm_presences:'none',perm_materiel:'none',perm_planning:'none'},
 };
 
 const PLAN = [
@@ -194,8 +202,10 @@ const D = {
     diplomeLayouts:{},
     diplomes:[],
     feedbackCampaigns:[], feedbackRecipients:[], feedbackResponses:[],
+    presences:[], materiel:[], planning:[], budgetPrevisionnel:[], budgetComparatif:null,
+    renouvellement:null,
     rolePerms: JSON.parse(JSON.stringify(DEFAULT_ROLE_PERMS)),
-    loaded:{core:false,dashboard:false,adherents:false,banque:false,comptabilite:false,achat:false,facture:false,administration:false,diplomesArchive:false,feedback:false},
+    loaded:{core:false,dashboard:false,adherents:false,banque:false,comptabilite:false,achat:false,facture:false,administration:false,diplomesArchive:false,feedback:false,presences:false,materiel:false,planning:false},
     loading:{},
 };
 const UI = {
@@ -476,7 +486,7 @@ function markLoaded(key,value=true){
 }
 
 function resetLoadedData(){
-  D.loaded={core:false,dashboard:false,adherents:false,banque:false,comptabilite:false,achat:false,facture:false,administration:false,diplomesArchive:false,feedback:false};
+  D.loaded={core:false,dashboard:false,adherents:false,banque:false,comptabilite:false,achat:false,facture:false,administration:false,diplomesArchive:false,feedback:false,presences:false,materiel:false,planning:false};
   D.loading={};
 }
 
@@ -591,6 +601,30 @@ async function loadTabData(tab, force=false){
       D.feedbackRecipients=recRes.data||[];
       D.feedbackResponses=repRes.data||[];
       markLoaded('feedback');
+      return;
+    }
+    if(tab==='presences'){
+      const [presRes]=await Promise.all([
+        SB.from('presences').select('*').order('date_seance',{ascending:false}),
+        D.loaded.adherents?Promise.resolve():loadTabData('adherents',force),
+      ]);
+      D.presences=presRes.data||[];
+      markLoaded('presences');
+      return;
+    }
+    if(tab==='materiel'){
+      const {data}=await SB.from('materiel').select('*').order('nom');
+      D.materiel=data||[];
+      markLoaded('materiel');
+      return;
+    }
+    if(tab==='planning'){
+      const [planRes]=await Promise.all([
+        SB.from('planning_encadrants').select('*').order('jour_semaine'),
+        D.loaded.adherents?Promise.resolve():loadTabData('adherents',force),
+      ]);
+      D.planning=planRes.data||[];
+      markLoaded('planning');
       return;
     }
   })().finally(()=>{
@@ -1358,7 +1392,7 @@ function renderTabs(){
   if(!vis.find(t=>t.id===UI.tab)&&vis.length>0) UI.tab=vis[0].id;
 }
 function needsLoadedTab(tab){
-  return ['dashboard','adherents','diplomes','banque','comptabilite','achat','facture','administration','feedback'].includes(tab);
+  return ['dashboard','adherents','diplomes','banque','comptabilite','achat','facture','administration','feedback','presences','materiel','planning'].includes(tab);
 }
 async function ensureCurrentTabData(){
   const target=UI.tab==='diplomes'?'adherents':UI.tab;
@@ -1389,7 +1423,7 @@ function render(){
     c.innerHTML=`<div class="empty">Chargement de la rubrique…</div>`;
     return;
   }
-  const map={dashboard:vDashboard,services:vServices,adherents:vAdh,diplomes:vDiplomes,banque:vBanque,comptabilite:vCompta,achat:vAchat,facture:vFacture,feedback:vFeedback,administration:vAdmin};
+  const map={dashboard:vDashboard,services:vServices,adherents:vAdh,diplomes:vDiplomes,banque:vBanque,comptabilite:vCompta,achat:vAchat,facture:vFacture,feedback:vFeedback,administration:vAdmin,presences:vPresences,materiel:vMateriel,planning:vPlanning};
   c.innerHTML=(map[UI.tab]||vAdh)();
   renderModal();
   updLogo();
@@ -1972,6 +2006,29 @@ function buildDashboardOptimizationTips(d){
   return tips.slice(0,4);
 }
 
+// Taux d'adhérents d'une saison retrouvés la saison suivante (cf.
+// GET /api/stats/renouvellement). Chargé une fois et mis en cache dans
+// D.renouvellement — lecture peu coûteuse mais pas nécessaire à chaque
+// rendu du dashboard.
+function renderRenouvellementCard(){
+  if(!D.renouvellement && !UI._renouvellementLoading) loadRenouvellement();
+  const rows=D.renouvellement||[];
+  const last=[...rows].reverse().find(r=>r.taux_renouvellement!=null);
+  return`<div class="dash-mini">
+  <div class="dash-mini-label">Renouvellement</div>
+  <div class="dash-mini-value">${last?last.taux_renouvellement+' %':'—'}</div>
+  <div class="dash-mini-text">${last?`${esc(last.libelle)} vs saison précédente`:(D.renouvellement?'Pas assez d\'historique (2 exercices minimum).':'Chargement…')}</div>
+  </div>`;
+}
+
+async function loadRenouvellement(){
+  UI._renouvellementLoading=true;
+  const {data}=await apiRequest('/stats/renouvellement');
+  D.renouvellement=data||[];
+  UI._renouvellementLoading=false;
+  render();
+}
+
 function vDashboard(){
   const d=dashboardData();
   const attentionItems=buildDashboardAttentionItems(d);
@@ -2107,6 +2164,7 @@ function vDashboard(){
   <div class="dash-mini-value">${hasPerm('perm_facturation')||hasPerm('perm_achats')?euro(financeBalance):'—'}</div>
   <div class="dash-mini-text">${hasPerm('perm_facturation')||hasPerm('perm_achats')?`${euro(d.paidInvoiceAmount)} encaissés · ${euro(d.paidBuyAmount)} dépensés`:'Rubrique non accessible.'}</div>
   </div>
+  ${hasPerm('perm_adherents')?renderRenouvellementCard():''}
   </div>
   </div>
   <div class="dash-priority" style="margin-bottom:16px">
@@ -3781,10 +3839,66 @@ function vCompta(){
   <button class="stab ${sub==='gl'?'active':''}" onclick="showST('compta','gl')">Grand livre</button>
   <button class="stab ${sub==='bilan'?'active':''}" onclick="showST('compta','bilan')">Bilan</button>
   <button class="stab ${sub==='res'?'active':''}" onclick="showST('compta','res')">Résultat</button>
+  <button class="stab ${sub==='budget'?'active':''}" onclick="showST('compta','budget')">Budget</button>
   <button class="stab ${sub==='exo'?'active':''}" onclick="showST('compta','exo')">Exercices</button>
   </div>
-  ${sub==='journal'?vJournal():sub==='gl'?vGL():sub==='bilan'?vBilan():sub==='res'?vResultat():vExercices()}`;
+  ${sub==='journal'?vJournal():sub==='gl'?vGL():sub==='bilan'?vBilan():sub==='res'?vResultat():sub==='budget'?vBudget():vExercices()}`;
 }
+
+// ═══════════════════════════════════════════════════
+// BUDGET PRÉVISIONNEL VS RÉALISÉ
+// ═══════════════════════════════════════════════════
+function vBudget(){
+  const canWrite=hasPerm('perm_comptabilite','write');
+  const exo=D.currentExo;
+  if(!exo) return `<div class="empty">Aucun exercice actif. Créez ou activez un exercice depuis l'onglet "Exercices" pour saisir un budget.</div>`;
+  if(!D.budgetPrevisionnel.length && !UI._budgetLoading) loadBudgetPrevisionnel(exo.id);
+  const comparatif=D.budgetComparatif;
+  return`<div class="view-head">
+  <div><div class="eyebrow">Exercice ${esc(exo.libelle||'')}</div><h2>Budget prévisionnel</h2>
+  <p>Le prévisionnel voté en AG, comparé au réalisé du journal comptable.</p></div>
+  ${canWrite?`<button class="btn primary" onclick="openModal('budget_ligne')">+ Ajouter une ligne</button>`:''}
+  </div>
+  <div class="wrap"><table>
+  <thead><tr><th>Compte</th><th>Libellé</th><th>Prévu</th><th>Réalisé</th><th>Écart</th><th></th></tr></thead>
+  <tbody>${(comparatif?.lignes||D.budgetPrevisionnel.map(b=>({compte:b.compte,libelle:b.libelle,montant_prevu:b.montant_prevu,montant_realise:null,ecart:null}))).map(l=>{
+    const ligneOrig=D.budgetPrevisionnel.find(b=>b.compte===l.compte);
+    const ecartClass=l.ecart==null?'':l.ecart>=0?'color:#1e7e34':'color:var(--red)';
+    return`<tr>
+    <td><span class="badge bgray">${esc(l.compte)}</span></td>
+    <td>${esc(l.libelle)}</td>
+    <td>${(+l.montant_prevu).toFixed(2)} €</td>
+    <td>${l.montant_realise==null?'—':(+l.montant_realise).toFixed(2)+' €'}</td>
+    <td style="${ecartClass}">${l.ecart==null?'—':((l.ecart>=0?'+':'')+(+l.ecart).toFixed(2)+' €')}</td>
+    <td style="white-space:nowrap">
+    ${canWrite&&ligneOrig?`<button class="btn sm" onclick="openModal('budget_ligne','${ligneOrig.id}')">Modifier</button>
+    <button class="btn sm danger" style="margin-left:4px" onclick="delBudgetLigne('${ligneOrig.id}')">✕</button>`:''}
+    </td>
+    </tr>`;
+  }).join('')}
+  ${D.budgetPrevisionnel.length===0?`<tr><td colspan="6" class="empty">Aucune ligne de budget pour cet exercice</td></tr>`:''}
+  </tbody></table></div>`;
+}
+
+async function loadBudgetPrevisionnel(exerciceId){
+  UI._budgetLoading=true;
+  const {data}=await SB.from('budget_previsionnel').select('*').eq('exercice_id',exerciceId);
+  D.budgetPrevisionnel=data||[];
+  const {data:comparatif}=await apiRequest(`/budget/${exerciceId}/comparatif`);
+  D.budgetComparatif=comparatif||null;
+  UI._budgetLoading=false;
+  render();
+}
+
+async function delBudgetLigne(id){
+  if(!confirm('Supprimer cette ligne de budget ?'))return;
+  const {error}=await SB.from('budget_previsionnel').delete().eq('id',id);
+  if(error)return alert('Erreur : '+error.message);
+  D.budgetPrevisionnel=D.budgetPrevisionnel.filter(b=>b.id!==id);
+  if(D.currentExo) loadBudgetPrevisionnel(D.currentExo.id);
+  render();
+}
+
 
 function jnlForExo(exoId){return exoId?D.journal.filter(j=>j.exercice_id===exoId):D.journal}
 function jnlExo(){return D.currentExo?jnlForExo(D.currentExo.id):D.journal}
@@ -4648,8 +4762,101 @@ function vAchat(){
 }
 
 // ═══════════════════════════════════════════════════
-// FACTURATION
+// PRÉSENCES
 // ═══════════════════════════════════════════════════
+function vPresences(){
+  const canWrite=hasPerm('perm_presences','write');
+  const rows=[...D.presences].sort((a,b)=>(b.date_seance||'').localeCompare(a.date_seance||''));
+  const adhName=(id)=>{const a=D.adherents.find(x=>x.id===id);return a?`${a.prenom} ${a.nom}`:'—';};
+  return`<div class="view-head">
+  <div><div class="eyebrow">Suivi de l'activité</div><h2>Présences</h2>
+  <p>Pointage par séance — utile pour l'assiduité et pour justifier l'activité réelle du club.</p></div>
+  ${canWrite?`<button class="btn primary" onclick="openModal('presence')">+ Pointer une présence</button>`:''}
+  </div>
+  <div class="wrap"><table>
+  <thead><tr><th>Date</th><th>Adhérent</th><th>Créneau</th><th>Présence</th><th>Notes</th><th></th></tr></thead>
+  <tbody>${rows.map(p=>`<tr>
+    <td>${fd(p.date_seance)}</td>
+    <td><strong style="font-weight:500">${esc(adhName(p.adherent_id))}</strong></td>
+    <td>${esc(p.creneau||'—')}</td>
+    <td><span class="badge ${p.present?'bok':'bno'}">${p.present?'Présent':'Absence'}</span></td>
+    <td style="font-size:11px;color:var(--txt2)">${esc(p.notes||'')}</td>
+    <td style="white-space:nowrap">
+    ${canWrite?`<button class="btn sm" onclick="openModal('presence','${p.id}')">Modifier</button>
+    <button class="btn sm danger" style="margin-left:4px" onclick="delPresence('${p.id}')">✕</button>`:''}
+    </td>
+    </tr>`).join('')}
+    ${rows.length===0?`<tr><td colspan="6" class="empty">Aucune présence enregistrée</td></tr>`:''}
+    </tbody></table></div>`;
+}
+
+// ═══════════════════════════════════════════════════
+// MATÉRIEL CLUB
+// ═══════════════════════════════════════════════════
+function vMateriel(){
+  const canWrite=hasPerm('perm_materiel','write');
+  const rows=[...D.materiel].sort((a,b)=>(a.nom||'').localeCompare(b.nom||''));
+  const soon=td_plus(30);
+  return`<div class="view-head">
+  <div><div class="eyebrow">Équipement du club</div><h2>Matériel</h2>
+  <p>Inventaire du matériel appartenant au club (gants, protections, tapis...), distinct de la boutique.</p></div>
+  ${canWrite?`<button class="btn primary" onclick="openModal('materiel')">+ Ajouter du matériel</button>`:''}
+  </div>
+  <div class="wrap"><table>
+  <thead><tr><th>Nom</th><th>Catégorie</th><th>Qté</th><th>État</th><th>Prochaine révision</th><th>Localisation</th><th></th></tr></thead>
+  <tbody>${rows.map(m=>{
+    const revisionSoon=m.prochaine_revision && m.prochaine_revision<=soon;
+    return`<tr>
+    <td><strong style="font-weight:500">${esc(m.nom)}</strong></td>
+    <td>${esc(m.categorie||'—')}</td>
+    <td>${m.quantite}</td>
+    <td><span class="badge ${m.etat==='Hors service'?'bno':m.etat==='À réviser'?'bwarn':'bgray'}">${esc(m.etat)}</span></td>
+    <td>${m.prochaine_revision?`<span ${revisionSoon?'style="color:var(--red);font-weight:600"':''}>${fd(m.prochaine_revision)}${revisionSoon?' ⚠':''}</span>`:'—'}</td>
+    <td style="font-size:11px;color:var(--txt2)">${esc(m.localisation||'—')}</td>
+    <td style="white-space:nowrap">
+    ${canWrite?`<button class="btn sm" onclick="openModal('materiel','${m.id}')">Modifier</button>
+    <button class="btn sm danger" style="margin-left:4px" onclick="delMateriel('${m.id}')">✕</button>`:''}
+    </td>
+    </tr>`;
+  }).join('')}
+    ${rows.length===0?`<tr><td colspan="7" class="empty">Aucun matériel enregistré</td></tr>`:''}
+    </tbody></table></div>`;
+}
+
+// ═══════════════════════════════════════════════════
+// PLANNING DES ENCADRANTS
+// ═══════════════════════════════════════════════════
+function vPlanning(){
+  const canWrite=hasPerm('perm_planning','write');
+  const adhName=(id)=>{const a=D.adherents.find(x=>x.id===id);return a?`${a.prenom} ${a.nom}`:'—';};
+  const byJour=[1,2,3,4,5,6,0].map(j=>({
+    jour:j,
+    creneaux:D.planning.filter(p=>p.jour_semaine===j && p.actif).sort((a,b)=>(a.heure_debut||'').localeCompare(b.heure_debut||'')),
+  })).filter(g=>g.creneaux.length>0);
+  return`<div class="view-head">
+  <div><div class="eyebrow">Cours réguliers</div><h2>Planning</h2>
+  <p>Qui encadre quel créneau chaque semaine — distinct du calendrier des stages et compétitions ponctuels.</p></div>
+  ${canWrite?`<button class="btn primary" onclick="openModal('planning')">+ Ajouter un créneau</button>`:''}
+  </div>
+  ${byJour.map(g=>`<div class="card" style="margin-bottom:10px">
+    <div style="font-weight:600;margin-bottom:8px">${JOUR_LABELS[g.jour]}</div>
+    <div class="wrap"><table>
+    <thead><tr><th>Horaire</th><th>Cours</th><th>Encadrant</th><th>Lieu</th><th></th></tr></thead>
+    <tbody>${g.creneaux.map(p=>`<tr>
+      <td>${esc(p.heure_debut)} – ${esc(p.heure_fin)}</td>
+      <td>${esc(p.cours)}</td>
+      <td>${esc(adhName(p.encadrant_id))}</td>
+      <td style="font-size:11px;color:var(--txt2)">${esc(p.lieu||'—')}</td>
+      <td style="white-space:nowrap">
+      ${canWrite?`<button class="btn sm" onclick="openModal('planning','${p.id}')">Modifier</button>
+      <button class="btn sm danger" style="margin-left:4px" onclick="delPlanning('${p.id}')">✕</button>`:''}
+      </td>
+      </tr>`).join('')}
+      </tbody></table></div>
+    </div>`).join('')}
+  ${byJour.length===0?`<div class="empty">Aucun créneau enregistré</div>`:''}`;
+}
+
 function vFacture(){
   const canWrite=hasPerm('perm_facturation','write');
   const sub=UI.subTab.facture;
@@ -6318,6 +6525,64 @@ function renderModal(){
     <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="saveCpt()">Créer</button></div>
     </div>`;
 
+  }else if(UI.modal==='presence'){
+    const p=UI.editObj||{adherent_id:D.adherents[0]?.id||'',date_seance:td(),creneau:'',present:true,notes:''};
+    html=`<div class="modal" style="max-width:420px"><h2>✅ ${UI.editObj?'Modifier la présence':'Pointer une présence'}</h2>
+    <div style="display:flex;flex-direction:column;gap:10px">
+    <div class="fg"><label>Adhérent</label><select id="p-adh">${D.adherents.map(a=>`<option value="${a.id}" ${p.adherent_id===a.id?'selected':''}>${esc(a.prenom)} ${esc(a.nom)}</option>`).join('')}</select></div>
+    <div class="fg"><label>Date de la séance</label><input id="p-date" type="date" value="${p.date_seance||td()}"></div>
+    <div class="fg"><label>Créneau</label><input id="p-cre" value="${esc(p.creneau||'')}" placeholder="Cours adultes 20h"></div>
+    <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer"><input type="checkbox" id="p-pres" ${p.present!==false?'checked':''} style="width:auto;accent-color:var(--red)"> Présent (décocher pour une absence justifiée)</label>
+    <div class="fg"><label>Notes</label><input id="p-notes" value="${esc(p.notes||'')}"></div>
+    </div>
+    <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="savePresence()">Enregistrer</button></div>
+    </div>`;
+
+  }else if(UI.modal==='materiel'){
+    const m=UI.editObj||{nom:'',categorie:'',quantite:1,etat:'Bon',date_achat:'',prix_achat:'',derniere_revision:'',prochaine_revision:'',localisation:'',notes:''};
+    html=`<div class="modal" style="max-width:460px"><h2>🥊 ${UI.editObj?'Modifier le matériel':'Ajouter du matériel'}</h2>
+    <div class="g2">
+    <div class="fg full"><label>Nom</label><input id="m-nom" value="${esc(m.nom)}" placeholder="Gants de boxe 12oz"></div>
+    <div class="fg"><label>Catégorie</label><input id="m-cat" value="${esc(m.categorie||'')}" placeholder="Protections"></div>
+    <div class="fg"><label>Quantité</label><input id="m-qte" type="number" min="0" value="${m.quantite||1}"></div>
+    <div class="fg"><label>État</label><select id="m-eta">${MATERIEL_ETATS.map(e=>`<option ${m.etat===e?'selected':''}>${e}</option>`).join('')}</select></div>
+    <div class="fg"><label>Localisation</label><input id="m-loc" value="${esc(m.localisation||'')}" placeholder="Dojo — armoire 2"></div>
+    <div class="fg"><label>Date d'achat</label><input id="m-dac" type="date" value="${m.date_achat||''}"></div>
+    <div class="fg"><label>Prix d'achat (€)</label><input id="m-prx" type="number" min="0" step="0.01" value="${m.prix_achat||''}"></div>
+    <div class="fg"><label>Dernière révision</label><input id="m-drv" type="date" value="${m.derniere_revision||''}"></div>
+    <div class="fg"><label>Prochaine révision</label><input id="m-prv" type="date" value="${m.prochaine_revision||''}"></div>
+    <div class="fg full"><label>Notes</label><input id="m-not" value="${esc(m.notes||'')}"></div>
+    </div>
+    <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="saveMateriel()">Enregistrer</button></div>
+    </div>`;
+
+  }else if(UI.modal==='planning'){
+    const p=UI.editObj||{encadrant_id:D.adherents[0]?.id||'',jour_semaine:1,heure_debut:'19:00',heure_fin:'20:30',cours:'',lieu:'',actif:true,notes:''};
+    html=`<div class="modal" style="max-width:440px"><h2>🗓️ ${UI.editObj?'Modifier le créneau':'Ajouter un créneau'}</h2>
+    <div class="g2">
+    <div class="fg full"><label>Cours</label><input id="pl-cours" value="${esc(p.cours||'')}" placeholder="Cours adultes"></div>
+    <div class="fg"><label>Encadrant</label><select id="pl-enc">${D.adherents.map(a=>`<option value="${a.id}" ${p.encadrant_id===a.id?'selected':''}>${esc(a.prenom)} ${esc(a.nom)}</option>`).join('')}</select></div>
+    <div class="fg"><label>Jour</label><select id="pl-jour">${JOUR_LABELS.map((l,i)=>`<option value="${i}" ${p.jour_semaine===i?'selected':''}>${l}</option>`).join('')}</select></div>
+    <div class="fg"><label>Heure de début</label><input id="pl-deb" type="time" value="${p.heure_debut||'19:00'}"></div>
+    <div class="fg"><label>Heure de fin</label><input id="pl-fin" type="time" value="${p.heure_fin||'20:30'}"></div>
+    <div class="fg full"><label>Lieu</label><input id="pl-lieu" value="${esc(p.lieu||'')}" placeholder="Dojo AFFBC"></div>
+    <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer" class="fg full"><input type="checkbox" id="pl-actif" ${p.actif!==false?'checked':''} style="width:auto;accent-color:var(--red)"> Créneau actif</label>
+    </div>
+    <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="savePlanning()">Enregistrer</button></div>
+    </div>`;
+
+  }else if(UI.modal==='budget_ligne'){
+    const b=UI.editObj||{compte:'',libelle:'',montant_prevu:0,notes:''};
+    html=`<div class="modal" style="max-width:420px"><h2>💰 ${UI.editObj?'Modifier la ligne':'Nouvelle ligne de budget'}</h2>
+    <div style="display:flex;flex-direction:column;gap:10px">
+    <div class="fg"><label>Compte (code PCG)</label><input id="b-cpt" value="${esc(b.compte)}" placeholder="6060" ${UI.editObj?'disabled':''}></div>
+    <div class="fg"><label>Libellé</label><input id="b-lib" value="${esc(b.libelle)}" placeholder="Achat matériel"></div>
+    <div class="fg"><label>Montant prévu (€)</label><input id="b-mnt" type="number" step="0.01" value="${b.montant_prevu||0}"></div>
+    <div class="fg"><label>Notes</label><input id="b-not" value="${esc(b.notes||'')}"></div>
+    </div>
+    <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="saveBudgetLigne()">Enregistrer</button></div>
+    </div>`;
+
   }else if(UI.modal==='ecr'){
     const e=UI.editObj||{date_op:td(),piece:'',compte:'471 - Comptes d attente',contrepartie:'512 - Banque',libelle:'',debit:0,credit:0};
     const typeBanner=e._isType?`<div id="ecr-type-hint" style="margin-bottom:14px;padding:10px 14px;background:#e8f4ea;border-radius:10px;border:1px solid #b2d8b5;font-size:12px;color:#1e7e34;display:flex;gap:8px;align-items:center"><span>⚡</span><span><strong>${esc(e._typeLabel||'Écriture type')}</strong> — vérifiez les montants et le libellé avant d'enregistrer.</span></div>`:'';
@@ -6631,7 +6896,7 @@ function openEcritureType(type){
 }
 
 function openModal(t,id){
-  const permMap={adh:'perm_adherents',compte:'perm_banque',ecr:'perm_comptabilite',achat:'perm_achats',user:'perm_administration',exo:'perm_comptabilite',exo_close:'perm_comptabilite',feedback_campaign:'perm_feedback',feedback_invite:'perm_feedback'};
+  const permMap={adh:'perm_adherents',compte:'perm_banque',ecr:'perm_comptabilite',achat:'perm_achats',user:'perm_administration',exo:'perm_comptabilite',exo_close:'perm_comptabilite',feedback_campaign:'perm_feedback',feedback_invite:'perm_feedback',presence:'perm_presences',materiel:'perm_materiel',planning:'perm_planning',budget_ligne:'perm_comptabilite'};
   if(permMap[t] && !requireWritePerm(permMap[t])) return;
   UI.modal=t;UI.editObj=null;UI.guardianInfo=null;
   if(id){
@@ -6641,6 +6906,9 @@ function openModal(t,id){
     if(t==='user')  UI.editObj=D.users.find(u=>u.id===id);
     if(t==='exo_close') UI.editObj=D.exercices.find(e=>e.id===id);
     if(t==='feedback_campaign') UI.editObj=D.feedbackCampaigns.find(c=>c.id===id);
+    if(t==='presence') UI.editObj=D.presences.find(p=>p.id===id);
+    if(t==='materiel') UI.editObj=D.materiel.find(m=>m.id===id);
+    if(t==='planning') UI.editObj=D.planning.find(p=>p.id===id);
   }
   if(t==='adh' && id) loadGuardianInfo(id);
   renderModal();
@@ -7027,6 +7295,126 @@ async function saveCpt(){
   if(error)return alert('Erreur : '+error.message);
   D.comptes.push({...data,transactions:[]});
   closeModal();render();
+}
+
+async function savePresence(){
+  const adherent_id=document.getElementById('p-adh').value;
+  const date_seance=document.getElementById('p-date').value;
+  if(!adherent_id||!date_seance)return alert('Adhérent et date obligatoires.');
+  const payload={
+    adherent_id, date_seance,
+    creneau:document.getElementById('p-cre').value.trim()||null,
+    present:document.getElementById('p-pres').checked?1:0,
+    notes:document.getElementById('p-notes').value.trim()||null,
+    updated_at:new Date().toISOString(),
+  };
+  if(UI.editObj){
+    const {error}=await SB.from('presences').update(payload).eq('id',UI.editObj.id);
+    if(error)return alert('Erreur : '+error.message);
+    Object.assign(D.presences.find(p=>p.id===UI.editObj.id),payload);
+  }else{
+    const {data,error}=await SB.from('presences').insert({...payload,id:crypto.randomUUID(),created_at:new Date().toISOString()}).select().single();
+    if(error)return alert('Erreur : '+(error.message.includes('UNIQUE')?'Cet·te adhérent·e est déjà pointé·e sur ce créneau à cette date.':error.message));
+    D.presences.push(data);
+  }
+  closeModal();render();
+}
+
+async function delPresence(id){
+  if(!confirm('Supprimer ce pointage de présence ?'))return;
+  const {error}=await SB.from('presences').delete().eq('id',id);
+  if(error)return alert('Erreur : '+error.message);
+  D.presences=D.presences.filter(p=>p.id!==id);
+  render();
+}
+
+async function saveMateriel(){
+  const nom=document.getElementById('m-nom').value.trim();if(!nom)return alert('Nom obligatoire.');
+  const payload={
+    nom,
+    categorie:document.getElementById('m-cat').value.trim()||null,
+    quantite:parseInt(document.getElementById('m-qte').value,10)||0,
+    etat:document.getElementById('m-eta').value,
+    localisation:document.getElementById('m-loc').value.trim()||null,
+    date_achat:document.getElementById('m-dac').value||null,
+    prix_achat:parseFloat(document.getElementById('m-prx').value)||null,
+    derniere_revision:document.getElementById('m-drv').value||null,
+    prochaine_revision:document.getElementById('m-prv').value||null,
+    notes:document.getElementById('m-not').value.trim()||null,
+    updated_at:new Date().toISOString(),
+  };
+  if(UI.editObj){
+    const {error}=await SB.from('materiel').update(payload).eq('id',UI.editObj.id);
+    if(error)return alert('Erreur : '+error.message);
+    Object.assign(D.materiel.find(m=>m.id===UI.editObj.id),payload);
+  }else{
+    const {data,error}=await SB.from('materiel').insert({...payload,id:crypto.randomUUID(),created_at:new Date().toISOString()}).select().single();
+    if(error)return alert('Erreur : '+error.message);
+    D.materiel.push(data);
+  }
+  closeModal();render();
+}
+
+async function delMateriel(id){
+  if(!confirm('Supprimer ce matériel de l\'inventaire ?'))return;
+  const {error}=await SB.from('materiel').delete().eq('id',id);
+  if(error)return alert('Erreur : '+error.message);
+  D.materiel=D.materiel.filter(m=>m.id!==id);
+  render();
+}
+
+async function savePlanning(){
+  const cours=document.getElementById('pl-cours').value.trim();if(!cours)return alert('Nom du cours obligatoire.');
+  const heure_debut=document.getElementById('pl-deb').value;
+  const heure_fin=document.getElementById('pl-fin').value;
+  if(!heure_debut||!heure_fin)return alert('Horaires obligatoires.');
+  const payload={
+    cours,
+    encadrant_id:document.getElementById('pl-enc').value,
+    jour_semaine:parseInt(document.getElementById('pl-jour').value,10),
+    heure_debut, heure_fin,
+    lieu:document.getElementById('pl-lieu').value.trim()||null,
+    actif:document.getElementById('pl-actif').checked?1:0,
+    updated_at:new Date().toISOString(),
+  };
+  if(UI.editObj){
+    const {error}=await SB.from('planning_encadrants').update(payload).eq('id',UI.editObj.id);
+    if(error)return alert('Erreur : '+error.message);
+    Object.assign(D.planning.find(p=>p.id===UI.editObj.id),payload);
+  }else{
+    const {data,error}=await SB.from('planning_encadrants').insert({...payload,id:crypto.randomUUID(),created_at:new Date().toISOString()}).select().single();
+    if(error)return alert('Erreur : '+error.message);
+    D.planning.push(data);
+  }
+  closeModal();render();
+}
+
+async function delPlanning(id){
+  if(!confirm('Supprimer ce créneau du planning ?'))return;
+  const {error}=await SB.from('planning_encadrants').delete().eq('id',id);
+  if(error)return alert('Erreur : '+error.message);
+  D.planning=D.planning.filter(p=>p.id!==id);
+  render();
+}
+
+async function saveBudgetLigne(){
+  if(!D.currentExo)return alert('Aucun exercice actif.');
+  const montant_prevu=parseFloat(document.getElementById('b-mnt').value)||0;
+  const libelle=document.getElementById('b-lib').value.trim();
+  if(!libelle)return alert('Libellé obligatoire.');
+  if(UI.editObj){
+    const payload={libelle,montant_prevu,notes:document.getElementById('b-not').value.trim()||null,updated_at:new Date().toISOString()};
+    const {error}=await SB.from('budget_previsionnel').update(payload).eq('id',UI.editObj.id);
+    if(error)return alert('Erreur : '+error.message);
+  }else{
+    const compte=document.getElementById('b-cpt').value.trim();
+    if(!compte)return alert('Compte obligatoire.');
+    const payload={exercice_id:D.currentExo.id,compte,libelle,montant_prevu,notes:document.getElementById('b-not').value.trim()||null};
+    const {error}=await SB.from('budget_previsionnel').insert({...payload,id:crypto.randomUUID(),created_at:new Date().toISOString()});
+    if(error)return alert('Erreur : '+(error.message.includes('UNIQUE')?'Ce compte a déjà une ligne de budget sur cet exercice.':error.message));
+  }
+  closeModal();
+  loadBudgetPrevisionnel(D.currentExo.id);
 }
 
 async function saveEcr(){
@@ -8284,6 +8672,7 @@ async function restoreBackupJSON(payload){
 function bdg(v){return v?`<span class="badge bok">✓</span>`:`<span class="badge bno">✗</span>`}
 function fd(d){if(!d)return'';if(typeof d==='string'&&d.includes('/'))return d;const s=(d+'').split('T')[0];const p=s.split('-');return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:d}
 function td(){return new Date().toISOString().split('T')[0]}
+function td_plus(days){const d=new Date();d.setDate(d.getDate()+days);return d.toISOString().split('T')[0]}
 function showEl(id,msg){const el=document.getElementById(id);if(el){el.textContent=msg;el.style.display='block';}}
 
 // ═══════════════════════════════════════════════════

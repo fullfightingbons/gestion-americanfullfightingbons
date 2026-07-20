@@ -338,6 +338,7 @@ const DB_TABLES = new Set([
   'diplomes', 'exercices', 'factures', 'feedback_campaigns', 'feedback_recipients', 'feedback_responses',
   'inscriptions_publiques', 'deletion_requests',
   'journal_comptable', 'transactions', 'utilisateurs',
+  'presences', 'materiel', 'budget_previsionnel', 'planning_encadrants',
 ]);
 
 const DB_PRIMARY_KEYS: Record<string, string> = {
@@ -346,6 +347,7 @@ const DB_PRIMARY_KEYS: Record<string, string> = {
   feedback_campaigns: 'id', feedback_recipients: 'id', feedback_responses: 'id',
   inscriptions_publiques: 'id', journal_comptable: 'id', transactions: 'id',
   utilisateurs: 'id', deletion_requests: 'id',
+  presences: 'id', materiel: 'id', budget_previsionnel: 'id', planning_encadrants: 'id',
 };
 
 const DB_TABLE_PERMISSIONS: Record<string, { read: string; write: string }> = {
@@ -365,14 +367,22 @@ const DB_TABLE_PERMISSIONS: Record<string, { read: string; write: string }> = {
   journal_comptable: { read: 'perm_comptabilite', write: 'perm_comptabilite' },
   transactions: { read: 'perm_banque', write: 'perm_banque' },
   utilisateurs: { read: 'perm_administration', write: 'perm_administration' },
+  // Pointage de présence aux cours (cf. migration 0025).
+  presences: { read: 'perm_presences', write: 'perm_presences' },
+  // Inventaire du matériel club, distinct des ventes boutique (cf. migration 0026).
+  materiel: { read: 'perm_materiel', write: 'perm_materiel' },
+  // Budget voté en AG, comparé au réalisé (cf. migration 0027 + route /api/budget/:exercice_id/comparatif).
+  budget_previsionnel: { read: 'perm_comptabilite', write: 'perm_comptabilite' },
+  // Planning des cours réguliers, distinct du calendrier d'événements ponctuels (cf. migration 0028).
+  planning_encadrants: { read: 'perm_planning', write: 'perm_planning' },
 };
 
 const DB_DEFAULT_ROLE_PERMS: PermissionMatrix = {
-  admin: { perm_adherents: 'write', perm_banque: 'write', perm_comptabilite: 'write', perm_achats: 'write', perm_facturation: 'write', perm_administration: 'write', perm_diplomes: 'write', perm_feedback: 'write', perm_services: 'write' },
-  tresorier: { perm_adherents: 'write', perm_banque: 'write', perm_comptabilite: 'write', perm_achats: 'write', perm_facturation: 'write', perm_administration: 'none', perm_diplomes: 'read', perm_feedback: 'none', perm_services: 'none' },
-  secretaire: { perm_adherents: 'write', perm_banque: 'none', perm_comptabilite: 'none', perm_achats: 'none', perm_facturation: 'none', perm_administration: 'none', perm_diplomes: 'write', perm_feedback: 'none', perm_services: 'none' },
-  entraineur: { perm_adherents: 'read', perm_banque: 'none', perm_comptabilite: 'none', perm_achats: 'none', perm_facturation: 'none', perm_administration: 'none', perm_diplomes: 'read', perm_feedback: 'none', perm_services: 'none' },
-  membre: { perm_adherents: 'none', perm_banque: 'none', perm_comptabilite: 'none', perm_achats: 'none', perm_facturation: 'none', perm_administration: 'none', perm_diplomes: 'none', perm_feedback: 'none', perm_services: 'none' },
+  admin:      { perm_adherents: 'write', perm_banque: 'write', perm_comptabilite: 'write', perm_achats: 'write', perm_facturation: 'write', perm_administration: 'write', perm_diplomes: 'write', perm_feedback: 'write', perm_services: 'write', perm_presences: 'write', perm_materiel: 'write', perm_planning: 'write' },
+  tresorier:  { perm_adherents: 'write', perm_banque: 'write', perm_comptabilite: 'write', perm_achats: 'write', perm_facturation: 'write', perm_administration: 'none', perm_diplomes: 'read', perm_feedback: 'none', perm_services: 'none', perm_presences: 'none', perm_materiel: 'write', perm_planning: 'read' },
+  secretaire: { perm_adherents: 'write', perm_banque: 'none', perm_comptabilite: 'none', perm_achats: 'none', perm_facturation: 'none', perm_administration: 'none', perm_diplomes: 'write', perm_feedback: 'none', perm_services: 'none', perm_presences: 'read', perm_materiel: 'none', perm_planning: 'write' },
+  entraineur: { perm_adherents: 'read', perm_banque: 'none', perm_comptabilite: 'none', perm_achats: 'none', perm_facturation: 'none', perm_administration: 'none', perm_diplomes: 'read', perm_feedback: 'none', perm_services: 'none', perm_presences: 'write', perm_materiel: 'read', perm_planning: 'read' },
+  membre:     { perm_adherents: 'none', perm_banque: 'none', perm_comptabilite: 'none', perm_achats: 'none', perm_facturation: 'none', perm_administration: 'none', perm_diplomes: 'none', perm_feedback: 'none', perm_services: 'none', perm_presences: 'none', perm_materiel: 'none', perm_planning: 'none' },
 };
 
 const PUBLIC_CLUB_INFO_KEYS = new Set(['nom', 'logo', 'email', 'telephone', 'adresse', 'siret', 'diplome_signature_url', 'diplome_layouts']);
@@ -970,6 +980,91 @@ async function checkCertificatsExpirants(env: Env): Promise<{ checked: number; s
   }
 
   return { checked: results?.length || 0, sent, errors };
+}
+
+// ── Relance automatique des factures impayées ──────────────────────────────
+// Même principe que checkCertificatsExpirants : une facture émise/en attente
+// dont la date d'émission dépasse 15 puis 30 jours reçoit une relance email,
+// une seule fois par palier (cf. facture_relances_auto, migration 0024). Ne
+// remplace pas la relance manuelle existante (bouton "↻ Relance" côté ventes,
+// POST /api/email/send) : la complète pour les cas où personne n'y pense.
+//
+// Best-effort et défensif : si les colonnes client_email/client_nom/
+// montant_total référencées par le frontend (public/assets/app.js) ne sont
+// pas présentes sur l'instance D1 réelle (dérive possible entre les
+// migrations versionnées et le schéma de production), l'erreur est
+// capturée et ajoutée à `errors` plutôt que de faire échouer tout le cron.
+async function checkFacturesEnRetard(env: Env): Promise<{ checked: number; sent: number; errors: string[] }> {
+  const errors: string[] = [];
+  let sent = 0;
+  let results: Array<Record<string, any>> = [];
+
+  try {
+    const query = await env.DB.prepare(
+      `SELECT id, numero, date_op, client_email, client_nom, montant_total, notes_paiement
+       FROM factures
+       WHERE statut IN ('Émise', 'En attente', 'En retard')
+         AND date_op IS NOT NULL AND date_op != ''
+         AND client_email IS NOT NULL AND client_email != ''
+         AND julianday('now') - julianday(date_op) >= 15`
+    ).all<Record<string, any>>();
+    results = query.results || [];
+  } catch (e) {
+    errors.push(`Lecture des factures impayées impossible (schéma inattendu ?) : ${e instanceof Error ? e.message : String(e)}`);
+    return { checked: 0, sent: 0, errors };
+  }
+
+  for (const f of results) {
+    const joursRetard = Math.floor(
+      (Date.now() - new Date(f.date_op).getTime()) / 86_400_000
+    );
+    const palier: 'J15' | 'J30' = joursRetard >= 30 ? 'J30' : 'J15';
+
+    const already = await env.DB.prepare(
+      `SELECT id FROM facture_relances_auto WHERE facture_id = ? AND palier = ?`
+    ).bind(f.id, palier).first();
+    if (already) continue;
+
+    const numero = f.numero || String(f.id).slice(0, 8).toUpperCase();
+    const montant = typeof f.montant_total === 'number'
+      ? `${f.montant_total.toFixed(2)} €`
+      : (f.montant_total ? `${f.montant_total} €` : 'montant à confirmer');
+    const html = `
+      <p>Bonjour,</p>
+      <p>Nous vous rappelons que la vente <strong>${numero}</strong>${montant ? ` d'un montant de <strong>${montant}</strong>` : ''} est en attente de règlement depuis ${joursRetard} jours.</p>
+      <p>Merci de procéder au paiement dans les meilleurs délais, ou de nous contacter en cas de difficulté.</p>
+      <p>Cordialement,<br>AFFBC</p>`;
+
+    const result = await sendBrevoEmail(env, {
+      to: [{ email: f.client_email, name: f.client_nom || f.client_email }],
+      subject: `Rappel de paiement — ${numero} — AFFBC`,
+      html,
+    });
+
+    if (result.ok) {
+      sent++;
+      await env.DB.prepare(
+        `INSERT INTO facture_relances_auto (id, facture_id, palier) VALUES (?, ?, ?)`
+      ).bind(crypto.randomUUID(), f.id, palier).run();
+      // Best-effort : journalise la relance dans notes_paiement comme le fait
+      // déjà la relance manuelle (cf. relanceFactureEmail côté frontend), pour
+      // qu'un·e trésorier·e retrouve l'historique au même endroit. Si la
+      // colonne n'existe pas sur l'instance réelle, cette écriture échoue
+      // silencieusement sans invalider la relance déjà envoyée et tracée.
+      try {
+        const note = `[Relance automatique ${palier} envoyée le ${new Date().toLocaleDateString('fr-FR')} à ${f.client_email}]`;
+        await env.DB.prepare(
+          `UPDATE factures SET notes_paiement = CASE WHEN notes_paiement IS NULL OR notes_paiement = '' THEN ? ELSE notes_paiement || char(10) || ? END WHERE id = ?`
+        ).bind(note, note, f.id).run();
+      } catch {
+        // ignore — non bloquant, la table de suivi fait foi
+      }
+    } else {
+      errors.push(`Facture ${numero} (${f.client_email}) : ${result.error}`);
+    }
+  }
+
+  return { checked: results.length, sent, errors };
 }
 
 // Cron RGPD (droit à l'effacement, art. 17) : signale au bureau les demandes
@@ -3270,6 +3365,104 @@ if (path.startsWith("/api/") && !publicApiRoutes.has(path)) {
         return json({ data: result, error: null });
     }
 
+    // POST /api/admin/factures/relancer-impayes — équivalent manuel du cron
+    // quotidien de relance des factures impayées (cf. checkFacturesEnRetard).
+    if (method === 'POST' && path === '/api/admin/factures/relancer-impayes') {
+        const result = await checkFacturesEnRetard(env);
+        return json({ data: result, error: null });
+    }
+
+    // GET /api/budget/:exercice_id/comparatif — prévu (budget_previsionnel)
+    // vs réalisé (somme des débits/crédits du journal comptable par compte,
+    // sur l'exercice donné). Lecture seule, protégée par perm_comptabilite
+    // comme le reste de la comptabilité.
+    {
+      const budgetMatch = path.match(/^\/api\/budget\/([^/]+)\/comparatif$/);
+      if (method === 'GET' && budgetMatch) {
+        const exerciceId = budgetMatch[1];
+        const user = await getCurrentUserFromBearer(request, env);
+        const perms = await getRolePerms(env);
+        const level = perms[user?.role || '']?.['perm_comptabilite'] || 'none';
+        if (level === 'none') return err('Non autorisé', 403);
+
+        const previsionnel = await env.DB.prepare(
+          `SELECT compte, libelle, montant_prevu FROM budget_previsionnel WHERE exercice_id = ? ORDER BY compte`
+        ).bind(exerciceId).all<{ compte: string; libelle: string; montant_prevu: number }>();
+
+        const realise = await env.DB.prepare(
+          `SELECT compte, SUM(COALESCE(credit, 0)) - SUM(COALESCE(debit, 0)) AS solde
+           FROM journal_comptable WHERE exercice_id = ? GROUP BY compte`
+        ).bind(exerciceId).all<{ compte: string; solde: number }>();
+
+        const realiseByCompte = new Map((realise.results || []).map((r) => [r.compte, r.solde]));
+        const lignes = (previsionnel.results || []).map((p) => {
+          const montantRealise = realiseByCompte.get(p.compte) ?? 0;
+          // Un compte de charge (6xx) est prévu en négatif conceptuellement
+          // dans un budget associatif classique, mais on reste ici en valeur
+          // absolue comparable au solde du journal (crédit - débit), pour que
+          // le signe indique directement l'écart dans le même sens pour tous
+          // les comptes plutôt que de complexifier avec une distinction
+          // charges/produits que le référentiel de comptes ne formalise pas
+          // explicitement dans ce schéma.
+          return {
+            compte: p.compte,
+            libelle: p.libelle,
+            montant_prevu: p.montant_prevu,
+            montant_realise: montantRealise,
+            ecart: montantRealise - p.montant_prevu,
+          };
+        });
+
+        return json({ data: { exercice_id: exerciceId, lignes }, error: null });
+      }
+    }
+
+    // GET /api/stats/renouvellement — taux d'adhérents d'un exercice retrouvés
+    // dans l'exercice suivant (même email, comparaison insensible à la casse).
+    // Lecture seule sur des données déjà accessibles via perm_adherents.
+    if (method === 'GET' && path === '/api/stats/renouvellement') {
+        const user = await getCurrentUserFromBearer(request, env);
+        const perms = await getRolePerms(env);
+        const level = perms[user?.role || '']?.['perm_adherents'] || 'none';
+        if (level === 'none') return err('Non autorisé', 403);
+
+        const { results: exercices } = await env.DB.prepare(
+          `SELECT id, libelle, date_debut FROM exercices ORDER BY date_debut ASC`
+        ).all<{ id: string; libelle: string; date_debut: string }>();
+
+        const rows: Array<{ exercice_id: string; libelle: string; adherents: number; taux_renouvellement: number | null }> = [];
+        for (let i = 0; i < (exercices || []).length; i++) {
+          const ex = exercices![i];
+          const prev = i > 0 ? exercices![i - 1] : null;
+
+          const current = await env.DB.prepare(
+            `SELECT LOWER(email) AS email FROM adherents WHERE exercice_id = ? AND email IS NOT NULL AND email != ''`
+          ).bind(ex.id).all<{ email: string }>();
+          const currentEmails = new Set((current.results || []).map((r) => r.email));
+
+          let tauxRenouvellement: number | null = null;
+          if (prev) {
+            const previous = await env.DB.prepare(
+              `SELECT LOWER(email) AS email FROM adherents WHERE exercice_id = ? AND email IS NOT NULL AND email != ''`
+            ).bind(prev.id).all<{ email: string }>();
+            const previousEmails = (previous.results || []).map((r) => r.email);
+            if (previousEmails.length > 0) {
+              const revenus = previousEmails.filter((email) => currentEmails.has(email)).length;
+              tauxRenouvellement = Math.round((revenus / previousEmails.length) * 1000) / 10; // % avec 1 décimale
+            }
+          }
+
+          rows.push({
+            exercice_id: ex.id,
+            libelle: ex.libelle,
+            adherents: currentEmails.size,
+            taux_renouvellement: tauxRenouvellement,
+          });
+        }
+
+        return json({ data: rows, error: null });
+    }
+
     // NOTE : les anciennes routes /api/sync/*, /api/membres*, /api/compta
     // (legacy) et /api/ventes* ont été retirées le 2026-06-27 : elles
     // interrogeaient des tables (membres, ventes_inscription, sync_log,
@@ -3412,6 +3605,14 @@ export default {
       checkDeletionRequestsEligibility(env).then(
         (r) => console.log('[cron:rgpd]', JSON.stringify(r)),
         (e) => console.error('[cron:rgpd] échec', e instanceof Error ? e.stack || e.message : String(e)),
+      ),
+    );
+    // Relance automatique des factures impayées à J+15 puis J+30
+    // (cf. checkFacturesEnRetard) — même trigger cron.
+    ctx.waitUntil(
+      checkFacturesEnRetard(env).then(
+        (r) => console.log('[cron:relances-factures]', JSON.stringify(r)),
+        (e) => console.error('[cron:relances-factures] échec', e instanceof Error ? e.stack || e.message : String(e)),
       ),
     );
   },
