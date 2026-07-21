@@ -5,7 +5,7 @@
  * club, même sortie PDF que les copies boutique/inscription en JS pur.
  */
 
-import { PdfBuilder, buildPdfDocument, addJpegImage, base64ToBytes, type RGB } from './pdf-engine';
+import { PdfBuilder, buildPdfDocument, addJpegImage, base64ToBytes, measureTextWidth, MM, type RGB } from './pdf-engine';
 import { CLUB_LOGO_JPEG_B64, CLUB_LOGO_WIDTH_PX, CLUB_LOGO_HEIGHT_PX } from './club-logo';
 
 export const NOIR: RGB = [17, 17, 17];
@@ -70,6 +70,18 @@ function titleFontSize(title: string): number {
   return 17;
 }
 
+// L'objet/numero de document (ex: "STAGE CHRISTIAN BATTESTI - GONDRAN
+// PIERRE") peut etre long et variable. Le bloc droit de l'en-tete dispose
+// d'environ 150mm (de x=45mm a x=195mm) avant de recouper le bloc club a
+// gauche : on reduit la taille de police tant que ca ne suffit pas plutot
+// que de laisser le texte deborder.
+function fitNumeroFontSize(text: string, baseFs: number, maxWMm: number): number {
+  const maxPt = maxWMm * MM;
+  let fs = baseFs;
+  while (fs > 6.5 && measureTextWidth(text, 'F1', fs) > maxPt) fs -= 0.5;
+  return fs;
+}
+
 function drawHeader(p: PdfBuilder, opts: { title: string; numero: string; dateLabel: string }): void {
   p.setFillRgb(NOIR);
   p.rect(0, 0, 210, HEADER_H, 'f');
@@ -93,8 +105,10 @@ function drawHeader(p: PdfBuilder, opts: { title: string; numero: string; dateLa
   const fs = titleFontSize(opts.title);
   p.setFont('F2', fs);
   p.text(opts.title.toUpperCase(), 195, 15, { align: 'right', color: DORE_CLAIR });
-  p.setFont('F1', 10);
-  p.text(`N° ${opts.numero}`, 195, 23, { align: 'right', color: WHITE });
+  const numeroText = `N° ${opts.numero}`;
+  const numeroFs = fitNumeroFontSize(numeroText, 10, 150);
+  p.setFont('F1', numeroFs);
+  p.text(numeroText, 195, 23, { align: 'right', color: WHITE });
   p.setFont('F1', 8.5);
   p.text(opts.dateLabel, 195, 28.5, { align: 'right', color: [190, 190, 190] });
 }

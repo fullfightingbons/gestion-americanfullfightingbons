@@ -2,8 +2,8 @@
 	"name": "gestion-americanfullfightingbons",
 	"description": "Application de gestion du club AFFBC (adhérents, comptabilité, banque, achats, facturation) — Cloudflare Workers + D1 + R2.",
 	"devDependencies": {
-		"esbuild": "^0.27.3",
-		"typescript": "5.9.3",
+		"esbuild": "^0.27.7",
+		"typescript": "^5.9.3",
 		"vitest": "^2.1.0",
 		"wrangler": "^4.110.0"
 	},
