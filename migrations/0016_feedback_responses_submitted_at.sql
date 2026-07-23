@@ -17,12 +17,35 @@
 --
 -- L'ALTER TABLE a donc été retiré de cette migration (colonne déjà présente,
 -- confirmé) : ne reste que le backfill, idempotent et sans risque.
+--
+-- ⚠️ CORRECTIF DU 2026-07-23 : le backfill ci-dessous a été retiré à son tour.
+-- Le garde-fou EXISTS (SELECT 1 FROM pragma_table_info(...) WHERE name =
+-- 'created_at') ne protège que l'évaluation logique des lignes à modifier ; il
+-- ne protège PAS la clause SET ni la clause WHERE de l'UPDATE, qui référencent
+-- created_at directement sur la table feedback_responses. SQLite résout ces
+-- références de colonnes à la PRÉPARATION de la requête, avant même
+-- d'évaluer le sous-SELECT du EXISTS — donc si created_at n'existe pas dans
+-- le schéma, la requête échoue immédiatement avec "no such column:
+-- created_at", quel que soit le contenu du EXISTS.
+--
+-- C'est exactement la même classe de bug déjà documentée et corrigée plus
+-- haut dans 0014_feedback_schema_align.sql : sur une base neuve (CI, poste
+-- d'un nouveau contributeur, nouvelle installation), aucune migration
+-- versionnée ne crée de colonne created_at sur feedback_responses (0010 crée
+-- la table avec submitted_at uniquement) — created_at est une colonne legacy
+-- qui n'a existé que dans un schéma de production antérieur, hors pipeline
+-- de migrations. `wrangler d1 migrations apply` échoue donc pour tout le
+-- monde sur une base fraîche, pas seulement pour la prod historique visée.
+--
+-- Ce backfill n'est pas bloquant pour le fonctionnement de l'application (le
+-- code ne lit/écrit que submitted_at, jamais created_at). S'il faut
+-- réellement rapatrier des données depuis la colonne legacy created_at d'une
+-- base de production existante, exécuter ponctuellement et manuellement
+-- (hors pipeline de migrations), après avoir vérifié l'existence de la
+-- colonne avec :
+--   SELECT name FROM pragma_table_info('feedback_responses');
+--
+-- puis :
+--   UPDATE feedback_responses SET submitted_at = created_at
+--   WHERE created_at IS NOT NULL AND (submitted_at IS NULL OR submitted_at = '');
 -- ─────────────────────────────────────────────────────────────────────────────
-
--- Backfill pour les réponses déjà enregistrées via la colonne legacy created_at,
--- si celle-ci existe et contient des données pour des lignes où submitted_at
--- n'a pas encore été renseigné. Sans risque : ne touche que des lignes déjà
--- existantes, n'affecte pas les nouvelles soumissions.
-UPDATE feedback_responses SET submitted_at = created_at
-WHERE created_at IS NOT NULL AND (submitted_at IS NULL OR submitted_at = '')
-  AND EXISTS (SELECT 1 FROM pragma_table_info('feedback_responses') WHERE name = 'created_at');
