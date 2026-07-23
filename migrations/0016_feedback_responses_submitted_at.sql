@@ -24,4 +24,5 @@
 -- n'a pas encore été renseigné. Sans risque : ne touche que des lignes déjà
 -- existantes, n'affecte pas les nouvelles soumissions.
 UPDATE feedback_responses SET submitted_at = created_at
-WHERE created_at IS NOT NULL AND (submitted_at IS NULL OR submitted_at = '');
+WHERE created_at IS NOT NULL AND (submitted_at IS NULL OR submitted_at = '')
+  AND EXISTS (SELECT 1 FROM pragma_table_info('feedback_responses') WHERE name = 'created_at');
