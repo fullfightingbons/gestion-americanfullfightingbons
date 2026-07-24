@@ -1,0 +1,21 @@
+{
+  "_comment": "Copie ce fichier en wrangler.local.json (gitignoré) et renseigne les vraies valeurs. Ne JAMAIS committer wrangler.local.json.",
+  "account_id": "<CLOUDFLARE_ACCOUNT_ID>",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_id": "<D1_DATABASE_ID>",
+      "database_name": "affbc-production"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "R2_STORAGE",
+      "bucket_name": "storage"
+    },
+    {
+      "binding": "R2_PDF",
+      "bucket_name": "fullfighting-pdf"
+    }
+  ]
+}
