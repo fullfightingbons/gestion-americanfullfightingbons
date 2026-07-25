@@ -199,7 +199,7 @@ const D = {
     diplomeLayouts:{},
     diplomes:[],
     feedbackCampaigns:[], feedbackRecipients:[], feedbackResponses:[],
-    presences:[], materiel:[], planning:[], budgetPrevisionnel:[], budgetComparatif:null,
+    presences:[], materiel:[], materielEmprunts:[], materielMouvements:[], planning:[], budgetPrevisionnel:[], budgetComparatif:null,
     renouvellement:null,
     rolePerms: JSON.parse(JSON.stringify(DEFAULT_ROLE_PERMS)),
     loaded:{core:false,dashboard:false,adherents:false,banque:false,comptabilite:false,achat:false,facture:false,administration:false,diplomesArchive:false,feedback:false,presences:false,materiel:false,planning:false},
@@ -212,6 +212,8 @@ const UI = {
   notices:[],
   search:{adherents:'',achats:'',factures:'',feedback:''},
   adhFilters:{statut:'',type:'',season:'current',special:''},
+  materielFilters:{q:'',categorie:'',etat:'',dispo:''},
+  materielSection:'inventaire',
   adhSelected:{},
   adhSort:{key:'nom',dir:'asc'},
   adhDetailId:null,
@@ -610,8 +612,14 @@ async function loadTabData(tab, force=false){
       return;
     }
     if(tab==='materiel'){
-      const {data}=await SB.from('materiel').select('*').order('nom');
-      D.materiel=data||[];
+      const [matRes,empRes,mouRes]=await Promise.all([
+        SB.from('materiel').select('*').order('nom'),
+        SB.from('materiel_emprunts').select('*').order('date_sortie',{ascending:false}),
+        SB.from('materiel_mouvements').select('*').order('date',{ascending:false}),
+      ]);
+      D.materiel=matRes.data||[];
+      D.materielEmprunts=empRes.data||[];
+      D.materielMouvements=mouRes.data||[];
       markLoaded('materiel');
       return;
     }
@@ -4754,34 +4762,161 @@ function vPresences(){
 // ═══════════════════════════════════════════════════
 // MATÉRIEL CLUB
 // ═══════════════════════════════════════════════════
+// ── Helpers stock ──────────────────────────────────────────────
+function materielEmpruntsEnCours(materielId){
+  return D.materielEmprunts.filter(e=>!e.date_retour_effective && (!materielId||e.materiel_id===materielId));
+}
+function materielDisponible(m){
+  const emprunte=materielEmpruntsEnCours(m.id).reduce((s,e)=>s+(e.quantite||0),0);
+  return Math.max(0,(m.quantite||0)-emprunte);
+}
+function materielEnAlerte(m){
+  return (m.quantite_min||0)>0 && (m.quantite||0)<=m.quantite_min;
+}
+function materielValeurTotale(){
+  return D.materiel.reduce((s,m)=>s+((m.quantite||0)*(m.prix_achat||0)),0);
+}
+
 function vMateriel(){
   const canWrite=hasPerm('perm_materiel','write');
-  const rows=[...D.materiel].sort((a,b)=>(a.nom||'').localeCompare(b.nom||''));
   const soon=td_plus(30);
+  const F=UI.materielFilters;
+  const categories=[...new Set(D.materiel.map(m=>m.categorie).filter(Boolean))].sort();
+  const empEnCours=materielEmpruntsEnCours();
+  const enRetard=empEnCours.filter(e=>e.date_retour_prevue && e.date_retour_prevue<new Date().toISOString().split('T')[0]);
+  const enAlerte=D.materiel.filter(materielEnAlerte);
+  const aReviser=D.materiel.filter(m=>m.prochaine_revision && m.prochaine_revision<=soon);
+
+  let rows=[...D.materiel];
+  if(F.q) { const q=F.q.toLowerCase(); rows=rows.filter(m=>(m.nom||'').toLowerCase().includes(q)||(m.categorie||'').toLowerCase().includes(q)||(m.localisation||'').toLowerCase().includes(q)); }
+  if(F.categorie) rows=rows.filter(m=>m.categorie===F.categorie);
+  if(F.etat) rows=rows.filter(m=>m.etat===F.etat);
+  if(F.dispo==='alerte') rows=rows.filter(materielEnAlerte);
+  if(F.dispo==='emprunte') rows=rows.filter(m=>materielDisponible(m)<m.quantite);
+  rows.sort((a,b)=>(a.nom||'').localeCompare(b.nom||''));
+
+  const section=UI.materielSection;
+  const tabBtn=(id,label,count)=>`<button class="btn sm ${section===id?'primary':''}" onclick="UI.materielSection='${id}';render()">${label}${count!=null?` (${count})`:''}</button>`;
+
   return`<div class="view-head">
   <div><div class="eyebrow">Équipement du club</div><h2>Matériel</h2>
-  <p>Inventaire du matériel appartenant au club (gants, protections, tapis...), distinct de la boutique.</p></div>
+  <p>Inventaire, sorties/retours et historique du matériel appartenant au club — distinct de la boutique.</p></div>
   ${canWrite?`<button class="btn primary" onclick="openModal('materiel')">+ Ajouter du matériel</button>`:''}
   </div>
+
+  <div class="cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px">
+    <div class="card"><div class="eyebrow">Articles</div><div style="font-size:22px;font-weight:600">${D.materiel.length}</div></div>
+    <div class="card"><div class="eyebrow">Valeur du stock</div><div style="font-size:22px;font-weight:600">${materielValeurTotale().toLocaleString('fr-FR',{maximumFractionDigits:0})} €</div></div>
+    <div class="card" style="${enAlerte.length?'border-color:var(--red)':''}"><div class="eyebrow">Stock bas</div><div style="font-size:22px;font-weight:600;${enAlerte.length?'color:var(--red)':''}">${enAlerte.length}</div></div>
+    <div class="card"><div class="eyebrow">Emprunts en cours</div><div style="font-size:22px;font-weight:600">${empEnCours.length}${enRetard.length?` <span style="color:var(--red);font-size:13px">(${enRetard.length} en retard)</span>`:''}</div></div>
+    <div class="card" style="${aReviser.length?'border-color:var(--orange,#e08300)':''}"><div class="eyebrow">Révisions ≤30j</div><div style="font-size:22px;font-weight:600">${aReviser.length}</div></div>
+  </div>
+
+  <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+    ${tabBtn('inventaire','📦 Inventaire',D.materiel.length)}
+    ${tabBtn('emprunts','🤝 Emprunts en cours',empEnCours.length)}
+    ${tabBtn('historique','🕒 Historique',D.materielMouvements.length)}
+  </div>
+
+  ${section==='inventaire'?vMaterielInventaire(rows,categories,canWrite):''}
+  ${section==='emprunts'?vMaterielEmprunts(canWrite):''}
+  ${section==='historique'?vMaterielHistorique():''}
+  `;
+}
+
+function vMaterielInventaire(rows,categories,canWrite){
+  const F=UI.materielFilters;
+  const soon=td_plus(30);
+  return`<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+    <input placeholder="Rechercher (nom, catégorie, localisation)" value="${esc(F.q)}" style="flex:1;min-width:200px"
+      oninput="UI.materielFilters.q=this.value;render()">
+    <select onchange="UI.materielFilters.categorie=this.value;render()">
+      <option value="">Toutes catégories</option>
+      ${categories.map(c=>`<option value="${esc(c)}" ${F.categorie===c?'selected':''}>${esc(c)}</option>`).join('')}
+    </select>
+    <select onchange="UI.materielFilters.etat=this.value;render()">
+      <option value="">Tous états</option>
+      ${MATERIEL_ETATS.map(e=>`<option ${F.etat===e?'selected':''}>${e}</option>`).join('')}
+    </select>
+    <select onchange="UI.materielFilters.dispo=this.value;render()">
+      <option value="">Toute disponibilité</option>
+      <option value="alerte" ${F.dispo==='alerte'?'selected':''}>Stock bas</option>
+      <option value="emprunte" ${F.dispo==='emprunte'?'selected':''}>Partiellement emprunté</option>
+    </select>
+  </div>
   <div class="wrap"><table>
-  <thead><tr><th>Nom</th><th>Catégorie</th><th>Qté</th><th>État</th><th>Prochaine révision</th><th>Localisation</th><th></th></tr></thead>
+  <thead><tr><th>Nom</th><th>Catégorie</th><th>Qté</th><th>Dispo.</th><th>État</th><th>Prochaine révision</th><th>Localisation</th><th></th></tr></thead>
   <tbody>${rows.map(m=>{
     const revisionSoon=m.prochaine_revision && m.prochaine_revision<=soon;
+    const dispo=materielDisponible(m);
+    const alerte=materielEnAlerte(m);
     return`<tr>
-    <td><strong style="font-weight:500">${esc(m.nom)}</strong></td>
+    <td><strong style="font-weight:500">${esc(m.nom)}</strong>${alerte?' <span class="badge bno" title="Stock ≤ seuil d\'alerte">stock bas</span>':''}</td>
     <td>${esc(m.categorie||'—')}</td>
     <td>${m.quantite}</td>
+    <td>${dispo<m.quantite?`<span style="color:var(--red);font-weight:600">${dispo}</span>`:dispo}</td>
     <td><span class="badge ${m.etat==='Hors service'?'bno':m.etat==='À réviser'?'bwarn':'bgray'}">${esc(m.etat)}</span></td>
     <td>${m.prochaine_revision?`<span ${revisionSoon?'style="color:var(--red);font-weight:600"':''}>${fd(m.prochaine_revision)}${revisionSoon?' ⚠':''}</span>`:'—'}</td>
     <td style="font-size:11px;color:var(--txt2)">${esc(m.localisation||'—')}</td>
     <td style="white-space:nowrap">
     ${canWrite?`<button class="btn sm" onclick="openModal('materiel','${m.id}')">Modifier</button>
+    <button class="btn sm" style="margin-left:4px" onclick="openModal('materiel_emprunt','${m.id}')" ${dispo<=0?'disabled title="Aucune unité disponible"':''}>Sortir</button>
+    <button class="btn sm" style="margin-left:4px" onclick="openModal('materiel_mouvement','${m.id}')">Mouvement</button>
     <button class="btn sm danger" style="margin-left:4px" onclick="delMateriel('${m.id}')">✕</button>`:''}
     </td>
     </tr>`;
   }).join('')}
-    ${rows.length===0?`<tr><td colspan="7" class="empty">Aucun matériel enregistré</td></tr>`:''}
+    ${rows.length===0?`<tr><td colspan="8" class="empty">Aucun matériel ne correspond aux filtres</td></tr>`:''}
     </tbody></table></div>`;
+}
+
+function vMaterielEmprunts(canWrite){
+  const today=new Date().toISOString().split('T')[0];
+  const nomMateriel=(id)=>D.materiel.find(m=>m.id===id)?.nom||'—';
+  const enCours=[...D.materielEmprunts].filter(e=>!e.date_retour_effective)
+    .sort((a,b)=>(a.date_retour_prevue||'9999').localeCompare(b.date_retour_prevue||'9999'));
+  const historique=[...D.materielEmprunts].filter(e=>e.date_retour_effective)
+    .sort((a,b)=>(b.date_retour_effective||'').localeCompare(a.date_retour_effective||''))
+    .slice(0,20);
+  return`<div class="wrap"><table>
+  <thead><tr><th>Matériel</th><th>Emprunteur</th><th>Qté</th><th>Sorti le</th><th>Retour prévu</th><th></th></tr></thead>
+  <tbody>${enCours.map(e=>{
+    const retard=e.date_retour_prevue && e.date_retour_prevue<today;
+    return`<tr>
+    <td>${esc(nomMateriel(e.materiel_id))}</td>
+    <td>${esc(e.emprunteur_nom)}</td>
+    <td>${e.quantite}</td>
+    <td>${fd(e.date_sortie)}</td>
+    <td>${e.date_retour_prevue?`<span ${retard?'style="color:var(--red);font-weight:600"':''}>${fd(e.date_retour_prevue)}${retard?' ⚠ en retard':''}</span>`:'—'}</td>
+    <td>${canWrite?`<button class="btn sm primary" onclick="marquerRetourEmprunt('${e.id}')">Marquer retourné</button>`:''}</td>
+    </tr>`;
+  }).join('')}
+  ${enCours.length===0?`<tr><td colspan="6" class="empty">Aucun emprunt en cours</td></tr>`:''}
+  </tbody></table></div>
+  ${historique.length?`<h3 style="margin:18px 0 8px;font-size:14px;color:var(--txt2)">Retours récents</h3>
+  <div class="wrap"><table>
+  <thead><tr><th>Matériel</th><th>Emprunteur</th><th>Qté</th><th>Sorti le</th><th>Rendu le</th></tr></thead>
+  <tbody>${historique.map(e=>`<tr>
+    <td>${esc(nomMateriel(e.materiel_id))}</td><td>${esc(e.emprunteur_nom)}</td><td>${e.quantite}</td>
+    <td>${fd(e.date_sortie)}</td><td>${fd(e.date_retour_effective)}</td>
+    </tr>`).join('')}</tbody></table></div>`:''}`;
+}
+
+function vMaterielHistorique(){
+  const nomMateriel=(id)=>D.materiel.find(m=>m.id===id)?.nom||'—';
+  const typeLabel={achat:'Achat',perte:'Perte',casse:'Casse',ajustement:'Ajustement'};
+  const rows=[...D.materielMouvements].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  return`<div class="wrap"><table>
+  <thead><tr><th>Date</th><th>Matériel</th><th>Type</th><th>Quantité</th><th>Motif</th></tr></thead>
+  <tbody>${rows.map(m=>`<tr>
+    <td>${fd(m.date)}</td>
+    <td>${esc(nomMateriel(m.materiel_id))}</td>
+    <td><span class="badge ${m.quantite_delta<0?'bno':'bgray'}">${typeLabel[m.type]||esc(m.type)}</span></td>
+    <td style="${m.quantite_delta<0?'color:var(--red)':'color:var(--green,#1a8a4a)'}">${m.quantite_delta>0?'+':''}${m.quantite_delta}</td>
+    <td style="font-size:11px;color:var(--txt2)">${esc(m.motif||'—')}</td>
+    </tr>`).join('')}
+  ${rows.length===0?`<tr><td colspan="5" class="empty">Aucun mouvement enregistré</td></tr>`:''}
+  </tbody></table></div>`;
 }
 
 // ═══════════════════════════════════════════════════
@@ -6500,12 +6635,13 @@ function renderModal(){
     </div>`;
 
   }else if(UI.modal==='materiel'){
-    const m=UI.editObj||{nom:'',categorie:'',quantite:1,etat:'Bon',date_achat:'',prix_achat:'',derniere_revision:'',prochaine_revision:'',localisation:'',notes:''};
+    const m=UI.editObj||{nom:'',categorie:'',quantite:1,quantite_min:0,etat:'Bon',date_achat:'',prix_achat:'',derniere_revision:'',prochaine_revision:'',localisation:'',notes:''};
     html=`<div class="modal" style="max-width:460px"><h2>🥊 ${UI.editObj?'Modifier le matériel':'Ajouter du matériel'}</h2>
     <div class="g2">
     <div class="fg full"><label>Nom</label><input id="m-nom" value="${esc(m.nom)}" placeholder="Gants de boxe 12oz"></div>
     <div class="fg"><label>Catégorie</label><input id="m-cat" value="${esc(m.categorie||'')}" placeholder="Protections"></div>
     <div class="fg"><label>Quantité</label><input id="m-qte" type="number" min="0" value="${m.quantite||1}"></div>
+    <div class="fg"><label>Seuil d'alerte stock bas</label><input id="m-qmin" type="number" min="0" value="${m.quantite_min||0}" title="0 = pas d'alerte"></div>
     <div class="fg"><label>État</label><select id="m-eta">${MATERIEL_ETATS.map(e=>`<option ${m.etat===e?'selected':''}>${e}</option>`).join('')}</select></div>
     <div class="fg"><label>Localisation</label><input id="m-loc" value="${esc(m.localisation||'')}" placeholder="Dojo — armoire 2"></div>
     <div class="fg"><label>Date d'achat</label><input id="m-dac" type="date" value="${m.date_achat||''}"></div>
@@ -6515,6 +6651,39 @@ function renderModal(){
     <div class="fg full"><label>Notes</label><input id="m-not" value="${esc(m.notes||'')}"></div>
     </div>
     <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="saveMateriel()">Enregistrer</button></div>
+    </div>`;
+
+  }else if(UI.modal==='materiel_emprunt'){
+    const mat=D.materiel.find(x=>x.id===UI.materielTargetId);
+    const dispo=mat?materielDisponible(mat):0;
+    html=`<div class="modal" style="max-width:420px"><h2>🤝 Sortir du matériel</h2>
+    <p style="font-size:13px;color:var(--txt2);margin-top:-6px">${esc(mat?.nom||'')} — ${dispo} disponible(s) sur ${mat?.quantite||0}</p>
+    <div class="g2">
+    <div class="fg full"><label>Emprunteur</label><input id="me-nom" placeholder="Nom et prénom"></div>
+    <div class="fg"><label>Quantité</label><input id="me-qte" type="number" min="1" max="${dispo}" value="1"></div>
+    <div class="fg"><label>Date de sortie</label><input id="me-dso" type="date" value="${new Date().toISOString().split('T')[0]}"></div>
+    <div class="fg"><label>Retour prévu le</label><input id="me-drp" type="date"></div>
+    <div class="fg full"><label>Notes</label><input id="me-not" placeholder="Optionnel"></div>
+    </div>
+    <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="saveMaterielEmprunt()">Enregistrer la sortie</button></div>
+    </div>`;
+
+  }else if(UI.modal==='materiel_mouvement'){
+    const mat=D.materiel.find(x=>x.id===UI.materielTargetId);
+    html=`<div class="modal" style="max-width:420px"><h2>📦 Mouvement de stock</h2>
+    <p style="font-size:13px;color:var(--txt2);margin-top:-6px">${esc(mat?.nom||'')} — quantité actuelle : ${mat?.quantite||0}</p>
+    <div class="g2">
+    <div class="fg"><label>Type</label><select id="mm-typ">
+      <option value="achat">Achat / apport (+)</option>
+      <option value="perte">Perte (−)</option>
+      <option value="casse">Casse (−)</option>
+      <option value="ajustement">Ajustement d'inventaire</option>
+    </select></div>
+    <div class="fg"><label>Quantité</label><input id="mm-qte" type="number" value="1" title="Achat/perte/casse : nombre positif. Ajustement : peut être négatif (ex. -2 pour retirer 2 unités après inventaire)."></div>
+    <div class="fg"><label>Date</label><input id="mm-dat" type="date" value="${new Date().toISOString().split('T')[0]}"></div>
+    <div class="fg full"><label>Motif / commentaire</label><input id="mm-mot" placeholder="Optionnel"></div>
+    </div>
+    <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="saveMaterielMouvement()">Enregistrer le mouvement</button></div>
     </div>`;
 
   }else if(UI.modal==='planning'){
@@ -6857,7 +7026,7 @@ function openEcritureType(type){
 }
 
 function openModal(t,id){
-  const permMap={adh:'perm_adherents',compte:'perm_banque',ecr:'perm_comptabilite',achat:'perm_achats',user:'perm_administration',exo:'perm_comptabilite',exo_close:'perm_comptabilite',feedback_campaign:'perm_feedback',feedback_invite:'perm_feedback',presence:'perm_presences',materiel:'perm_materiel',planning:'perm_planning',budget_ligne:'perm_comptabilite'};
+  const permMap={adh:'perm_adherents',compte:'perm_banque',ecr:'perm_comptabilite',achat:'perm_achats',user:'perm_administration',exo:'perm_comptabilite',exo_close:'perm_comptabilite',feedback_campaign:'perm_feedback',feedback_invite:'perm_feedback',presence:'perm_presences',materiel:'perm_materiel',materiel_emprunt:'perm_materiel',materiel_mouvement:'perm_materiel',planning:'perm_planning',budget_ligne:'perm_comptabilite'};
   if(permMap[t] && !requireWritePerm(permMap[t])) return;
   UI.modal=t;UI.editObj=null;UI.guardianInfo=null;
   if(id){
@@ -6870,6 +7039,7 @@ function openModal(t,id){
     if(t==='presence') UI.editObj=D.presences.find(p=>p.id===id);
     if(t==='materiel') UI.editObj=D.materiel.find(m=>m.id===id);
     if(t==='planning') UI.editObj=D.planning.find(p=>p.id===id);
+    if(t==='materiel_emprunt' || t==='materiel_mouvement') UI.materielTargetId=id;
   }
   if(t==='adh' && id) loadGuardianInfo(id);
   renderModal();
@@ -7295,6 +7465,7 @@ async function saveMateriel(){
     nom,
     categorie:document.getElementById('m-cat').value.trim()||null,
     quantite:parseInt(document.getElementById('m-qte').value,10)||0,
+    quantite_min:parseInt(document.getElementById('m-qmin').value,10)||0,
     etat:document.getElementById('m-eta').value,
     localisation:document.getElementById('m-loc').value.trim()||null,
     date_achat:document.getElementById('m-dac').value||null,
@@ -7322,6 +7493,73 @@ async function delMateriel(id){
   if(error)return alert('Erreur : '+error.message);
   D.materiel=D.materiel.filter(m=>m.id!==id);
   render();
+}
+
+async function saveMaterielEmprunt(){
+  const mat=D.materiel.find(m=>m.id===UI.materielTargetId);
+  if(!mat)return alert('Matériel introuvable.');
+  const emprunteur=document.getElementById('me-nom').value.trim();
+  if(!emprunteur)return alert('Nom de l\'emprunteur obligatoire.');
+  const quantite=parseInt(document.getElementById('me-qte').value,10)||0;
+  if(quantite<1)return alert('Quantité invalide.');
+  const dispo=materielDisponible(mat);
+  if(quantite>dispo)return alert(`Seulement ${dispo} unité(s) disponible(s).`);
+  const dateSortie=document.getElementById('me-dso').value;
+  if(!dateSortie)return alert('Date de sortie obligatoire.');
+  const payload={
+    materiel_id:mat.id,
+    emprunteur_nom:emprunteur,
+    quantite,
+    date_sortie:dateSortie,
+    date_retour_prevue:document.getElementById('me-drp').value||null,
+    date_retour_effective:null,
+    notes:document.getElementById('me-not').value.trim()||null,
+    updated_at:new Date().toISOString(),
+  };
+  const {data,error}=await SB.from('materiel_emprunts').insert({...payload,id:crypto.randomUUID(),created_at:new Date().toISOString()}).select().single();
+  if(error)return alert('Erreur : '+error.message);
+  D.materielEmprunts.push(data);
+  closeModal();render();
+}
+
+async function marquerRetourEmprunt(id){
+  if(!requireWritePerm('perm_materiel'))return;
+  if(!confirm('Marquer ce matériel comme rendu ?'))return;
+  const payload={date_retour_effective:new Date().toISOString().split('T')[0],updated_at:new Date().toISOString()};
+  const {error}=await SB.from('materiel_emprunts').update(payload).eq('id',id);
+  if(error)return alert('Erreur : '+error.message);
+  Object.assign(D.materielEmprunts.find(e=>e.id===id),payload);
+  render();
+}
+
+async function saveMaterielMouvement(){
+  const mat=D.materiel.find(m=>m.id===UI.materielTargetId);
+  if(!mat)return alert('Matériel introuvable.');
+  const type=document.getElementById('mm-typ').value;
+  const qteRaw=parseInt(document.getElementById('mm-qte').value,10)||0;
+  const date=document.getElementById('mm-dat').value;
+  if(!date)return alert('Date obligatoire.');
+  let delta;
+  if(type==='ajustement'){
+    if(qteRaw===0)return alert('Quantité invalide.');
+    delta=qteRaw;
+  }else{
+    if(qteRaw<1)return alert('Quantité invalide.');
+    delta=(type==='achat')?qteRaw:-qteRaw;
+  }
+  const nouvelleQte=(mat.quantite||0)+delta;
+  if(nouvelleQte<0)return alert(`Ce mouvement ferait passer le stock à ${nouvelleQte} — impossible.`);
+  const motif=document.getElementById('mm-mot').value.trim()||null;
+
+  const {error:errMat}=await SB.from('materiel').update({quantite:nouvelleQte,updated_at:new Date().toISOString()}).eq('id',mat.id);
+  if(errMat)return alert('Erreur : '+errMat.message);
+  mat.quantite=nouvelleQte;
+
+  const mvtPayload={materiel_id:mat.id,type,quantite_delta:delta,motif,date,user_id:UI.currentUser?.id||null};
+  const {data,error}=await SB.from('materiel_mouvements').insert({...mvtPayload,id:crypto.randomUUID(),created_at:new Date().toISOString()}).select().single();
+  if(error)return alert('Erreur : '+error.message);
+  D.materielMouvements.push(data);
+  closeModal();render();
 }
 
 async function savePlanning(){

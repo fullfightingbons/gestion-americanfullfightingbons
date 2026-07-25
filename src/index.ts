@@ -338,7 +338,7 @@ const DB_TABLES = new Set([
   'diplomes', 'exercices', 'factures', 'feedback_campaigns', 'feedback_recipients', 'feedback_responses',
   'inscriptions_publiques', 'deletion_requests',
   'journal_comptable', 'transactions', 'utilisateurs',
-  'presences', 'materiel', 'budget_previsionnel', 'planning_encadrants',
+  'presences', 'materiel', 'materiel_emprunts', 'materiel_mouvements', 'budget_previsionnel', 'planning_encadrants',
 ]);
 
 const DB_PRIMARY_KEYS: Record<string, string> = {
@@ -347,7 +347,8 @@ const DB_PRIMARY_KEYS: Record<string, string> = {
   feedback_campaigns: 'id', feedback_recipients: 'id', feedback_responses: 'id',
   inscriptions_publiques: 'id', journal_comptable: 'id', transactions: 'id',
   utilisateurs: 'id', deletion_requests: 'id',
-  presences: 'id', materiel: 'id', budget_previsionnel: 'id', planning_encadrants: 'id',
+  presences: 'id', materiel: 'id', materiel_emprunts: 'id', materiel_mouvements: 'id',
+  budget_previsionnel: 'id', planning_encadrants: 'id',
 };
 
 const DB_TABLE_PERMISSIONS: Record<string, { read: string; write: string }> = {
@@ -371,6 +372,10 @@ const DB_TABLE_PERMISSIONS: Record<string, { read: string; write: string }> = {
   presences: { read: 'perm_presences', write: 'perm_presences' },
   // Inventaire du matériel club, distinct des ventes boutique (cf. migration 0026).
   materiel: { read: 'perm_materiel', write: 'perm_materiel' },
+  // Sorties/retours et historique des mouvements de stock (cf. migration 0029) —
+  // même permission que materiel : ce sont deux vues du même module.
+  materiel_emprunts: { read: 'perm_materiel', write: 'perm_materiel' },
+  materiel_mouvements: { read: 'perm_materiel', write: 'perm_materiel' },
   // Budget voté en AG, comparé au réalisé (cf. migration 0027 + route /api/budget/:exercice_id/comparatif).
   budget_previsionnel: { read: 'perm_comptabilite', write: 'perm_comptabilite' },
   // Planning des cours réguliers, distinct du calendrier d'événements ponctuels (cf. migration 0028).
