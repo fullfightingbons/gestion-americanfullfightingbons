@@ -3264,7 +3264,7 @@ function vDiplomes(){
       <div class="card">
       <div style="font-size:11px;color:var(--txt2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Modèles disponibles</div>
       ${D.diplomeTemplates.length
-        ? `<div class="dipl-thumbs">${D.diplomeTemplates.map(t=>`<button class="dipl-thumb ${UI.diplome.templatePath===t.path?'active':''}" type="button" onclick="UI.diplome.templatePath='${t.path.replace(/'/g,"\\'")}';render()"><img src="${t.url}" alt="${t.label}" loading="lazy" decoding="async"><span>${t.label}</span></button>`).join('')}</div>`
+        ? `<div class="dipl-thumbs">${D.diplomeTemplates.map(t=>`<button class="dipl-thumb ${UI.diplome.templatePath===t.path?'active':''}" type="button" onclick="UI.diplome.templatePath='${t.path.replace(/'/g,"\\'")}';render()"><img src="/cdn-cgi/image/fit=scale-down,format=auto,onerror=redirect,width=220${t.url}" alt="${t.label}" loading="lazy" decoding="async"><span>${t.label}</span></button>`).join('')}</div>`
         : `<div class="empty">${D.diplomeTemplatesError?`Impossible de lister le bucket <strong>${DIPLOME_BUCKET}</strong> : ${esc(D.diplomeTemplatesError)}.`:`Aucun modèle d'image PNG/JPG/WebP trouvé dans le bucket <strong>${DIPLOME_BUCKET}</strong>.`}</div>`}
         </div>
         </div>
