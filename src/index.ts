@@ -555,9 +555,26 @@ async function handleDbApi(request: Request, env: Env, table: string, ctx: Execu
       }
       const limit = Math.min(Number(body?.limit) || DB_MAX_QUERY_LIMIT, DB_MAX_QUERY_LIMIT);
       sql += ` LIMIT ${body?.single ? 1 : limit}`;
+      // Pagination optionnelle : absente des appels existants (offset non
+      // envoyé), donc aucun changement de comportement tant que le frontend
+      // ne l'utilise pas explicitement.
+      const offset = Math.max(0, Math.trunc(Number(body?.offset)) || 0);
+      if (!body?.single && offset > 0) sql += ` OFFSET ${offset}`;
       const { results } = await env.DB.prepare(sql).bind(...params).all();
       const rows = results || [];
-      return json({ data: body?.single ? (rows[0] ?? null) : rows, error: null });
+      // Total optionnel (indépendant de limit/offset) : ne coûte une 2e
+      // requête que si le frontend le demande explicitement via withCount.
+      let total: number | undefined;
+      if (body?.withCount && !body?.single) {
+        const countSql = `SELECT COUNT(*) AS n FROM ${dbQuoteIdentifier(table)}${whereSql}`;
+        const countRow = await env.DB.prepare(countSql).bind(...params).first<{ n: number }>();
+        total = Number(countRow?.n ?? 0);
+      }
+      return json({
+        data: body?.single ? (rows[0] ?? null) : rows,
+        error: null,
+        ...(total !== undefined ? { total } : {}),
+      });
     }
 
     if (op === 'insert' || op === 'upsert') {
