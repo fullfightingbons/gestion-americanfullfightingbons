@@ -1004,7 +1004,59 @@ async function checkCertificatsExpirants(env: Env): Promise<{ checked: number; s
   return { checked: results?.length || 0, sent, errors };
 }
 
-// ── Relance automatique des factures impayées ──────────────────────────────
+// ── Relance automatique des prêts de matériel en retard ─────────────────────
+// Même principe que checkCertificatsExpirants : un prêt dont la date de
+// retour prévue est dépassée et qui n'a pas encore été rendu déclenche une
+// relance email à l'emprunteur, une seule fois par prêt (cf.
+// materiel_rappels, migration 0030). Ne concerne que les emprunts liés à un
+// adhérent identifié (adherent_id) : impossible d'emailer un emprunteur
+// externe dont on n'a que le nom.
+async function checkMaterielEnRetard(env: Env): Promise<{ checked: number; sent: number; errors: string[] }> {
+  const errors: string[] = [];
+  let sent = 0;
+
+  const { results } = await env.DB.prepare(
+    `SELECT e.id, e.quantite, e.date_retour_prevue, m.nom AS materiel_nom,
+            a.prenom, a.nom, a.email
+     FROM materiel_emprunts e
+     JOIN materiel m ON m.id = e.materiel_id
+     JOIN adherents a ON a.id = e.adherent_id
+     WHERE e.date_retour_effective IS NULL
+       AND e.date_retour_prevue IS NOT NULL AND e.date_retour_prevue < date('now')
+       AND a.email IS NOT NULL AND a.email != ''`
+  ).all<{ id: string; quantite: number; date_retour_prevue: string; materiel_nom: string; prenom: string; nom: string; email: string }>();
+
+  for (const row of results || []) {
+    const already = await env.DB.prepare(
+      `SELECT id FROM materiel_rappels WHERE emprunt_id = ?`
+    ).bind(row.id).first();
+    if (already) continue;
+
+    const dateFr = new Date(row.date_retour_prevue).toLocaleDateString('fr-FR');
+    const html = `
+      <p>Bonjour ${row.prenom},</p>
+      <p>Le matériel du club que vous avez emprunté (<strong>${row.materiel_nom}</strong>${row.quantite > 1 ? ` × ${row.quantite}` : ''}) devait être rendu le ${dateFr}.</p>
+      <p>Merci de le rapporter au dojo dès que possible, ou de nous prévenir si vous avez besoin d'un délai supplémentaire.</p>
+      <p>Sportivement,<br>AFFBC</p>`;
+
+    const result = await sendBrevoEmail(env, {
+      to: [{ email: row.email, name: `${row.prenom} ${row.nom}` }],
+      subject: `Matériel du club à rendre — ${row.materiel_nom}`,
+      html,
+    });
+
+    if (result.ok) {
+      sent++;
+      await env.DB.prepare(
+        `INSERT INTO materiel_rappels (id, emprunt_id) VALUES (?, ?)`
+      ).bind(crypto.randomUUID(), row.id).run();
+    } else {
+      errors.push(`${row.prenom} ${row.nom} (${row.email}) : ${result.error}`);
+    }
+  }
+
+  return { checked: results?.length || 0, sent, errors };
+}
 // Même principe que checkCertificatsExpirants : une facture émise/en attente
 // dont la date d'émission dépasse 15 puis 30 jours reçoit une relance email,
 // une seule fois par palier (cf. facture_relances_auto, migration 0024). Ne
@@ -3635,6 +3687,14 @@ export default {
       checkFacturesEnRetard(env).then(
         (r) => console.log('[cron:relances-factures]', JSON.stringify(r)),
         (e) => console.error('[cron:relances-factures] échec', e instanceof Error ? e.stack || e.message : String(e)),
+      ),
+    );
+    // Relance automatique des prêts de matériel en retard
+    // (cf. checkMaterielEnRetard) — même trigger cron.
+    ctx.waitUntil(
+      checkMaterielEnRetard(env).then(
+        (r) => console.log('[cron:materiel-retard]', JSON.stringify(r)),
+        (e) => console.error('[cron:materiel-retard] échec', e instanceof Error ? e.stack || e.message : String(e)),
       ),
     );
   },

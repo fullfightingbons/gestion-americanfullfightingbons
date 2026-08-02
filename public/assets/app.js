@@ -334,6 +334,96 @@ function confirmModal(message,options){
 }
 window.confirmModal=confirmModal;
 
+// ── Recherche globale (Ctrl+K) ────────────────────────────────
+// Ne cherche que dans les sections déjà accessibles à l'utilisateur
+// connecté (perm_adherents / perm_materiel), et charge les données via
+// loadTabData si elles ne sont pas encore en mémoire (chargement paresseux
+// par onglet côté app).
+function normalizeSearchText(s){
+  return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+}
+let globalSearchDebounce=null;
+async function openGlobalSearch(){
+  if(document.getElementById('global-search-overlay')) return;
+  const div=document.createElement('div');
+  div.className='modal-bg';
+  div.id='global-search-overlay';
+  div.innerHTML=`<div class="modal" role="dialog" aria-modal="true" aria-label="Recherche globale" style="max-width:560px;padding:0;overflow:hidden">
+    <div style="padding:16px 18px;border-bottom:1px solid var(--brd)">
+      <input type="text" id="global-search-input" placeholder="Rechercher un·e adhérent·e, du matériel…" autocomplete="off"
+        style="width:100%;border:none;outline:none;font-size:16px;background:transparent;color:var(--ink)">
+    </div>
+    <div id="global-search-results" style="max-height:60vh;overflow:auto;padding:8px 0"></div>
+    <div style="padding:8px 18px;border-top:1px solid var(--brd);font-size:11px;color:var(--muted)">Échap pour fermer</div>
+  </div>`;
+  document.body.appendChild(div);
+  div.addEventListener('click',e=>{ if(e.target===div) closeGlobalSearch(); });
+  const input=document.getElementById('global-search-input');
+  input.addEventListener('input',()=>{
+    clearTimeout(globalSearchDebounce);
+    globalSearchDebounce=setTimeout(()=>runGlobalSearch(input.value),150);
+  });
+  input.focus();
+  document.getElementById('global-search-results').innerHTML='<div style="padding:14px 18px;color:var(--muted);font-size:13px">Chargement…</div>';
+  await Promise.all([
+    hasPerm('perm_adherents')?loadTabData('adherents'):Promise.resolve(),
+    hasPerm('perm_materiel')?loadTabData('materiel'):Promise.resolve(),
+  ]).catch(()=>{});
+  runGlobalSearch('');
+}
+function closeGlobalSearch(){
+  document.getElementById('global-search-overlay')?.remove();
+}
+function runGlobalSearch(rawQuery){
+  const host=document.getElementById('global-search-results');
+  if(!host) return;
+  const q=normalizeSearchText(rawQuery).trim();
+  if(!q){ host.innerHTML='<div style="padding:14px 18px;color:var(--muted);font-size:13px">Tapez pour chercher parmi les adhérents et le matériel.</div>'; return; }
+
+  const adhResults=hasPerm('perm_adherents')?(D.adherents||[]).filter(a=>
+    normalizeSearchText(`${a.nom||''} ${a.prenom||''} ${a.email||''}`).includes(q)
+  ).slice(0,6):[];
+  const matResults=hasPerm('perm_materiel')?(D.materiel||[]).filter(m=>
+    normalizeSearchText(`${m.nom||''} ${m.categorie||''}`).includes(q)
+  ).slice(0,6):[];
+
+  if(!adhResults.length && !matResults.length){
+    host.innerHTML='<div style="padding:14px 18px;color:var(--muted);font-size:13px">Aucun résultat.</div>';
+    return;
+  }
+  const rowHtml=(icon,title,sub,onclick)=>`
+    <div class="global-search-row" onclick="${onclick}" style="display:flex;align-items:center;gap:10px;padding:9px 18px;cursor:pointer">
+      <span style="font-size:16px">${icon}</span>
+      <div style="min-width:0">
+        <div style="font-size:14px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(title)}</div>
+        ${sub?`<div style="font-size:12px;color:var(--muted)">${esc(sub)}</div>`:''}
+      </div>
+    </div>`;
+  let html='';
+  if(adhResults.length){
+    html+=`<div style="padding:6px 18px 2px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Adhérents</div>`;
+    html+=adhResults.map(a=>rowHtml('👤',`${a.nom||''} ${a.prenom||''}`.trim(),a.email||'',`goToSearchResult('adh','${a.id}')`)).join('');
+  }
+  if(matResults.length){
+    html+=`<div style="padding:6px 18px 2px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Matériel</div>`;
+    html+=matResults.map(m=>rowHtml('🎒',m.nom||'',m.categorie||'',`goToSearchResult('materiel','${m.id}')`)).join('');
+  }
+  host.innerHTML=html;
+}
+function goToSearchResult(type,id){
+  closeGlobalSearch();
+  if(type==='adh'){ showTab('adherents').then(()=>openModal('adh',id)); }
+  else if(type==='materiel'){ UI.materielSection='inventaire'; showTab('materiel').then(()=>openModal('materiel',id)); }
+}
+document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){
+    e.preventDefault();
+    openGlobalSearch();
+    return;
+  }
+  if(e.key==='Escape' && document.getElementById('global-search-overlay')) closeGlobalSearch();
+});
+
 
 function renderNotices(){
   const host=document.getElementById('app-notices');
@@ -1984,6 +2074,32 @@ async function loadRenouvellement(){
 
 function vDashboard(){
   const d=dashboardData();
+  // Ordre de priorité des blocs du dashboard selon le rôle connecté : les
+  // rôles à perms multiples (admin, tresorier) ont un ordre pensé pour leur
+  // usage courant ; les autres rôles n'ont de toute façon presque jamais
+  // qu'un seul bloc visible après filtrage par permission, donc l'ordre
+  // compte peu pour eux — un défaut raisonnable suffit.
+  const DASH_GRID_ORDER={
+    tresorier:['banque','comptabilite','ventes','adherents'],
+    admin:['adherents','banque','comptabilite','ventes'],
+  };
+  const DASH_VIZ_ORDER={
+    tresorier:['ventes-viz','achats-viz','qualite-viz'],
+    admin:['ventes-viz','achats-viz','qualite-viz'],
+  };
+  const DASH_GRID_DEFAULT=['adherents','banque','comptabilite','ventes'];
+  const DASH_VIZ_DEFAULT=['ventes-viz','achats-viz','qualite-viz'];
+  function orderDashCards(cards,order){
+    const visible=cards.filter(c=>c.visible);
+    const rank=id=>{const i=order.indexOf(id);return i===-1?order.length:i;};
+    return visible.slice().sort((a,b)=>rank(a.id)-rank(b.id));
+  }
+  const dashGridCards=orderDashCards([
+    {id:'adherents',visible:hasPerm('perm_adherents'),html:`<div class="dash-card" style="cursor:pointer" onclick="showTab('adherents')" title="Voir les adhérents"><h3>Adhérents</h3><strong>${d.adherents.length}</strong><p>${d.adherentsSoon.length} échéances proches</p></div>`},
+    {id:'banque',visible:hasPerm('perm_banque'),html:`<div class="dash-card" style="cursor:pointer" onclick="showTab('banque')" title="Ouvrir la banque"><h3>Trésorerie</h3><strong>${euro(d.totalBank)}</strong><p>${d.unreconciledTransactions.length} non rapprochées</p></div>`},
+    {id:'comptabilite',visible:hasPerm('perm_comptabilite'),html:`<div class="dash-card" style="cursor:pointer" onclick="showTab('comptabilite')" title="Ouvrir la comptabilité"><h3>Compta</h3><strong>${d.monthEntriesList.length}</strong><p>Écart ${euro(d.accountingGap)}</p></div>`},
+    {id:'ventes',visible:hasPerm('perm_facturation'),html:`<div class="dash-card" style="cursor:pointer" onclick="showTab('facture')" title="Voir les ventes"><h3>Ventes</h3><strong>${d.invoicesOpen.length}</strong><p>${euro(d.openInvoiceAmount)} à encaisser</p></div>`},
+  ],DASH_GRID_ORDER[UI.currentUser?.role]||DASH_GRID_DEFAULT).map(c=>c.html).join('\n  ');
   const attentionItems=buildDashboardAttentionItems(d);
   const optimizationTips=buildDashboardOptimizationTips(d);
   const activeAlerts=d.alerts.length;
@@ -2011,6 +2127,11 @@ function vDashboard(){
   const buySeries=buildMonthSeries(sumByMonth(d.achats,'date_op',a=>+a.montant||0),dashM);
   const entrySeries=buildMonthSeries(countByMonth(d.journal,'date_op'),dashM);
   const docsComplete=d.adherents.length-d.incompleteList.length;
+  const dashVizCards=orderDashCards([
+    {id:'ventes-viz',visible:hasPerm('perm_facturation'),html:`<div class="dash-viz-card"><div class="dash-viz-title">Ventes 6 mois</div><div class="dash-viz-value">${euro(d.monthInvoiceAmount)}</div><div class="dash-viz-sub">Ce mois</div><div class="dash-chart">${renderBarChart(invoiceSeries,'#d84a2f')}<div class="dash-chart-legend"><span>${esc(invoiceSeries[0]?.label||'')}</span><span>${esc(invoiceSeries.at(-1)?.label||'')}</span></div></div></div>`},
+    {id:'achats-viz',visible:hasPerm('perm_achats'),html:`<div class="dash-viz-card"><div class="dash-viz-title">Achats 6 mois</div><div class="dash-viz-value">${euro(d.monthBuyAmount)}</div><div class="dash-viz-sub">Ce mois</div><div class="dash-chart">${renderLineChart(buySeries,'#a67c2e')}<div class="dash-chart-legend"><span>${esc(buySeries[0]?.label||'')}</span><span>${esc(buySeries.at(-1)?.label||'')}</span></div></div></div>`},
+    {id:'qualite-viz',visible:hasPerm('perm_adherents'),html:`<div class="dash-viz-card"><div class="dash-viz-title">Qualité des données</div><div class="dash-viz-value">${docsComplete}/${d.adherents.length||0}</div><div class="dash-viz-sub">Dossiers complets</div><div class="dash-chart">${renderGauge(docsComplete,d.adherents.length||1,'#1e7e34')}</div></div>`},
+  ],DASH_VIZ_ORDER[UI.currentUser?.role]||DASH_VIZ_DEFAULT).map(c=>c.html).join('\n  ');
   const reconciled=d.bankTransactions.length-d.unreconciledTransactions.length;
   const recentFeed=[
     ...(hasPerm('perm_facturation')?d.recentInvoices.map(f=>({title:`Vente ${f.numero||'sans numéro'}`,detail:`${fd(f.date_op)} · ${f.destinataire||'Destinataire non renseigné'} · ${euro((f.lignes||[]).reduce((sum,l)=>sum+(+l.qte||0)*(+l.pu||0),0))}`,tab:'facture',badge:'bblue',badgeText:f.statut||'Vente'})):[]),
@@ -2138,30 +2259,10 @@ function vDashboard(){
   </div>
   </div>
   <div class="dash-grid">
-  <div class="dash-card" style="cursor:pointer" onclick="showTab('adherents')" title="Voir les adhérents"><h3>Adhérents</h3><strong>${hasPerm('perm_adherents')?d.adherents.length:'—'}</strong><p>${hasPerm('perm_adherents')?`${d.adherentsSoon.length} échéances proches`:'Rubrique non accessible.'}</p></div>
-  <div class="dash-card" style="cursor:pointer" onclick="showTab('banque')" title="Ouvrir la banque"><h3>Trésorerie</h3><strong>${hasPerm('perm_banque')?euro(d.totalBank):'—'}</strong><p>${hasPerm('perm_banque')?`${d.unreconciledTransactions.length} non rapprochées`:'Rubrique non accessible.'}</p></div>
-  <div class="dash-card" style="cursor:pointer" onclick="showTab('comptabilite')" title="Ouvrir la comptabilité"><h3>Compta</h3><strong>${hasPerm('perm_comptabilite')?d.monthEntriesList.length:'—'}</strong><p>${hasPerm('perm_comptabilite')?`Écart ${euro(d.accountingGap)}`:'Rubrique non accessible.'}</p></div>
-  <div class="dash-card" style="cursor:pointer" onclick="showTab('facture')" title="Voir les ventes"><h3>Ventes</h3><strong>${hasPerm('perm_facturation')?d.invoicesOpen.length:'—'}</strong><p>${hasPerm('perm_facturation')?`${euro(d.openInvoiceAmount)} à encaisser`:'Rubrique non accessible.'}</p></div>
+  ${dashGridCards}
   </div>
   <div class="dash-viz-grid">
-  <div class="dash-viz-card">
-  <div class="dash-viz-title">Ventes 6 mois</div>
-  <div class="dash-viz-value">${hasPerm('perm_facturation')?euro(d.monthInvoiceAmount):'—'}</div>
-  <div class="dash-viz-sub">${hasPerm('perm_facturation')?'Ce mois':'Rubrique non accessible.'}</div>
-  ${hasPerm('perm_facturation')?`<div class="dash-chart">${renderBarChart(invoiceSeries,'#d84a2f')}<div class="dash-chart-legend"><span>${esc(invoiceSeries[0]?.label||'')}</span><span>${esc(invoiceSeries.at(-1)?.label||'')}</span></div></div>`:''}
-  </div>
-  <div class="dash-viz-card">
-  <div class="dash-viz-title">Achats 6 mois</div>
-  <div class="dash-viz-value">${hasPerm('perm_achats')?euro(d.monthBuyAmount):'—'}</div>
-  <div class="dash-viz-sub">${hasPerm('perm_achats')?'Ce mois':'Rubrique non accessible.'}</div>
-  ${hasPerm('perm_achats')?`<div class="dash-chart">${renderLineChart(buySeries,'#a67c2e')}<div class="dash-chart-legend"><span>${esc(buySeries[0]?.label||'')}</span><span>${esc(buySeries.at(-1)?.label||'')}</span></div></div>`:''}
-  </div>
-  <div class="dash-viz-card">
-  <div class="dash-viz-title">Qualité des données</div>
-  <div class="dash-viz-value">${hasPerm('perm_adherents')?`${docsComplete}/${d.adherents.length||0}`:'—'}</div>
-  <div class="dash-viz-sub">${hasPerm('perm_adherents')?'Dossiers complets':'Rubrique non accessible.'}</div>
-  ${hasPerm('perm_adherents')?`<div class="dash-chart">${renderGauge(docsComplete,d.adherents.length||1,'#1e7e34')}</div>`:''}
-  </div>
+  ${dashVizCards}
   </div>
   <div class="card" style="margin-bottom:16px">
   <div class="stit" style="margin-top:0">Tendances mensuelles</div>
