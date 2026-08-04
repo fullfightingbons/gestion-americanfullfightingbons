@@ -6522,7 +6522,7 @@ async function loadRgpdRequests(){
 
 async function executeDeletionRequest(id){
   if(!confirm("Exécuter la suppression maintenant ? Cette action anonymise les données personnelles et supprime le compte de connexion — irréversible."))return;
-  const res=await apiRequest(`/api/deletion-requests/${id}/execute`,{method:'POST'});
+  const res=await apiRequest(`/deletion-requests/${id}/execute`,{method:'POST'});
   if(res.error) return alert('Suppression impossible : '+res.error.message);
   notify('success','Données anonymisées.','RGPD');
   loadRgpdRequests();
@@ -6531,7 +6531,7 @@ async function executeDeletionRequest(id){
 async function rejectDeletionRequest(id){
   const notes=prompt('Motif du refus (visible en interne uniquement) :');
   if(notes===null)return;
-  const res=await apiRequest(`/api/deletion-requests/${id}/reject`,{method:'POST',body:JSON.stringify({notes})});
+  const res=await apiRequest(`/deletion-requests/${id}/reject`,{method:'POST',body:JSON.stringify({notes})});
   if(res.error) return alert('Refus impossible : '+res.error.message);
   notify('success','Demande refusée.','RGPD');
   loadRgpdRequests();
@@ -7159,7 +7159,7 @@ function openModal(t,id){
 // ouverte et pas nécessaire pour la liste — évite un aller-retour à chaque
 // rendu de la liste des adhérents.
 async function loadGuardianInfo(adherentId){
-  const res=await apiRequest(`/api/adherents/${adherentId}/guardian-suggestions`);
+  const res=await apiRequest(`/adherents/${adherentId}/guardian-suggestions`);
   if(UI.modal==='adh' && UI.editObj?.id===adherentId){
     UI.guardianInfo=res.error?{error:res.error.message||'Chargement impossible.'}:res.data;
     renderModal();
@@ -7173,7 +7173,7 @@ async function loadGuardianInfo(adherentId){
 async function loadFamilles(){
   if(D.loading.familles) return;
   D.loading.familles=true;
-  const res=await apiRequest('/api/adherents/families');
+  const res=await apiRequest('/adherents/families');
   D.loading.familles=false;
   if(res.error){ D.famillesError=res.error.message||'Chargement impossible.'; markLoaded('familles'); render(); return; }
   D.familles=res.data||[];
@@ -7242,7 +7242,7 @@ function vAdhFamilles(canWrite){
 
 async function linkGuardian(adherentId,email){
   if(!email) return alert('Adresse e-mail requise.');
-  const res=await apiRequest(`/api/adherents/${adherentId}/guardian`,{method:'POST',body:JSON.stringify({guardianEmail:email})});
+  const res=await apiRequest(`/adherents/${adherentId}/guardian`,{method:'POST',body:JSON.stringify({guardianEmail:email})});
   if(res.error) return alert('Liaison impossible : '+res.error.message);
   notify('success','Lien familial mis à jour.','Tutelle');
   loadGuardianInfo(adherentId);
@@ -7250,7 +7250,7 @@ async function linkGuardian(adherentId,email){
 
 async function unlinkGuardian(adherentId){
   if(!confirm('Retirer le lien de tutelle pour cet adhérent ?')) return;
-  const res=await apiRequest(`/api/adherents/${adherentId}/guardian`,{method:'POST',body:JSON.stringify({guardianEmail:null})});
+  const res=await apiRequest(`/adherents/${adherentId}/guardian`,{method:'POST',body:JSON.stringify({guardianEmail:null})});
   if(res.error) return alert('Déliaison impossible : '+res.error.message);
   notify('success','Lien familial retiré.','Tutelle');
   loadGuardianInfo(adherentId);

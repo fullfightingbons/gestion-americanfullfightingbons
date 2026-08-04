@@ -3609,6 +3609,20 @@ if (path.startsWith("/api/") && !publicApiRoutes.has(path)) {
     // ── Fallback : servir le front-office HTML ────────────────────────────
     // (le fichier index.html est servi via env.ASSETS si configuré,
     //  sinon on renvoie une réponse minimale)
+    //
+    // Cas particulier /api/* : si on arrive ici, aucune route API n'a
+    // matché. Renvoyer explicitement une erreur JSON plutôt que de laisser
+    // env.ASSETS.fetch() répondre avec une page 404 HTML — un corps non-JSON
+    // fait échouer le .json() du apiRequest() front (public/assets/app.js),
+    // qui retombe alors sur son message générique `HTTP ${status}` : l'appli
+    // affiche "HTTP 404" sans aucun indice sur la route en cause. Ça nous a
+    // fait perdre du temps à diagnostiquer un bug de préfixe /api/api/ côté
+    // front (cf. apiRequest/apiUrl) — cette erreur explicite l'aurait rendu
+    // évident immédiatement.
+    if (path.startsWith('/api/')) {
+      return err(`Route API introuvable : ${method} ${path}`, 404);
+    }
+
    if (env.ASSETS) {
   return env.ASSETS.fetch(request);
 }
