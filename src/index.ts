@@ -3002,6 +3002,58 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       );
     }
 
+    // GET /api/adherents/families — vue famille consolidée (staff,
+    // perm_adherents en lecture) : regroupe les adhérents de la saison en
+    // cours par tuteur (adherents.guardian_compte_id), avec le nom du
+    // tuteur résolu via son propre dossier adhérent s'il en a un. Ne
+    // renvoie que les foyers ayant au moins un lien posé — le lien lui-même
+    // reste un geste manuel du bureau (cf. POST .../guardian juste après),
+    // cette vue ne fait qu'agréger ce qui existe déjà.
+    if (method === 'GET' && path === '/api/adherents/families') {
+      const user = await getCurrentUserFromBearer(request, env);
+      if (!user) return err('Unauthorized', 401);
+      const rolePerms = await getRolePerms(env);
+      if (!dbHasPermission(user, 'perm_adherents', 'read', rolePerms)) return err('Permission refusée', 403);
+
+      const exercice = await env.DB
+        .prepare(`SELECT id FROM exercices WHERE statut = 'actif' ORDER BY date_debut DESC LIMIT 1`)
+        .first<{ id: string }>();
+
+      const { results } = await env.DB.prepare(`
+        SELECT
+          a.guardian_compte_id AS guardianCompteId,
+          ac.email AS guardianEmail,
+          ga.id AS guardianAdherentId, ga.nom AS guardianNom, ga.prenom AS guardianPrenom,
+          a.id, a.nom, a.prenom, a.email, a.date_fin_adhesion, a.certificat_date, a.statut
+        FROM adherents a
+        JOIN adherent_comptes ac ON ac.id = a.guardian_compte_id
+        LEFT JOIN adherents ga ON ga.id = ac.adherent_id
+        WHERE a.guardian_compte_id IS NOT NULL
+          ${exercice ? 'AND a.exercice_id = ?' : ''}
+        ORDER BY COALESCE(ga.nom, ac.email), COALESCE(ga.prenom, ''), a.nom, a.prenom
+      `).bind(...(exercice ? [exercice.id] : [])).all<any>();
+
+      const families = new Map<string, any>();
+      for (const row of results || []) {
+        if (!families.has(row.guardianCompteId)) {
+          families.set(row.guardianCompteId, {
+            guardianCompteId: row.guardianCompteId,
+            guardianEmail: row.guardianEmail,
+            guardianAdherentId: row.guardianAdherentId ?? null,
+            guardianNom: row.guardianNom ?? null,
+            guardianPrenom: row.guardianPrenom ?? null,
+            children: [],
+          });
+        }
+        families.get(row.guardianCompteId).children.push({
+          id: row.id, nom: row.nom, prenom: row.prenom, email: row.email,
+          date_fin_adhesion: row.date_fin_adhesion, certificat_date: row.certificat_date, statut: row.statut,
+        });
+      }
+
+      return json({ data: Array.from(families.values()), error: null });
+    }
+
     // GET /api/adherents/:id/guardian-suggestions — candidats de liaison
     // familiale suggérés par correspondance de nom de famille (staff,
     // perm_adherents en lecture). Volontairement une SUGGESTION à confirmer

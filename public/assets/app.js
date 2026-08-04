@@ -200,9 +200,10 @@ const D = {
     diplomes:[],
     feedbackCampaigns:[], feedbackRecipients:[], feedbackResponses:[],
     presences:[], materiel:[], materielEmprunts:[], materielMouvements:[], planning:[], budgetPrevisionnel:[], budgetComparatif:null,
+    familles:[], famillesError:null,
     renouvellement:null,
     rolePerms: JSON.parse(JSON.stringify(DEFAULT_ROLE_PERMS)),
-    loaded:{core:false,dashboard:false,adherents:false,banque:false,comptabilite:false,achat:false,facture:false,administration:false,diplomesArchive:false,feedback:false,presences:false,materiel:false,planning:false},
+    loaded:{core:false,dashboard:false,adherents:false,banque:false,comptabilite:false,achat:false,facture:false,administration:false,diplomesArchive:false,feedback:false,presences:false,materiel:false,planning:false,familles:false},
     loading:{},
 };
 const UI = {
@@ -214,6 +215,7 @@ const UI = {
   adhFilters:{statut:'',type:'',season:'current',special:''},
   materielFilters:{q:'',categorie:'',etat:'',dispo:''},
   materielSection:'inventaire',
+  adhSection:'liste',
   adhSelected:{},
   adhSort:{key:'nom',dir:'asc'},
   adhDetailId:null,
@@ -575,7 +577,7 @@ function markLoaded(key,value=true){
 }
 
 function resetLoadedData(){
-  D.loaded={core:false,dashboard:false,adherents:false,banque:false,comptabilite:false,achat:false,facture:false,administration:false,diplomesArchive:false,feedback:false,presences:false,materiel:false,planning:false};
+  D.loaded={core:false,dashboard:false,adherents:false,banque:false,comptabilite:false,achat:false,facture:false,administration:false,diplomesArchive:false,feedback:false,presences:false,materiel:false,planning:false,familles:false};
   D.loading={};
 }
 
@@ -2376,6 +2378,9 @@ function renderDashboardFeed(items, emptyText, badgeLabel){
 
 function vAdh(){
   const canWrite=hasPerm('perm_adherents','write');
+  if(!D.loaded.familles && UI.adhSection==='familles'){ loadFamilles(); }
+  if(!D.loaded.materiel && UI.adhSection==='familles'){ loadTabData('materiel'); }
+  if(UI.adhSection==='familles') return vAdhFamilles(canWrite);
   const season=currentSeasonLabel();
   const filtered=D.adherents.filter(a=>{
     const txt=(a.nom+' '+a.prenom+' '+(a.ville||'')).toLowerCase();
@@ -2398,7 +2403,10 @@ function vAdh(){
   <h2>Adhérents</h2>
   <p>Pilotez les dossiers, les cotisations et les pièces administratives depuis une vue unique, claire et rapide à parcourir.</p>
   </div>
+  <div style="display:flex;align-items:center;gap:10px">
+  <button class="btn sm" onclick="UI.adhSection='familles';render()">👪 Par famille</button>
   <div class="exo-badge">Saison en cours : ${season}</div>
+  </div>
   </div>
   <div class="g4" style="margin-bottom:14px">
   <div class="sc"><div class="v vr">${filtered.length}</div><div class="l">Adhérents</div></div>
@@ -7156,6 +7164,80 @@ async function loadGuardianInfo(adherentId){
     UI.guardianInfo=res.error?{error:res.error.message||'Chargement impossible.'}:res.data;
     renderModal();
   }
+}
+
+// ── Vue famille consolidée ──────────────────────────────────────
+// Agrège les fiches déjà liées par tutelle (cf. loadGuardianInfo/linkGuardian
+// ci-dessus, posé depuis la fiche adhérent) : rien de nouveau à saisir, juste
+// une lecture groupée par foyer plutôt qu'adhérent par adhérent.
+async function loadFamilles(){
+  if(D.loading.familles) return;
+  D.loading.familles=true;
+  const res=await apiRequest('/api/adherents/families');
+  D.loading.familles=false;
+  if(res.error){ D.famillesError=res.error.message||'Chargement impossible.'; markLoaded('familles'); render(); return; }
+  D.familles=res.data||[];
+  D.famillesError=null;
+  markLoaded('familles');
+  render();
+}
+
+function certifStatus(a){
+  if(!a.certificat_date) return 'unknown';
+  const dureeMois=Number(D.clubInfo?.duree_validite_certificat_mois)||12;
+  const echeance=new Date(a.certificat_date);
+  echeance.setMonth(echeance.getMonth()+dureeMois);
+  const diff=(echeance-new Date())/(1000*60*60*24);
+  if(diff<0) return 'expire';
+  if(diff<30) return 'soon';
+  return 'valid';
+}
+function certifBadge(a){
+  const s=certifStatus(a);
+  if(s==='valid')  return`<span class="badge bok">✓ Certificat</span>`;
+  if(s==='soon')   return`<span class="badge bwarn">⚠ Certificat</span>`;
+  if(s==='expire') return`<span class="badge bno">✗ Certificat</span>`;
+  return`<span class="badge bgray">— Certificat</span>`;
+}
+
+function vAdhFamilles(canWrite){
+  const familles=D.familles||[];
+  const empruntsActifs=(D.materielEmprunts||[]).filter(e=>!e.date_retour_effective);
+  return`<div class="view-head">
+  <div>
+  <div class="eyebrow">Suivi sportif et administratif</div>
+  <h2>Adhérents</h2>
+  <p>Vue regroupée par foyer, pour voir d'un coup d'œil tous les enfants d'une même famille.</p>
+  </div>
+  </div>
+  <div class="toolbar" style="margin-bottom:14px">
+  <button class="btn sm" onclick="UI.adhSection='liste';render()">← Retour à la liste</button>
+  </div>
+  ${D.famillesError?`<div class="empty">${esc(D.famillesError)}</div>`:''}
+  ${!D.famillesError && D.loading.familles?`<div class="empty">Chargement…</div>`:''}
+  ${!D.famillesError && !D.loading.familles && familles.length===0?`<div class="empty">Aucun lien familial posé pour l'instant. Un lien se pose depuis la fiche d'un adhérent (bouton « Tutelle »).</div>`:''}
+  ${familles.map(f=>{
+    const guardianLabel=f.guardianNom?`${esc(f.guardianNom)} ${esc(f.guardianPrenom||'')}`.trim():esc(f.guardianEmail);
+    const rows=f.children.map(c=>{
+      const emprunts=empruntsActifs.filter(e=>e.adherent_id===c.id);
+      return`<div class="row" style="align-items:center">
+        <div style="flex:1;min-width:0">
+          <strong>${esc(c.nom)} ${esc(c.prenom)}</strong>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
+            ${adhBadge(c)}
+            ${certifBadge(c)}
+            ${emprunts.length?`<span class="badge bwarn">🎒 ${emprunts.length} prêt${emprunts.length>1?'s':''} en cours</span>`:''}
+          </div>
+        </div>
+        <button class="btn sm" onclick="openModal('adh','${c.id}')" title="Voir la fiche">Voir la fiche</button>
+      </div>`;
+    }).join('');
+    return`<div class="card" style="padding:16px;margin-bottom:14px">
+      <div style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--txt2);margin-bottom:2px">Tuteur</div>
+      <div style="font-weight:700;margin-bottom:10px">${guardianLabel} <span style="font-weight:400;color:var(--txt2);font-size:13px">(${esc(f.guardianEmail)})</span></div>
+      <div class="row-list">${rows}</div>
+    </div>`;
+  }).join('')}`;
 }
 
 async function linkGuardian(adherentId,email){
