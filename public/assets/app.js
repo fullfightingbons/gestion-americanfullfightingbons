@@ -3069,7 +3069,17 @@ async function printDiplome(){
   }
 }
 
-// Impression batch : génère un PDF multi-pages pour une liste d'adhérents
+// Impression batch : génère un PDF multi-pages pour l'impression physique du
+// lot (téléchargement local admin, inchangé), ET archive un PDF individuel
+// par adhérent — jamais le PDF multi-pages partagé. L'ancienne version
+// archivait une seule copie du PDF complet (toutes les pages) et la
+// référençait depuis pdf_storage_path pour CHAQUE ligne du lot : un adhérent
+// téléchargeant « son » diplôme depuis l'espace membre (GET
+// /api/member/documents/diplome/:id) recevait alors le PDF entier du lot,
+// donc les diplômes (nom, ceinture, date...) de tous les autres adhérents du
+// même lot. Chaque page étant déjà rendue individuellement dans la boucle
+// ci-dessous, on réutilise ce même canevas pour produire un mini-PDF à une
+// page par adhérent, archivé sous son propre chemin R2.
 async function printDiplomeBatch(adherentIds){
   if(!adherentIds||!adherentIds.length) return alert('Sélectionnez au moins un adhérent.');
   const tpl=selectedDiplomeTemplate();
@@ -3083,6 +3093,7 @@ async function printDiplomeBatch(adherentIds){
     const date=UI.diplome.date||td();
     const saison=seasonFromDate(date)||currentSeasonLabel();
     const batchRecords=[];
+    let archiveFailures=0;
     for(const adh of adhs){
       if(!first) pdf.addPage();
       first=false;
@@ -3099,24 +3110,33 @@ async function printDiplomeBatch(adherentIds){
         signatureUrl:D.clubInfo?.[DIPLOME_SIGNATURE_KEY]||'',
         layout:selectedDiplomeLayout()
       });
-      pdf.addImage(canvas.toDataURL('image/png'),'PNG',0,0,DIPLOME_PAGE.pdfWidthPt,DIPLOME_PAGE.pdfHeightPt,undefined,'FAST');
-      batchRecords.push({adh,modele:bestTpl.label||bestTpl.name||''});
+      const imgData=canvas.toDataURL('image/png');
+      pdf.addImage(imgData,'PNG',0,0,DIPLOME_PAGE.pdfWidthPt,DIPLOME_PAGE.pdfHeightPt,undefined,'FAST');
+      // Archive individuelle (une page, un fichier) pour cet adhérent — voir
+      // le commentaire de fonction. `diplomeId` sert à la fois d'id de ligne
+      // et de nom de fichier : pas de Date.now() partagé qui pourrait, en
+      // toute rigueur, entrer en collision entre deux itérations rapides.
+      const safeName=`diplome_${(adh.nom||'').trim()}_${(adh.prenom||'').trim()}_${date}`
+        .replace(/\s+/g,'_')
+        .replace(/[^a-zA-Z0-9_.-]+/g,'');
+      const diplomeId=crypto.randomUUID();
+      let pdfStoragePath=null;
+      try{
+        const singlePdf=new jsPDF({orientation:'landscape',unit:'pt',format:'a4',compress:true});
+        singlePdf.addImage(imgData,'PNG',0,0,DIPLOME_PAGE.pdfWidthPt,DIPLOME_PAGE.pdfHeightPt,undefined,'FAST');
+        const archivePath=`${DIPLOME_PDF_PREFIX}/${saison}/${safeName||'diplome'}_${diplomeId}.pdf`;
+        const {error:uploadError}=await SB.storage.from(DIPLOME_PDF_BUCKET).upload(archivePath,singlePdf.output('blob'));
+        if(uploadError) throw uploadError;
+        pdfStoragePath=archivePath;
+      }catch(archiveError){
+        archiveFailures++;
+        console.error('Archivage diplôme (lot) impossible pour',adh.id,archiveError);
+      }
+      batchRecords.push({adh,modele:bestTpl.label||bestTpl.name||'',diplomeId,pdfStoragePath});
     }
     pdf.save(`diplomes_batch_${date}.pdf`);
-    // Archivage d'une seule copie PDF du lot complet (toutes les pages), référencée
-    // par chaque ligne de la table diplomes pour ce lot.
-    let pdfStoragePath=null;
-    try{
-      const pdfBlob=pdf.output('blob');
-      const archivePath=`${DIPLOME_PDF_PREFIX}/${saison}/batch_${date}_${adhs.length}adherents_${Date.now()}.pdf`;
-      const {error:uploadError}=await SB.storage.from(DIPLOME_PDF_BUCKET).upload(archivePath,pdfBlob);
-      if(uploadError) throw uploadError;
-      pdfStoragePath=archivePath;
-    }catch(archiveError){
-      notify('error','Lot généré mais non archivé (PDF) : '+(archiveError?.message||archiveError),'Diplômes batch');
-    }
-    const rows=batchRecords.map(({adh,modele})=>({
-      id:crypto.randomUUID(),
+    const rows=batchRecords.map(({adh,modele,diplomeId,pdfStoragePath})=>({
+      id:diplomeId,
       adherent_id:adh.id,
       nom:adh.nom||'',
       prenom:adh.prenom||'',
@@ -3132,7 +3152,8 @@ async function printDiplomeBatch(adherentIds){
     }));
     await SB.from('diplomes').insert(rows);
     await loadDiplomeArchive(true);
-    notify('success',`${adhs.length} diplôme(s) générés et tracés (saison ${saison}).`,'Diplômes batch');
+    const archiveNote=archiveFailures?` (${archiveFailures} sans archive PDF individuelle)`:'';
+    notify(archiveFailures?'warn':'success',`${adhs.length} diplôme(s) générés et tracés (saison ${saison})${archiveNote}.`,'Diplômes batch');
   }catch(err){
     alert('Génération batch impossible : '+(err?.message||err));
   }

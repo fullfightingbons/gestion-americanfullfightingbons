@@ -2299,7 +2299,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       const [me, diplomesResult, annuaireResult, cotisationsResult, feedbackResult] = await Promise.all([
         memberProfilePayload(member, env),
         env.DB.prepare(
-          `SELECT id, titre, ceinture, date_emission, saison, delivre_par
+          `SELECT id, titre, ceinture, date_emission, saison, delivre_par,
+                  (pdf_storage_path IS NOT NULL) AS pdf_disponible
            FROM diplomes WHERE adherent_id = ? ORDER BY date_emission DESC`
         ).bind(member.adherent_id).all(),
         env.DB.prepare(
@@ -2549,14 +2550,20 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
     }
 
     // GET /api/member/diplomes — liste des diplômes de ceinture de l'adhérent
-    // connecté (titre, ceinture, date, saison). Le chemin R2 n'est jamais
-    // exposé directement : le téléchargement passe par la route suivante,
-    // qui vérifie que le diplôme appartient bien à cet adhérent.
+    // connecté (titre, ceinture, date, saison, pdf_disponible). Le chemin R2
+    // n'est jamais exposé directement : le téléchargement passe par la route
+    // suivante, qui vérifie que le diplôme appartient bien à cet adhérent.
+    // pdf_disponible (booléen dérivé, jamais le chemin lui-même) permet au
+    // front de ne proposer le téléchargement que pour les diplômes ayant
+    // réellement une archive PDF : certains diplômes (échec d'archivage au
+    // moment de l'émission, ou émis avant l'ajout de pdf_storage_path)
+    // n'en ont pas.
     if (method === 'GET' && path === '/api/member/diplomes') {
       const member = await getCurrentMemberFromBearer(request, env);
       if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
       const { results } = await env.DB.prepare(
-        `SELECT id, titre, ceinture, date_emission, saison, delivre_par
+        `SELECT id, titre, ceinture, date_emission, saison, delivre_par,
+                (pdf_storage_path IS NOT NULL) AS pdf_disponible
          FROM diplomes WHERE adherent_id = ? ORDER BY date_emission DESC`
       ).bind(member.adherent_id).all();
       return json({ data: results || [], error: null });
