@@ -2287,8 +2287,10 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
     // distincts (/me, /diplomes, /annuaire), chacun repassant indépendamment
     // par getCurrentMemberFromBearer (une jointure D1 adherent_comptes ×
     // adherents à chaque fois). Ici l'authentification n'a lieu qu'une fois,
-    // et diplomes/annuaire réutilisent member.adherent_id déjà en main — même
-    // requêtes SQL que les routes individuelles ci-dessous, juste regroupées.
+    // et diplomes/annuaire/cotisations réutilisent l'identité du membre déjà
+    // en main (adherent_id ou adherent_email selon la requête, cf. commentaires
+    // plus bas) — mêmes requêtes SQL que les routes individuelles ci-dessous,
+    // juste regroupées.
     // Les routes /api/member/me, /diplomes, /annuaire sont conservées telles
     // quelles (pas de breaking change pour d'éventuels autres appelants),
     // /dashboard est un ajout, pas un remplacement.
@@ -2299,10 +2301,13 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       const [me, diplomesResult, annuaireResult, cotisationsResult, feedbackResult] = await Promise.all([
         memberProfilePayload(member, env),
         env.DB.prepare(
-          `SELECT id, titre, ceinture, date_emission, saison, delivre_par,
-                  (pdf_storage_path IS NOT NULL) AS pdf_disponible
-           FROM diplomes WHERE adherent_id = ? ORDER BY date_emission DESC`
-        ).bind(member.adherent_id).all(),
+          `SELECT d.id, d.titre, d.ceinture, d.date_emission, d.saison, d.delivre_par,
+                  (d.pdf_storage_path IS NOT NULL) AS pdf_disponible
+           FROM diplomes d
+           JOIN adherents a ON a.id = d.adherent_id
+           WHERE LOWER(TRIM(a.email)) = LOWER(TRIM(?))
+           ORDER BY d.date_emission DESC`
+        ).bind((member.isGuardianView ? member.adherent_email : member.email) || '').all(),
         env.DB.prepare(
           `SELECT prenom, nom FROM adherents
            WHERE annuaire_visible = 1 AND statut = 'Actif'
@@ -2315,12 +2320,17 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
         // du compte, cf. migration 0018), donc remonter depuis member.adherent_id
         // ne donnerait que la saison courante. Aucune nouvelle table requise :
         // la donnée existe déjà, seule l'agrégation manquait.
+        // member.email (adherent_comptes.email, stable) plutôt que
+        // member.adherent_email (adherents.email de la ligne active, qui peut
+        // dériver d'une saison à l'autre) — cf. commentaire complet sur
+        // /api/member/diplomes plus bas. Sauf en vue tuteur/enfant, où seul
+        // adherent_email reflète l'identité de l'enfant consulté.
         env.DB.prepare(
           `SELECT a.cotisation, a.paiement, a.date_inscription, a.exercice_id, e.libelle AS saison
            FROM adherents a LEFT JOIN exercices e ON e.id = a.exercice_id
            WHERE LOWER(TRIM(a.email)) = LOWER(TRIM(?))
            ORDER BY a.date_inscription DESC`
-        ).bind(member.adherent_email).all(),
+        ).bind((member.isGuardianView ? member.adherent_email : member.email) || '').all(),
         // Enquête de satisfaction en attente pour ce membre, s'il y en a une.
         // Réutilise le token déjà généré dans feedback_recipients (même
         // mécanisme que le lien envoyé par email) plutôt que d'inventer un
@@ -2360,7 +2370,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
          FROM adherents a LEFT JOIN exercices e ON e.id = a.exercice_id
          WHERE LOWER(TRIM(a.email)) = LOWER(TRIM(?))
          ORDER BY a.date_inscription DESC`
-      ).bind(member.adherent_email).all();
+      ).bind((member.isGuardianView ? member.adherent_email : member.email) || '').all();
       return json({ data: results || [], error: null });
     }
 
@@ -2550,30 +2560,53 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
     }
 
     // GET /api/member/diplomes — liste des diplômes de ceinture de l'adhérent
-    // connecté (titre, ceinture, date, saison, pdf_disponible). Le chemin R2
-    // n'est jamais exposé directement : le téléchargement passe par la route
-    // suivante, qui vérifie que le diplôme appartient bien à cet adhérent.
+    // connecté (titre, ceinture, date, saison, pdf_disponible), toutes
+    // saisons confondues. Le chemin R2 n'est jamais exposé directement : le
+    // téléchargement passe par la route suivante, qui vérifie que le diplôme
+    // appartient bien à cet adhérent.
     // pdf_disponible (booléen dérivé, jamais le chemin lui-même) permet au
     // front de ne proposer le téléchargement que pour les diplômes ayant
-    // réellement une archive PDF : certains diplômes (échec d'archivage au
-    // moment de l'émission, ou émis avant l'ajout de pdf_storage_path)
-    // n'en ont pas.
+    // réellement une archive PDF.
+    // Recherche par email plutôt que par adherent_id (même logique que
+    // cotisationsResult du dashboard ci-dessus) : le compte espace membre ne
+    // référence qu'UNE ligne adherents (celle active à l'activation du
+    // compte), alors qu'un adhérent réinscrit chaque saison obtient une
+    // nouvelle ligne adherents à chaque fois — filtrer par adherent_id
+    // manquerait les diplômes émis sur une saison plus récente que
+    // l'activation du compte.
+    // member.email (adherent_comptes.email, l'email de connexion, stable) est
+    // préféré à member.adherent_email (adherents.email de la ligne active,
+    // qui peut dériver d'une saison à l'autre si le formulaire de
+    // réinscription est resoumis avec une autre adresse) — SAUF en vue
+    // tuteur (isGuardianView), où seul member.adherent_email reflète
+    // effectivement l'identité de l'enfant consulté (qui n'a pas son propre
+    // compte de connexion).
     if (method === 'GET' && path === '/api/member/diplomes') {
       const member = await getCurrentMemberFromBearer(request, env);
       if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
       const { results } = await env.DB.prepare(
-        `SELECT id, titre, ceinture, date_emission, saison, delivre_par,
-                (pdf_storage_path IS NOT NULL) AS pdf_disponible
-         FROM diplomes WHERE adherent_id = ? ORDER BY date_emission DESC`
-      ).bind(member.adherent_id).all();
+        `SELECT d.id, d.titre, d.ceinture, d.date_emission, d.saison, d.delivre_par,
+                (d.pdf_storage_path IS NOT NULL) AS pdf_disponible
+         FROM diplomes d
+         JOIN adherents a ON a.id = d.adherent_id
+         WHERE LOWER(TRIM(a.email)) = LOWER(TRIM(?))
+         ORDER BY d.date_emission DESC`
+      ).bind((member.isGuardianView ? member.adherent_email : member.email) || '').all();
       return json({ data: results || [], error: null });
     }
 
     // GET /api/member/documents/diplome/:id — téléchargement d'un diplôme
     // précis. Réutilise le bucket R2_PDF déjà utilisé par l'admin (aucune
-    // migration de fichiers nécessaire), mais avec sa propre vérification de
-    // propriété (diplome.adherent_id === member.adherent_id) plutôt que la
-    // permission staff perm_diplomes utilisée par /api/storage/*.
+    // migration de fichiers nécessaire). Vérification de propriété par email
+    // (même logique que cotisationsResult / /api/member/diplomes ci-dessus)
+    // plutôt que diplome.adherent_id === member.adherent_id : le compte
+    // espace membre ne référence qu'UNE ligne adherents (celle active à
+    // l'activation du compte, cf. migration 0018) alors qu'un adhérent
+    // réinscrit chaque saison obtient une nouvelle ligne à chaque fois — un
+    // diplôme émis sur une saison plus récente que l'activation du compte
+    // serait sinon rejeté comme n'appartenant pas au membre. member.email vs
+    // member.adherent_email selon isGuardianView : cf. commentaire de
+    // /api/member/diplomes ci-dessus.
     const diplomeDocMatch = path.match(/^\/api\/member\/documents\/diplome\/([A-Za-z0-9_-]+)$/);
     if (diplomeDocMatch && method === 'GET') {
       const member = await getCurrentMemberFromBearer(request, env);
@@ -2581,9 +2614,12 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       if (!env.R2_PDF) return err('Stockage indisponible', 503);
 
       const diplome = await env.DB.prepare(
-        `SELECT id, adherent_id, pdf_storage_path, titre FROM diplomes WHERE id = ?`
-      ).bind(diplomeDocMatch[1]).first<any>();
-      if (!diplome || diplome.adherent_id !== member.adherent_id) return err('Diplôme introuvable', 404);
+        `SELECT d.id, d.pdf_storage_path, d.titre
+         FROM diplomes d
+         JOIN adherents a ON a.id = d.adherent_id
+         WHERE d.id = ? AND LOWER(TRIM(a.email)) = LOWER(TRIM(?))`
+      ).bind(diplomeDocMatch[1], (member.isGuardianView ? member.adherent_email : member.email) || '').first<any>();
+      if (!diplome) return err('Diplôme introuvable', 404);
       if (!diplome.pdf_storage_path) return err("Ce diplôme n'a pas d'archive PDF disponible", 404);
 
       const object = await env.R2_PDF.get(diplome.pdf_storage_path);
@@ -2904,6 +2940,72 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       );
       return json(
         { data: { ok: true, token: sessionToken, expiresAt: Date.now() + maxAgeSeconds * 1000 }, error: null },
+        200,
+        { 'Set-Cookie': buildMemberSessionCookie(request, sessionToken, maxAgeSeconds) },
+      );
+    }
+
+    // POST /api/member/email/change — changement de l'email de connexion par
+    // l'adhérent lui-même (jusqu'ici lecture seule, modifiable uniquement par
+    // le bureau depuis l'admin). Même schéma de sécurité que
+    // /api/member/password/change : mot de passe actuel requis, nouveau
+    // jeton émis immédiatement pour ne pas déconnecter la session en cours.
+    //
+    // adherent_comptes.email est aussi la clé utilisée par /api/member/
+    // diplomes, /api/member/cotisations et /api/member/dashboard pour
+    // retrouver l'historique d'un adhérent à travers ses réinscriptions
+    // (cf. commentaires plus haut) : le changer sans toucher aux lignes
+    // `adherents` existantes ferait disparaître tout cet historique. On met
+    // donc aussi à jour l'email de toutes les lignes `adherents` qui
+    // partageaient l'ancien email (ses propres saisons passées, et celles
+    // d'un enfant à charge si son dossier utilise la même adresse) dans la
+    // même transaction, pour rester cohérent avec ce qui vient d'être
+    // corrigé.
+    //
+    // Compromis assumé : pas d'email de confirmation envoyé à la nouvelle
+    // adresse avant bascule (comme le reste de l'espace membre, qui n'a pas
+    // d'infrastructure d'email transactionnel côté membre hors Brevo pour
+    // les campagnes). Une faute de frappe rend le compte inaccessible tant
+    // que le bureau ne corrige pas manuellement en admin.
+    if (method === 'POST' && path === '/api/member/email/change') {
+      const member = await getCurrentMemberFromBearer(request, env);
+      if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+
+      const body = await request.json<{ currentPassword?: string; nextEmail?: string }>().catch(() => ({} as any));
+      const nextEmail = String(body?.nextEmail || '').trim().toLowerCase();
+      if (!body?.currentPassword || !nextEmail) {
+        return err('currentPassword et nextEmail sont requis', 400);
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nextEmail)) {
+        return err('Adresse email invalide', 400);
+      }
+
+      const check = await verifyPassword(body.currentPassword, member.mot_de_passe, env as any, 'pbkdf2_sha256', 100000, /^[a-f0-9]{64}$/i);
+      if (!check.valid) return err('Mot de passe actuel incorrect', 401);
+
+      const oldEmail = String(member.email || '').trim().toLowerCase();
+      if (nextEmail === oldEmail) return err('Cette adresse est déjà votre email de connexion', 400);
+
+      const taken = await env.DB.prepare(
+        `SELECT id FROM adherent_comptes WHERE LOWER(TRIM(email)) = ? AND id != ?`
+      ).bind(nextEmail, member.id).first();
+      if (taken) return err('Cette adresse email est déjà utilisée par un autre compte', 409);
+
+      const changedAt = new Date().toISOString();
+      await env.DB.batch([
+        env.DB.prepare(`UPDATE adherents SET email = ? WHERE LOWER(TRIM(email)) = ?`).bind(nextEmail, oldEmail),
+        env.DB.prepare(
+          `UPDATE adherent_comptes SET email = ?, email_verifie = 0, password_changed_at = ? WHERE id = ?`
+        ).bind(nextEmail, changedAt, member.id),
+      ]);
+
+      const maxAgeSeconds = MEMBER_TOKEN_TTL_SEC;
+      const sessionToken = await createSessionToken(
+        { kind: 'member', adherentCompteId: member.id, email: nextEmail, expiresAt: Date.now() + maxAgeSeconds * 1000, pwdStamp: changedAt },
+        env as any,
+      );
+      return json(
+        { data: { ok: true, token: sessionToken, expiresAt: Date.now() + maxAgeSeconds * 1000, email: nextEmail }, error: null },
         200,
         { 'Set-Cookie': buildMemberSessionCookie(request, sessionToken, maxAgeSeconds) },
       );
