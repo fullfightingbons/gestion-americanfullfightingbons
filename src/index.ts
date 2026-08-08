@@ -102,10 +102,32 @@ function clearMemberSessionCookie(request: Request): string {
 // Construit la charge utile "profil membre" telle que renvoyée par
 // /api/member/me — extrait ici pour être réutilisée telle quelle par
 // /api/member/dashboard, sans dupliquer le calcul de certificat_expire_le.
-async function memberProfilePayload(member: Record<string, any>, env: Env) {
+// Trouve la ligne `adherents` la plus récente d'un membre (par email, comme
+// /api/member/diplomes et cotisationsResult), plutôt que member.adherent_id
+// — l'ancrage figé à l'activation du compte espace membre (cf. commentaire
+// complet sur /api/member/diplomes). À utiliser partout où il faut LA fiche
+// courante d'un adhérent (profil, certificat, bulletin/notation, sondages),
+// à distinguer des routes historiques (diplômes, cotisations) qui ont
+// besoin de TOUTES ses lignes/saisons et non de la seule plus récente.
+// Retombe sur l'ancrage figé si la recherche par email ne trouve rien (ne
+// devrait arriver qu'en cas de données incohérentes) plutôt que de renvoyer
+// null et casser tout l'espace membre.
+async function resolveCurrentAdherentRow(member: Record<string, any>, env: Env): Promise<Record<string, any> | null> {
+  const email = String((member.isGuardianView ? member.adherent_email : member.email) || '').trim().toLowerCase();
+  if (email) {
+    const row = await env.DB.prepare(
+      `SELECT * FROM adherents WHERE LOWER(TRIM(email)) = ? ORDER BY date_inscription DESC, created_at DESC LIMIT 1`
+    ).bind(email).first<Record<string, any>>();
+    if (row) return row;
+  }
+  return env.DB.prepare(`SELECT * FROM adherents WHERE id = ?`).bind(member.adherent_id).first<Record<string, any>>();
+}
+
+async function memberProfilePayload(member: Record<string, any>, env: Env, precomputedRow?: Record<string, any> | null) {
+  const row = precomputedRow !== undefined ? (precomputedRow || member) : ((await resolveCurrentAdherentRow(member, env)) || member);
   let certificatExpireLe: string | null = null;
-  if (member.certificat_date) {
-    const d = new Date(member.certificat_date);
+  if (row.certificat_date) {
+    const d = new Date(row.certificat_date);
     if (!isNaN(d.getTime())) {
       const dureeMois = await getCertificatDureeMois(env);
       d.setMonth(d.getMonth() + dureeMois);
@@ -113,21 +135,26 @@ async function memberProfilePayload(member: Record<string, any>, env: Env) {
     }
   }
   return {
-    nom: member.nom, prenom: member.prenom, email: member.adherent_email,
-    naissance: member.naissance || null,
-    telephone: member.telephone, adresse: member.adresse, code_postal: member.code_postal, ville: member.ville,
-    statut: member.statut, cotisation: member.cotisation, paiement: member.paiement,
-    date_inscription: member.date_inscription, date_fin_adhesion: member.date_fin_adhesion,
-    certificat: member.certificat, certificat_date: member.certificat_date, certificat_expire_le: certificatExpireLe,
-    ceinture: member.couleur_ceinture || null, numero_licence: member.numero_licence || null,
-    urgence_nom: member.urgence_nom, urgence_telephone: member.urgence_telephone, urgence_lien: member.urgence_lien,
-    annuaire_visible: Number(member.annuaire_visible ?? 0) === 1,
+    nom: row.nom, prenom: row.prenom, email: member.adherent_email,
+    naissance: row.naissance || null,
+    telephone: row.telephone, adresse: row.adresse, code_postal: row.code_postal, ville: row.ville,
+    statut: row.statut, cotisation: row.cotisation, paiement: row.paiement,
+    date_inscription: row.date_inscription, date_fin_adhesion: row.date_fin_adhesion,
+    certificat: row.certificat, certificat_date: row.certificat_date, certificat_expire_le: certificatExpireLe,
+    ceinture: row.couleur_ceinture || null, numero_licence: row.numero_licence || null,
+    urgence_nom: row.urgence_nom, urgence_telephone: row.urgence_telephone, urgence_lien: row.urgence_lien,
+    annuaire_visible: Number(row.annuaire_visible ?? 0) === 1,
+    // pref_email_feedback et family_role vivent sur adherent_comptes (identité
+    // stable), pas sur adherents (une ligne par saison) — cf. commentaire de
+    // /api/member/preferences. Sourcés de `member`, pas `row`, à dessein :
+    // ce sont déjà les deux seuls champs de ce payload que la saison
+    // n'affecte pas.
     pref_email_feedback: Number(member.pref_email_feedback ?? 1) === 1,
     family_role: member.family_role ?? null,
-    notation_disponible: !!member.pdf_storage_path,
-    notation_nom_fichier: member.pdf_nom_fichier || null,
-    bulletin_disponible: !!member.pdf_inscription_storage_path,
-    bulletin_nom_fichier: member.pdf_inscription_nom_fichier || null,
+    notation_disponible: !!row.pdf_storage_path,
+    notation_nom_fichier: row.pdf_nom_fichier || null,
+    bulletin_disponible: !!row.pdf_inscription_storage_path,
+    bulletin_nom_fichier: row.pdf_inscription_nom_fichier || null,
     // Gestion multi-comptes / parent-enfant (migration 0021) : permet au
     // front de savoir si le profil actuellement affiché est celui du compte
     // connecté ou celui d'un enfant sous tutelle, et de proposer le
@@ -2297,9 +2324,10 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
     if (method === 'GET' && path === '/api/member/dashboard') {
       const member = await getCurrentMemberFromBearer(request, env);
       if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+      const currentRow = await resolveCurrentAdherentRow(member, env);
 
       const [me, diplomesResult, annuaireResult, cotisationsResult, feedbackResult] = await Promise.all([
-        memberProfilePayload(member, env),
+        memberProfilePayload(member, env, currentRow),
         env.DB.prepare(
           `SELECT d.id, d.titre, d.ceinture, d.date_emission, d.saison, d.delivre_par,
                   (d.pdf_storage_path IS NOT NULL) AS pdf_disponible
@@ -2337,13 +2365,19 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
         // second système d'accès : le front peut pointer directement vers
         // /feedback.html?token=... (page publique existante), sans dupliquer
         // la logique de soumission de réponse.
+        // fr.adherent_id est renseigné à l'envoi de la campagne, donc avec
+        // l'id de la ligne `adherents` de la saison en cours à ce moment-là
+        // — currentRow.id (résolu par email juste au-dessus, comme le reste
+        // de cette route) plutôt que member.adherent_id, sous peine qu'un
+        // sondage envoyé pour la saison en cours n'apparaisse jamais dans
+        // l'espace membre d'un compte activé une saison plus tôt.
         env.DB.prepare(
           `SELECT fr.token, fc.titre, fc.description
            FROM feedback_recipients fr
            JOIN feedback_campaigns fc ON fc.id = fr.campaign_id
            WHERE fr.adherent_id = ? AND fr.repondu = 0 AND fc.statut = 'active'
            ORDER BY fc.created_at DESC LIMIT 1`
-        ).bind(member.adherent_id).all(),
+        ).bind(currentRow?.id || member.adherent_id).all(),
       ]);
 
       return json({
@@ -2486,6 +2520,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
     if (method === 'PATCH' && path === '/api/member/me') {
       const member = await getCurrentMemberFromBearer(request, env);
       if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+      const currentRow = await resolveCurrentAdherentRow(member, env);
+      if (!currentRow) return err('Fiche adhérent introuvable', 404);
 
       const body = await request.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
       const updates: Record<string, string | number> = {};
@@ -2500,10 +2536,10 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
 
       const setSql = Object.keys(updates).map((f) => `${f} = ?`).join(', ');
       await env.DB.prepare(`UPDATE adherents SET ${setSql} WHERE id = ?`)
-        .bind(...Object.values(updates), member.adherent_id).run();
+        .bind(...Object.values(updates), currentRow.id).run();
 
       ctx.waitUntil(writeAuditLog(env, {
-        userId: null, action: 'member_update_profile', entityType: 'adherents', entityId: member.adherent_id,
+        userId: null, action: 'member_update_profile', entityType: 'adherents', entityId: currentRow.id,
         details: { fields: Object.keys(updates), memberInitiated: true }, ip: request.headers.get('CF-Connecting-IP'),
       }));
 
@@ -2537,6 +2573,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       const member = await getCurrentMemberFromBearer(request, env);
       if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
       if (!env.R2_PDF) return err('Stockage indisponible', 503);
+      const currentRow = await resolveCurrentAdherentRow(member, env);
+      if (!currentRow) return err('Fiche adhérent introuvable', 404);
 
       let form: FormData;
       try { form = await request.formData(); } catch { return err('Corps multipart invalide', 400); }
@@ -2547,12 +2585,12 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       const dateFourni = String(form.get('date') || '').trim();
       const dateCertificat = /^\d{4}-\d{2}-\d{2}$/.test(dateFourni) ? dateFourni : new Date().toISOString().slice(0, 10);
       const ext = (file.name.split('.').pop() || 'pdf').toLowerCase().replace(/[^a-z0-9]/g, '') || 'pdf';
-      const key = `adherents/${member.adherent_id}/certificat-${Date.now()}.${ext}`;
+      const key = `adherents/${currentRow.id}/certificat-${Date.now()}.${ext}`;
 
       await env.R2_PDF.put(key, await file.arrayBuffer(), { httpMetadata: { contentType: r2ContentType(key, file.type) } });
-      await env.DB.prepare(`UPDATE adherents SET certificat = 1, certificat_date = ? WHERE id = ?`).bind(dateCertificat, member.adherent_id).run();
+      await env.DB.prepare(`UPDATE adherents SET certificat = 1, certificat_date = ? WHERE id = ?`).bind(dateCertificat, currentRow.id).run();
       ctx.waitUntil(writeAuditLog(env, {
-        userId: null, action: 'member_upload_certificat', entityType: 'adherents', entityId: member.adherent_id,
+        userId: null, action: 'member_upload_certificat', entityType: 'adherents', entityId: currentRow.id,
         details: { key, dateCertificat, memberInitiated: true }, ip: request.headers.get('CF-Connecting-IP'),
       }));
 
