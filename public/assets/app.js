@@ -5694,7 +5694,7 @@ function vFeedbackSynthese(){
     const allOpts=q.options||[];
     return`<div style="margin-bottom:18px">
     <div style="font-size:13px;font-weight:600;margin-bottom:8px">${esc(q.texte)}</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">
     ${saisons.map(s=>{
       const st=s.qStats[q.id];
       if(!st||!st.total) return`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 12px"><div style="font-size:11px;font-weight:600;color:var(--txt2);margin-bottom:6px">${esc(s.titre)}</div><div style="font-size:12px;color:var(--txt2)">Aucune réponse</div></div>`;
@@ -6035,7 +6035,7 @@ function vUsers(){
       ? `<span class="badge bblue">Accès complet</span>`
       : `<span style="font-size:11px;color:var(--txt2)">${D.users.filter(u=>u.role===role).length} utilisateur(s)</span>`}
       </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:6px">
       ${PERM_META.map(([perm,txt])=>`
         <div style="display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;padding:4px 0;gap:6px">
         <span style="font-size:12px">${txt}</span>
