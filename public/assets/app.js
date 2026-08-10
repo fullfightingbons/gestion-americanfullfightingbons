@@ -4002,8 +4002,9 @@ function rowFallsWithinExercice(row, exo){
 function normalizePieceGroupKey(piece){
   const p=(piece||'').trim();
   if(!p) return '__SANS_PIECE__';
-  if(/^ADH-[^-]+-(ENC|COT|PAS)$/.test(p)) return p.replace(/-(ENC|COT|PAS)$/,'');
-  if(/^(ACH|VTE)-[^-]+-(CHG|CTR|CLI|PRO)$/.test(p)) return p.replace(/-(CHG|CTR|CLI|PRO)$/,'');
+  const autoPiece=p.match(/^((?:ADH|ACH|PAY|SUB|VTE)-[^-]+)-([A-Z]{2,4}\d*)$/);
+  const suffixes=new Set(['ART','ATT','BNQ','CHG','CLI','COT','CTR','ENC','PAS','PRO','SUB']);
+  if(autoPiece&&(suffixes.has(autoPiece[2])||/^PRD\d+$/.test(autoPiece[2]))) return autoPiece[1];
   if(/-L[12]$/.test(p)) return p.replace(/-L[12]$/,'');
   return p;
 }
@@ -7568,6 +7569,24 @@ async function deleteJournalAutoPrefix(prefix){
   D.journal=D.journal.filter(j=>!ids.includes(j.id));
 }
 
+function hasInscriptionWebAdherentAccounting(adherent,prefix){
+  const id=String(adherent?.id||'');
+  return D.journal.some(j=>
+    String(j.source_logiciel||'')==='inscription-web' &&
+    (String(j.source_id||'')===id || normalizePieceGroupKey(j.piece)===prefix)
+  );
+}
+
+async function deleteGestionAdherentJournal(prefix){
+  const suffixes=new Set([`${prefix}-ENC`,`${prefix}-COT`,`${prefix}-PAS`]);
+  const rows=D.journal.filter(j=>suffixes.has(j.piece||'') && String(j.source_logiciel||'')!=='inscription-web');
+  if(rows.length===0) return;
+  const ids=rows.map(r=>r.id);
+  const {error}=await SB.from('journal_comptable').delete().in('id',ids);
+  if(error) throw error;
+  D.journal=D.journal.filter(j=>!ids.includes(j.id));
+}
+
 async function insertJournalRows(rows){
   if(!rows.length) return;
   const {data,error}=await SB.from('journal_comptable').insert(rows).select();
@@ -7648,7 +7667,9 @@ async function syncVenteJournal(facture){
 
 async function syncAdherentJournal(adherent){
   const prefix=autoPiecePrefix('ADH',adherent.id);
-  await deleteJournalAutoPrefix(prefix);
+  const hasPublicAccounting=hasInscriptionWebAdherentAccounting(adherent,prefix);
+  await deleteGestionAdherentJournal(prefix);
+  if(hasPublicAccounting) return;
 
   const cotisation=adherent.paiement==='Gratuit' ? 0 : (parseFloat(adherent.cotisation)||0);
   const passRegion=adherent.pass_region ? (parseFloat(adherent.montant_pass_region)||0) : 0;
