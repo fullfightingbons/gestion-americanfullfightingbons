@@ -5106,6 +5106,27 @@ function vFacture(){
   ${sub==='liste'?vFacListe():sub==='dons'?vDonListe():vFacEditor()}`;
 }
 
+function factureLineSummary(f){
+  return (f.lignes||[])
+    .filter(l=>(+l.qte||0)>0 || (+l.pu||0)>0 || l.desc)
+    .map(l=>{
+      const qte=+l.qte||0;
+      const pu=+l.pu||0;
+      const total=qte*pu;
+      const qtyLabel=qte&&qte!==1?` x${qte}`:'';
+      const amountLabel=total>0?` · ${total.toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})} €`:'';
+      return `${l.desc||'Ligne'}${qtyLabel}${amountLabel}`;
+    });
+}
+
+function renderFactureLineSummary(f){
+  const lignes=factureLineSummary(f);
+  if(!lignes.length) return '';
+  return `<div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px;max-width:520px">
+    ${lignes.map(l=>`<span class="badge binfo" style="font-size:10px;line-height:1.35;white-space:normal;text-align:left">${esc(l)}</span>`).join('')}
+  </div>`;
+}
+
 function vFacListe(){
   const canWrite=hasPerm('perm_facturation','write');
   const ventesRaw=D.factures.filter(f=>!isDonationReceipt(f)).map(f=>({...f,statut:normalizeFactureStatus(f.statut,f.date_op)}));
@@ -5123,7 +5144,7 @@ function vFacListe(){
     return toISO(b.date_op).localeCompare(toISO(a.date_op));
   });
   const filtered=ventesRawSorted.filter(f=>{
-    const haystack=`${f.numero||''} ${f.destinataire||''} ${f.objet||''}`.toLowerCase();
+    const haystack=`${f.numero||''} ${f.destinataire||''} ${f.objet||''} ${factureLineSummary(f).join(' ')}`.toLowerCase();
     const matchesSearch=haystack.includes((UI.search.factures||'').toLowerCase());
     const matchesStatus=factureMatchesFilter(f,UI.factureFilterStatus);
     return matchesSearch && matchesStatus;
@@ -5146,12 +5167,12 @@ function vFacListe(){
   <button class="btn" onclick="UI.search.factures='';UI.factureFilterStatus='';render()">Réinitialiser</button>
   </div>
   <div class="wrap"><table>
-  <thead><tr><th>N° vente</th><th>Date</th><th>Client / destinataire</th><th>Objet</th><th>Total</th><th>Statut</th><th></th></tr></thead>
+  <thead><tr><th>N° vente</th><th>Date</th><th>Client / destinataire</th><th>Objet / détail</th><th>Total</th><th>Statut</th><th></th></tr></thead>
   <tbody>${ventes.map(f=>{
     const tot=(f.lignes||[]).reduce((s,l)=>s+(+l.qte||0)*(+l.pu||0),0);
     return`<tr>
     <td><strong style="font-weight:500">${f.numero}</strong></td>
-    <td>${fd(f.date_op)}</td><td>${esc(f.destinataire||'')}</td><td>${esc(f.objet||'')}</td>
+    <td>${fd(f.date_op)}</td><td>${esc(f.destinataire||'')}</td><td>${esc(f.objet||'')}${renderFactureLineSummary(f)}</td>
     <td><strong>${tot.toFixed(2)} €</strong></td>
     <td><span class="badge ${factureStatusBadge(f.statut)}">${f.statut}</span>${f.statut==='Payée'&&f.date_paiement?`<br><span style="font-size:10px;color:var(--txt2)">le ${fd(f.date_paiement)}</span>`:''}</td>
     <td style="white-space:nowrap">
