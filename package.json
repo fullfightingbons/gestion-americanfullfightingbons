@@ -10,7 +10,7 @@
 	"scripts": {
 		"cf-typegen": "wrangler types",
 		"typecheck": "tsc --noEmit",
-		"check": "tsc && wrangler deploy --dry-run",
+		"check": "npm run typecheck && npm test && wrangler deploy --dry-run",
 		"build": "esbuild public/assets/app.js --minify --outfile=public/assets/app.min.js",
 		"deploy": "wrangler deploy",
 		"dev": "wrangler dev",
