@@ -5,6 +5,15 @@
 
 export interface Env {
   DB: D1Database;              // affbc-production (tables locales : adherents, journal_comptable, etc.)
+  // Bindings secondaires ajoutés uniquement pour la sauvegarde programmée
+  // complète (cf. runFullBackup) : gestion n'écrit JAMAIS dans ces trois
+  // bases, il les lit en lecture seule pour les exporter. Même principe que
+  // le binding AFFBC_DB déjà présent côté worker site vers affbc-production
+  // — un binding D1 n'est qu'une référence, plusieurs workers peuvent
+  // pointer vers la même base sans conflit.
+  DB_BOUTIQUE?: D1Database;    // boutique-americanfullfightingbons (même base que le worker boutique)
+  DB_CALENDRIER?: D1Database;  // calendrier-americanfullfightingbonsdb (même base que le worker calendrier)
+  DB_SITE?: D1Database;        // site-americanfullfightinbons (même base que le worker site, binding "DB")
   ADMIN_PASSWORD: string;
   SESSION_SECRET: string;      // secret HMAC pour la signature des tokens JWT (wrangler secret put SESSION_SECRET)
   PASSWORD_PEPPER: string;     // pepper PBKDF2 (wrangler secret put PASSWORD_PEPPER)
@@ -1084,6 +1093,140 @@ async function checkMaterielEnRetard(env: Env): Promise<{ checked: number; sent:
 
   return { checked: results?.length || 0, sent, errors };
 }
+
+// ─── Sauvegarde programmée complète (les 4 bases D1 du club) ────────────────
+// Jusqu'ici la seule sauvegarde était le bouton "Export JSON" de l'onglet
+// Sauvegarde (backupJSON(), côté front) : manuel, et limité à une poignée de
+// tables comptables de cette seule base. Comme boutique, calendrier et site
+// ont chacun leur propre base D1 (cf. leurs wrangler respectifs), leurs
+// données n'étaient jamais couvertes par ce bouton.
+//
+// runFullBackup exporte TOUTES les tables des 4 bases (affbc-production via
+// DB, + DB_BOUTIQUE / DB_CALENDRIER / DB_SITE ci-dessus) vers R2_STORAGE,
+// sous backups/<date>/<base>.json.gz, puis purge les sauvegardes plus
+// vieilles que BACKUP_RETENTION_DAYS. Appelée depuis scheduled() (cron
+// existant, quotidien) et depuis POST /api/admin/backup/run (déclenchement
+// manuel depuis l'onglet Sauvegarde).
+//
+// Défensif à deux niveaux, comme le reste des tâches cron de ce fichier :
+// une base absente ou en erreur n'empêche pas les autres d'être sauvegardées
+// (binding non déployé, base momentanément indisponible...), et une table en
+// erreur au sein d'une base n'interrompt pas les tables suivantes (dérive de
+// schéma déjà rencontrée sur ce projet, cf. migrations/0010_feedback.sql).
+const BACKUP_RETENTION_DAYS = 30;
+
+const BACKUP_DATABASES: Array<{ label: string; envKey: 'DB' | 'DB_BOUTIQUE' | 'DB_CALENDRIER' | 'DB_SITE' }> = [
+  { label: 'gestion', envKey: 'DB' },
+  { label: 'boutique', envKey: 'DB_BOUTIQUE' },
+  { label: 'calendrier', envKey: 'DB_CALENDRIER' },
+  { label: 'site', envKey: 'DB_SITE' },
+];
+
+async function backupListTables(db: D1Database): Promise<string[]> {
+  const res = await db
+    .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' ORDER BY name`)
+    .all<{ name: string }>();
+  return (res.results || []).map((r) => r.name);
+}
+
+// D1 limite la taille d'une réponse : on pagine par lots de 500 lignes par
+// table plutôt qu'un SELECT * sans limite, pour rester robuste même si une
+// table grossit beaucoup (journal_comptable, factures...) dans le temps.
+async function backupDumpTable(db: D1Database, table: string): Promise<Record<string, unknown>[]> {
+  const rows: Record<string, unknown>[] = [];
+  const pageSize = 500;
+  let offset = 0;
+  for (;;) {
+    // Nom de table interpolé directement dans le SQL : jamais fourni par un
+    // client, il vient uniquement de sqlite_master (backupListTables) —
+    // aucune injection possible, et D1 ne permet de toute façon pas de bind
+    // un identifiant de table comme un paramètre normal.
+    const res = await db.prepare(`SELECT * FROM "${table}" LIMIT ? OFFSET ?`).bind(pageSize, offset).all<Record<string, unknown>>();
+    const batch = res.results || [];
+    rows.push(...batch);
+    if (batch.length < pageSize) break;
+    offset += pageSize;
+  }
+  return rows;
+}
+
+async function backupGzipJson(data: unknown): Promise<Uint8Array> {
+  const stream = new Blob([JSON.stringify(data)]).stream().pipeThrough(new CompressionStream('gzip'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+type BackupResult = { label: string; ok: boolean; tables: number; rows: number; bytes: number; errors: string[] };
+
+async function backupOneDatabase(env: Env, label: string, db: D1Database | undefined, dateFolder: string): Promise<BackupResult> {
+  const errors: string[] = [];
+  if (!db) {
+    return { label, ok: false, tables: 0, rows: 0, bytes: 0, errors: [`binding "${label}" absent (voir wrangler.json)`] };
+  }
+
+  let tableNames: string[] = [];
+  try {
+    tableNames = await backupListTables(db);
+  } catch (e) {
+    return { label, ok: false, tables: 0, rows: 0, bytes: 0, errors: [`liste des tables : ${e instanceof Error ? e.message : String(e)}`] };
+  }
+
+  const dump: Record<string, unknown[]> = {};
+  let totalRows = 0;
+  for (const table of tableNames) {
+    try {
+      const rows = await backupDumpTable(db, table);
+      dump[table] = rows;
+      totalRows += rows.length;
+    } catch (e) {
+      errors.push(`table "${table}" : ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  if (!env.R2_STORAGE) {
+    return { label, ok: false, tables: tableNames.length, rows: totalRows, bytes: 0, errors: [...errors, 'R2_STORAGE non lié — sauvegarde générée mais non écrite'] };
+  }
+
+  const payload = { database: label, generated_at: new Date().toISOString(), table_count: tableNames.length, tables: dump, errors };
+  const bytes = await backupGzipJson(payload);
+  await env.R2_STORAGE.put(`backups/${dateFolder}/${label}.json.gz`, bytes, {
+    httpMetadata: { contentType: 'application/gzip' },
+  });
+
+  return { label, ok: errors.length === 0, tables: tableNames.length, rows: totalRows, bytes: bytes.byteLength, errors };
+}
+
+async function backupPruneOld(env: Env): Promise<number> {
+  if (!env.R2_STORAGE) return 0;
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - BACKUP_RETENTION_DAYS);
+  const cutoffFolder = cutoff.toISOString().slice(0, 10); // "YYYY-MM-DD" — comparable lexicographiquement à un nom de dossier daté
+
+  let deleted = 0;
+  let cursor: string | undefined;
+  do {
+    const listed: { objects: { key: string }[]; truncated: boolean; cursor?: string } = await env.R2_STORAGE.list({ prefix: 'backups/', cursor, limit: 1000 });
+    for (const obj of listed.objects) {
+      const folder = obj.key.split('/')[1]; // backups/<folder>/<base>.json.gz
+      if (folder && folder < cutoffFolder) {
+        await env.R2_STORAGE.delete(obj.key);
+        deleted++;
+      }
+    }
+    cursor = listed.truncated ? listed.cursor : undefined;
+  } while (cursor);
+  return deleted;
+}
+
+async function runFullBackup(env: Env): Promise<{ dateFolder: string; results: BackupResult[]; pruned: number }> {
+  const dateFolder = new Date().toISOString().slice(0, 10);
+  const results: BackupResult[] = [];
+  for (const { label, envKey } of BACKUP_DATABASES) {
+    results.push(await backupOneDatabase(env, label, env[envKey], dateFolder));
+  }
+  const pruned = await backupPruneOld(env);
+  return { dateFolder, results, pruned };
+}
+
 // Même principe que checkCertificatsExpirants : une facture émise/en attente
 // dont la date d'émission dépasse 15 puis 30 jours reçoit une relance email,
 // une seule fois par palier (cf. facture_relances_auto, migration 0024). Ne
@@ -2041,6 +2184,29 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
     const storageMatch = path.match(/^\/api\/storage\/([A-Za-z0-9_-]+)\/(.*)$/);
     if (storageMatch) {
       return await handleStorageApi(request, env, storageMatch[1], decodeURIComponent(storageMatch[2]));
+    }
+
+    // POST /api/admin/backup/run — déclenchement manuel de la sauvegarde
+    // complète (staff, perm_administration en écriture). Contrairement au
+    // cron (ctx.waitUntil, "tire et oublie"), on attend ici le résultat pour
+    // l'afficher immédiatement dans l'onglet Sauvegarde — le volume de
+    // données du club reste largement dans les limites d'une requête HTTP
+    // normale. Les fichiers produits sont ensuite listés/téléchargés via
+    // l'API storage existante (GET /api/storage/storage/list?prefix=backups/),
+    // pas besoin d'une route dédiée pour ça.
+    if (method === 'POST' && path === '/api/admin/backup/run') {
+      const user = await getCurrentUserFromBearer(request, env);
+      if (!user) return err('Unauthorized', 401);
+      const rolePerms = await getRolePerms(env);
+      if (!dbHasPermission(user, 'perm_administration', 'write', rolePerms)) return err('Permission refusée', 403);
+
+      const result = await runFullBackup(env);
+      ctx.waitUntil(writeAuditLog(env, {
+        userId: user.id, action: 'backup_run_manual', entityType: 'system', entityId: result.dateFolder,
+        details: { results: result.results.map((r) => ({ label: r.label, ok: r.ok, rows: r.rows, errorCount: r.errors.length })) },
+        ip: request.headers.get('CF-Connecting-IP'),
+      }));
+      return json({ data: result, error: null });
     }
 
     // ── Authentification ──────────────────────────────────────────────────
@@ -3908,6 +4074,14 @@ export default {
       checkMaterielEnRetard(env).then(
         (r) => console.log('[cron:materiel-retard]', JSON.stringify(r)),
         (e) => console.error('[cron:materiel-retard] échec', e instanceof Error ? e.stack || e.message : String(e)),
+      ),
+    );
+    // Sauvegarde complète quotidienne des 4 bases D1 du club vers R2
+    // (cf. runFullBackup) — même trigger cron, pas de déclencheur séparé.
+    ctx.waitUntil(
+      runFullBackup(env).then(
+        (r) => console.log('[cron:backup]', JSON.stringify({ dateFolder: r.dateFolder, pruned: r.pruned, results: r.results.map((x) => ({ label: x.label, ok: x.ok, rows: x.rows, errors: x.errors })) })),
+        (e) => console.error('[cron:backup] échec', e instanceof Error ? e.stack || e.message : String(e)),
       ),
     );
   },

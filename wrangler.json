@@ -14,6 +14,21 @@
       "binding": "DB",
       "database_id": "678b90d9-5d87-4011-b077-af5a4d0358ee",
       "database_name": "affbc-production"
+    },
+    {
+      "binding": "DB_BOUTIQUE",
+      "database_id": "7be72073-32e5-4a81-a8da-243a2687af36",
+      "database_name": "boutique-americanfullfightingbons"
+    },
+    {
+      "binding": "DB_CALENDRIER",
+      "database_id": "b146bb47-b1cc-48db-9e7c-0c8223a9fee2",
+      "database_name": "calendrier-americanfullfightingbonsdb"
+    },
+    {
+      "binding": "DB_SITE",
+      "database_id": "59b6ffb0-a703-4acb-b465-8fb037c9d79c",
+      "database_name": "site-americanfullfightinbons"
     }
   ],
 

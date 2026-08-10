@@ -236,6 +236,7 @@ const UI = {
   pdfTarget:null,
   guardianInfo:null,
   rgpdRequests:null,
+  autoBackups:null,
   diplome:{adherentId:'',date:td(),templatePath:'',titre:'Diplôme de ceinture',selectedField:'nomComplet',delivrePar:'',commentaire:''},
   diplomeArchive:{saison:'current',search:''},
   invState:{numero:'FAC-001',date:td(),destinataire:'',adresse:'',objet:'',lignes:[{desc:'',qte:1,pu:0}],notes:''},
@@ -249,7 +250,11 @@ let IMP = {
   adh:{raw:'',headers:[],rows:[],mapping:{},sep:';',importing:false},
   ecr:{raw:'',headers:[],rows:[],mapping:{},sep:';',importing:false},
   backup:{restoring:false,lastMessage:''},
+  autoBackup:{running:false,lastResult:null},
 };
+// Doit rester égal à BACKUP_RETENTION_DAYS côté worker (src/index.ts) — texte
+// affiché seulement, la purge réelle est faite côté serveur.
+const AUTO_BACKUP_RETENTION_DAYS=30;
 
 function compareAlpha(a,b){
   return (a||'').localeCompare((b||''),'fr',{sensitivity:'base'});
@@ -6492,6 +6497,100 @@ function vImpEcr(){
       </div>`;
 }
 
+// Sauvegarde automatique (toutes bases) — cf. runFullBackup côté worker.
+// Chargée à la demande, comme loadRgpdRequests, au moment où l'onglet est
+// ouvert : la liste des fichiers R2 n'a pas besoin d'être dans le bootstrap.
+async function loadAutoBackups(){
+  const res=await SB.storage.from('storage').list('backups/');
+  if(res.error){ UI.autoBackups={error:res.error.message||'Chargement impossible.'}; render(); return; }
+  const byDate={};
+  for(const f of (res.data||[])){
+    const parts=String(f.name||'').split('/');
+    if(parts.length!==2) continue; // ignore toute clé hors backups/<date>/<fichier>
+    const [date,filename]=parts;
+    (byDate[date]=byDate[date]||[]).push({filename,key:f.id,size:f.metadata?.size||0});
+  }
+  UI.autoBackups=Object.entries(byDate)
+    .sort((a,b)=>b[0].localeCompare(a[0]))
+    .map(([date,files])=>({date,files:files.sort((a,b)=>a.filename.localeCompare(b.filename))}));
+  render();
+}
+
+async function runAutoBackupNow(){
+  if(IMP.autoBackup.running) return;
+  IMP.autoBackup.running=true; render();
+  const res=await apiRequest('/admin/backup/run',{method:'POST'});
+  IMP.autoBackup.running=false;
+  if(res.error){ notify('error','Sauvegarde impossible : '+res.error.message,'Sauvegarde'); render(); return; }
+  const r=res.data;
+  const failed=r.results.filter(x=>!x.ok);
+  const totalRows=r.results.reduce((s,x)=>s+x.rows,0);
+  notify(failed.length?'warn':'success',
+    failed.length
+      ? `${totalRows} lignes exportées, mais ${failed.length} base(s) en erreur (voir détail ci-dessous).`
+      : `${totalRows} lignes exportées depuis ${r.results.length} bases.`,
+    'Sauvegarde');
+  IMP.autoBackup.lastResult=r;
+  loadAutoBackups();
+}
+
+function formatBackupSize(bytes){
+  bytes=Number(bytes)||0;
+  if(bytes<1024) return bytes+' o';
+  if(bytes<1024*1024) return (bytes/1024).toFixed(1)+' Ko';
+  return (bytes/(1024*1024)).toFixed(1)+' Mo';
+}
+
+// Comme openStorageFile : /api/storage/... exige l'en-tête Authorization,
+// qu'un <a href> classique ne peut pas porter. On récupère donc le fichier
+// via fetch() puis on déclenche le téléchargement via un <a download> éphémère
+// (plutôt que window.open comme openStorageFile : un .json.gz n'a rien à
+// afficher dans un onglet, on veut l'enregistrer directement).
+async function downloadAutoBackupFile(key,filename){
+  const headers={};
+  if(AUTH_TOKEN) headers['Authorization']='Bearer '+AUTH_TOKEN;
+  try{
+    const res=await fetch(buildStorageObjectUrl('storage',key),{headers,credentials:'same-origin'});
+    if(!res.ok){ alert('Téléchargement impossible (erreur '+res.status+').'); return; }
+    const blob=await res.blob();
+    const blobUrl=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=blobUrl; a.download=filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(blobUrl),60000);
+  }catch(e){
+    alert('Erreur réseau lors du téléchargement.');
+  }
+}
+
+function vAutoBackupSection(){
+  if(UI.autoBackups===null){ loadAutoBackups(); return `<div class="card" style="margin-bottom:14px"><p class="empty">Chargement des sauvegardes…</p></div>`; }
+  const running=IMP.autoBackup.running;
+  const last=IMP.autoBackup.lastResult;
+  const errorState=UI.autoBackups && UI.autoBackups.error;
+  const folders=errorState?[]:UI.autoBackups;
+  return `<div class="card" style="margin-bottom:14px">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+  <div>
+  <p style="font-weight:500;margin-bottom:4px">🗄️ Sauvegarde automatique — les 4 bases du club</p>
+  <p style="font-size:12px;color:var(--txt2)">Toutes les tables de gestion, boutique, calendrier et site, exportées chaque nuit vers Cloudflare R2 et conservées ${AUTO_BACKUP_RETENTION_DAYS} jours. L'export JSON ci-dessous ne couvre que la comptabilité de cette base-ci.</p>
+  </div>
+  <button class="btn ${running?'':'gold'}" ${running?'disabled':''} onclick="runAutoBackupNow()">${running?'Sauvegarde en cours…':'Lancer maintenant'}</button>
+  </div>
+  ${last?`<p style="font-size:12px;color:var(--txt2);margin-bottom:10px">Dernier lancement manuel : ${last.results.map(r=>`${esc(r.label)} ${r.ok?'✓':'✗'} (${r.rows} lignes)`).join(' · ')}</p>`:''}
+  ${errorState?`<div class="empty">${esc(UI.autoBackups.error)}</div>`
+    :!folders.length?`<div class="empty">Aucune sauvegarde pour l'instant — la première s'exécutera cette nuit, ou lancez-en une maintenant.</div>`
+    :folders.slice(0,10).map(f=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--border,#eee)">
+      <span style="font-size:13px;font-weight:500">${esc(f.date)}</span>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+      ${f.files.map(file=>`<button class="btn sm" onclick="downloadAutoBackupFile('${esc(file.key)}','${esc(f.date)}-${esc(file.filename)}')" title="${formatBackupSize(file.size)}">${esc(file.filename.replace('.json.gz',''))}</button>`).join('')}
+      </div>
+      </div>
+    `).join('')}
+  </div>`;
+}
+
 function vBackup(){
   return`<div>
   <div class="view-head">
@@ -6501,9 +6600,10 @@ function vBackup(){
   <p>Centralisez les sauvegardes du club et récupérez rapidement les exports nécessaires pour le suivi administratif ou comptable.</p>
   </div>
   </div>
+  ${vAutoBackupSection()}
   <div class="g2" style="margin-bottom:14px">
-  <div class="card"><p style="font-weight:500;margin-bottom:6px">💾 Export JSON</p>
-  <p style="font-size:12px;color:var(--txt2);margin-bottom:10px">Sauvegarde complète de toutes les données.</p>
+  <div class="card"><p style="font-weight:500;margin-bottom:6px">💾 Export JSON (comptabilité)</p>
+  <p style="font-size:12px;color:var(--txt2);margin-bottom:10px">Sauvegarde manuelle d'une partie des données (adhérents, comptes, factures…) de cette base.</p>
   <button class="btn primary" onclick="backupJSON()">Télécharger</button>
   </div>
   <div class="card"><p style="font-weight:500;margin-bottom:6px">📥 Import JSON</p>
@@ -6527,7 +6627,7 @@ function vBackup(){
   <button class="btn sm" onclick="exportAuditCSV()" title="Journal d'audit complet en CSV">🔍 Journal d'audit</button>
   </div>
   </div>
-  <p style="font-size:12px;color:var(--txt2);margin-top:12px">✓ Données sauvegardées automatiquement dans la base (Cloudflare D1) à chaque action.</p>
+  <p style="font-size:12px;color:var(--txt2);margin-top:12px">✓ Les modifications sont enregistrées en temps réel dans la base (Cloudflare D1) — la sauvegarde automatique ci-dessus en est une copie de secours distincte, sur un support séparé.</p>
   </div>`;
 }
 
