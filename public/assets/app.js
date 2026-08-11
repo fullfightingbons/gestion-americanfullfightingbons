@@ -7283,22 +7283,22 @@ const ECRITURE_TYPES={
   cotisation:{
     label:'Encaissement cotisation',
     lignes:[
-      {compte:'5121 - Banque',libelle:'Cotisation membre',debit:0,credit:320},
-      {compte:'7561 - Cotisations membres actifs',libelle:'Cotisation membre',debit:320,credit:0},
+      {compte:'512 - Banque',libelle:'Cotisation membre',debit:320,credit:0},
+      {compte:'7561 - Cotisations membres actifs',libelle:'Cotisation membre',debit:0,credit:320},
     ]
   },
   achat_fournisseur:{
     label:'Achat fournisseur',
     lignes:[
       {compte:'6061 - Fournitures non stockées',libelle:'Achat fournisseur',debit:0,credit:0},
-      {compte:'5121 - Banque',libelle:'Achat fournisseur',debit:0,credit:0},
+      {compte:'512 - Banque',libelle:'Achat fournisseur',debit:0,credit:0},
     ]
   },
   subvention:{
     label:'Subvention / Don',
     lignes:[
-      {compte:'5121 - Banque',libelle:'Subvention reçue',debit:0,credit:0},
-      {compte:'7411 - Subventions de fonctionnement',libelle:'Subvention reçue',debit:0,credit:0},
+      {compte:'512 - Banque',libelle:'Subvention reçue',debit:0,credit:0},
+      {compte:'741 - Subventions',libelle:'Subvention reçue',debit:0,credit:0},
     ]
   }
 };
@@ -7317,6 +7317,7 @@ function openEcritureType(type){
     exercice_id:D.currentExo?.id||null,
     piece:'',
     compte:tpl.lignes[0]?.compte||'',
+    contrepartie:tpl.lignes[1]?.compte||'',
     libelle:tpl.label,
     debit:(+tpl.lignes[0]?.debit||0).toFixed(2),
     credit:(+tpl.lignes[0]?.credit||0).toFixed(2),
