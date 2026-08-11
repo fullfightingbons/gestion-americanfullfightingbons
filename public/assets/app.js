@@ -3936,11 +3936,11 @@ function vRappr(){
 }
 function vEcr512(){
   const e=D.journal.filter(j=>j.compte&&j.compte.startsWith('512'));
-  const sol=e.reduce((s,j)=>s+(+j.credit)-(+j.debit),0);
+  const sol=e.reduce((s,j)=>s+(+j.debit)-(+j.credit),0);
   const consumed=consumedPieces();
   const isPending=j=>!consumed.has(j.piece||(j.id||'').slice(0,8));
   const pending=e.filter(isPending);
-  const pendingAmount=pending.reduce((s,j)=>s+(+j.credit)-(+j.debit),0);
+  const pendingAmount=pending.reduce((s,j)=>s+(+j.debit)-(+j.credit),0);
   return`<div style="margin-bottom:12px">
   <div class="sc" style="display:inline-block;min-width:200px;margin-right:10px">
   <div class="v ${sol>=0?'vg':'vr'}">${sol.toFixed(2)} €</div><div class="l">Solde 512 — Banque</div>
@@ -3952,7 +3952,7 @@ function vEcr512(){
   <div class="gl-acc">
   <div class="gl-hdr"><strong>512 — Banque</strong><span style="font-size:12px;color:var(--txt2)">${e.length} écriture(s)</span></div>
   <div class="gl-row gl-head"><span>Date</span><span>Libellé</span><span style="text-align:right">Débit</span><span style="text-align:right">Crédit</span><span style="text-align:right">Solde</span></div>
-  ${(()=>{let s=0;return e.map(j=>{s+=(+j.credit)-(+j.debit);const badge=isPending(j)?`<span class="badge bwarn" title="Pas encore lié à une opération du relevé importé">en attente de relevé</span>`:`<span class="badge bok" title="Lié à une opération bancaire réelle rapprochée">rapproché</span>`;return`<div class="gl-row">
+  ${(()=>{let s=0;return e.map(j=>{s+=(+j.debit)-(+j.credit);const badge=isPending(j)?`<span class="badge bwarn" title="Pas encore lié à une opération du relevé importé">en attente de relevé</span>`:`<span class="badge bok" title="Lié à une opération bancaire réelle rapprochée">rapproché</span>`;return`<div class="gl-row">
     <span>${fd(j.date_op)}</span><span>${esc(j.libelle)}<br><span style="font-size:10px;color:var(--txt2)">${esc(j.piece||'')}</span> ${badge}</span>
     <span style="color:var(--red);text-align:right">${+j.debit>0?(+j.debit).toFixed(2)+' €':''}</span>
     <span style="color:#1e7e34;text-align:right">${+j.credit>0?(+j.credit).toFixed(2)+' €':''}</span>
