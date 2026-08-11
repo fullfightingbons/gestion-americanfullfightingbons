@@ -3842,7 +3842,7 @@ function vBankImport(){
 }
 
 function vRappr(){
-  const all=D.comptes.flatMap(c=>(c.transactions||[]).map(t=>({...t,cname:c.nom})));
+  const all=D.comptes.flatMap(c=>(c.transactions||[]).map(t=>({...t,cname:c.nom}))).sort((a,b)=>compareFrDates(b.date_op,a.date_op));
   const nonR=all.filter(t=>!t.rapproche);
   const doneR=all.filter(t=>t.rapproche);
   const autoCount=nonR.filter(t=>{ const r=bestRapprochementEntry(t); return r?.auto; }).length;
