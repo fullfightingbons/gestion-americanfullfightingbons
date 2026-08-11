@@ -1751,6 +1751,7 @@ function dashboardData(){
   const totalBank=comptes.reduce((sum,c)=>sum+(+c.solde_initial||0)+(c.transactions||[]).reduce((acc,t)=>acc+(+t.credit||0)-(+t.debit||0),0),0);
   const bankTransactions=comptes.flatMap(c=>(c.transactions||[]).map(t=>({...t,compte_nom:c.nom||'Compte'})));
   const unreconciledTransactions=bankTransactions.filter(t=>!t.rapproche);
+  const pendingBankEntries=pendingBankPieces();
   const monthEntriesList=journal.filter(j=>(j.date_op||'').slice(0,7)===monthPrefix);
   const prevMonthEntriesList=journal.filter(j=>(j.date_op||'').slice(0,7)===prevMonthPrefix);
   const exoJournal=journal.filter(j=>j.exercice_id===D.currentExo?.id);
@@ -1786,6 +1787,7 @@ function dashboardData(){
   if(hasPerm('perm_adherents') && adherentsExpired.length) alerts.push({title:`${adherentsExpired.length} adhésion(s) expirée(s)`,detail:'Des adhérents ont dépassé leur date de fin d’adhésion.',tab:'adherents',badge:'bno'});
   if(hasPerm('perm_adherents') && incompleteList.length) alerts.push({title:`${incompleteList.length} dossier(s) incomplet(s)`,detail:'Certificat, droit à l’image ou règlement intérieur manquants.',tab:'adherents',badge:'bwarn'});
   if(hasPerm('perm_banque') && unreconciledTransactions.length) alerts.push({title:`${unreconciledTransactions.length} transaction(s) non rapprochée(s)`,detail:'Le rapprochement bancaire reste à finaliser.',tab:'banque',badge:'bwarn'});
+  if(hasPerm('perm_banque') && hasPerm('perm_comptabilite') && pendingBankEntries.length) alerts.push({title:`${pendingBankEntries.length} encaissement(s) en attente de relevé`,detail:'Paiements confirmés (HelloAsso, etc.) pas encore rapprochés à une opération bancaire réelle importée.',tab:'banque',badge:'bwarn'});
   if(hasPerm('perm_comptabilite') && accountingGap!==0) alerts.push({title:`Journal déséquilibré de ${euro(accountingGap)}`,detail:'Le total débit / crédit de l’exercice actif n’est pas équilibré.',tab:'comptabilite',badge:'bno'});
   if(hasPerm('perm_achats') && purchasesPending.length) alerts.push({title:`${purchasesPending.length} achat(s) à traiter`,detail:'Des dépenses sont encore en attente de validation ou de paiement.',tab:'achat',badge:'bwarn'});
   if(hasPerm('perm_facturation') && invoicesOpen.length) alerts.push({title:`${invoicesOpen.length} facture(s) ouvertes`,detail:'Des ventes restent à encaisser ou à clôturer.',tab:'facture',badge:'bwarn'});
@@ -1796,7 +1798,7 @@ function dashboardData(){
   return {
     adherents,achats,factures,journal,comptes,currentSeason,currentSeasonAdherents,
     adherentsSoon,adherentsExpired,renewList,incompleteList,
-    totalBank,bankTransactions,unreconciledTransactions,monthEntriesList,prevMonthEntriesList,exoJournal,totalDebit,totalCredit,accountingGap,
+    totalBank,bankTransactions,unreconciledTransactions,pendingBankEntries,monthEntriesList,prevMonthEntriesList,exoJournal,totalDebit,totalCredit,accountingGap,
     purchasesPending,purchasesPaid,purchasesRefused,pendingBuyAmount,paidBuyAmount,
     invoicesOpen,invoicesPaid,openInvoiceAmount,paidInvoiceAmount,monthInvoices,prevMonthInvoices,monthInvoiceAmount,prevMonthInvoiceAmount,monthBuys,prevMonthBuys,monthBuyAmount,prevMonthBuyAmount,donations,donationAmount,
     recentInvoices,recentBuys,recentEntries,recentTransactions,alerts
@@ -2137,7 +2139,7 @@ function vDashboard(){
   }
   const dashGridCards=orderDashCards([
     {id:'adherents',visible:hasPerm('perm_adherents'),html:`<div class="dash-card" style="cursor:pointer" onclick="showTab('adherents')" title="Voir les adhérents"><h3>Adhérents</h3><strong>${d.adherents.length}</strong><p>${d.adherentsSoon.length} échéances proches</p></div>`},
-    {id:'banque',visible:hasPerm('perm_banque'),html:`<div class="dash-card" style="cursor:pointer" onclick="showTab('banque')" title="Ouvrir la banque"><h3>Trésorerie</h3><strong>${euro(d.totalBank)}</strong><p>${d.unreconciledTransactions.length} non rapprochées</p></div>`},
+    {id:'banque',visible:hasPerm('perm_banque'),html:`<div class="dash-card" style="cursor:pointer" onclick="showTab('banque')" title="Ouvrir la banque"><h3>Trésorerie</h3><strong>${euro(d.totalBank)}</strong><p>${d.unreconciledTransactions.length} non rapprochées${d.pendingBankEntries.length?` · ${d.pendingBankEntries.length} en attente de relevé`:''}</p></div>`},
     {id:'comptabilite',visible:hasPerm('perm_comptabilite'),html:`<div class="dash-card" style="cursor:pointer" onclick="showTab('comptabilite')" title="Ouvrir la comptabilité"><h3>Compta</h3><strong>${d.monthEntriesList.length}</strong><p>Écart ${euro(d.accountingGap)}</p></div>`},
     {id:'ventes',visible:hasPerm('perm_facturation'),html:`<div class="dash-card" style="cursor:pointer" onclick="showTab('facture')" title="Voir les ventes"><h3>Ventes</h3><strong>${d.invoicesOpen.length}</strong><p>${euro(d.openInvoiceAmount)} à encaisser</p></div>`},
   ],DASH_GRID_ORDER[UI.currentUser?.role]||DASH_GRID_DEFAULT).map(c=>c.html).join('\n  ');
@@ -3935,14 +3937,23 @@ function vRappr(){
 function vEcr512(){
   const e=D.journal.filter(j=>j.compte&&j.compte.startsWith('512'));
   const sol=e.reduce((s,j)=>s+(+j.credit)-(+j.debit),0);
-  return`<div style="margin-bottom:12px"><div class="sc" style="display:inline-block;min-width:200px">
+  const consumed=consumedPieces();
+  const isPending=j=>!consumed.has(j.piece||(j.id||'').slice(0,8));
+  const pending=e.filter(isPending);
+  const pendingAmount=pending.reduce((s,j)=>s+(+j.credit)-(+j.debit),0);
+  return`<div style="margin-bottom:12px">
+  <div class="sc" style="display:inline-block;min-width:200px;margin-right:10px">
   <div class="v ${sol>=0?'vg':'vr'}">${sol.toFixed(2)} €</div><div class="l">Solde 512 — Banque</div>
-  </div></div>
+  </div>
+  ${pending.length?`<div class="sc" style="display:inline-block;min-width:220px">
+  <div class="v vgo">${pending.length}</div><div class="l">En attente de relevé (${pendingAmount.toFixed(2)} €)</div>
+  </div>`:''}
+  </div>
   <div class="gl-acc">
   <div class="gl-hdr"><strong>512 — Banque</strong><span style="font-size:12px;color:var(--txt2)">${e.length} écriture(s)</span></div>
   <div class="gl-row gl-head"><span>Date</span><span>Libellé</span><span style="text-align:right">Débit</span><span style="text-align:right">Crédit</span><span style="text-align:right">Solde</span></div>
-  ${(()=>{let s=0;return e.map(j=>{s+=(+j.credit)-(+j.debit);return`<div class="gl-row">
-    <span>${fd(j.date_op)}</span><span>${esc(j.libelle)}<br><span style="font-size:10px;color:var(--txt2)">${esc(j.piece||'')}</span></span>
+  ${(()=>{let s=0;return e.map(j=>{s+=(+j.credit)-(+j.debit);const badge=isPending(j)?`<span class="badge bwarn" title="Pas encore lié à une opération du relevé importé">en attente de relevé</span>`:`<span class="badge bok" title="Lié à une opération bancaire réelle rapprochée">rapproché</span>`;return`<div class="gl-row">
+    <span>${fd(j.date_op)}</span><span>${esc(j.libelle)}<br><span style="font-size:10px;color:var(--txt2)">${esc(j.piece||'')}</span> ${badge}</span>
     <span style="color:var(--red);text-align:right">${+j.debit>0?(+j.debit).toFixed(2)+' €':''}</span>
     <span style="color:#1e7e34;text-align:right">${+j.credit>0?(+j.credit).toFixed(2)+' €':''}</span>
     <span style="text-align:right;font-weight:500;color:${s>=0?'#1e7e34':'var(--red)'}">${s.toFixed(2)} €</span>
@@ -8770,6 +8781,21 @@ function consumedPieces(){
     }
   });
   return consumed;
+}
+
+// Écritures du compte 512 - Banque pas encore liées à une transaction
+// bancaire réelle rapprochée : typiquement un encaissement HelloAsso dont la
+// pièce comptable existe déjà mais dont le virement (souvent groupé avec
+// d'autres inscriptions) n'a pas encore été importé depuis le relevé. Sert
+// à afficher un compteur "en attente" sans fabriquer de fausse ligne dans
+// `transactions` (voir Écritures 512 et la carte Trésorerie du dashboard).
+function pendingBankPieces(){
+  const consumed = consumedPieces();
+  return D.journal.filter(j=>{
+    if(!j.compte || !j.compte.startsWith('512')) return false;
+    const pieceKey = j.piece || (j.id||'').slice(0,8);
+    return !consumed.has(pieceKey);
+  });
 }
 
 function suggestRapprochementPiece(transaction){
