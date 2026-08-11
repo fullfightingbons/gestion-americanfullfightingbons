@@ -1583,6 +1583,40 @@ function seasonBounds(label){
   return {start:`${m[1]}-07-01`,end:`${m[2]}-06-30`};
 }
 
+// Normalise une date (ISO ou DD/MM/YYYY legacy) vers YYYY-MM-DD pour tri/comparaison fiable.
+function toISODate(d){
+  if(!d) return '';
+  const s=(d+'').split('T')[0];
+  const p=s.split('/');
+  return p.length===3?`${p[2]}-${p[1]}-${p[0]}`:s;
+}
+
+// Regroupe une liste par saison sportive (juillet→juin) à partir d'un champ date, triée
+// saison la plus récente en premier, et par date décroissante à l'intérieur de chaque saison.
+function groupBySeason(rows,dateField='date_op'){
+  const sorted=[...(rows||[])].sort((a,b)=>toISODate(b[dateField]).localeCompare(toISODate(a[dateField])));
+  const by={};
+  sorted.forEach(r=>{
+    const key=seasonFromDate(toISODate(r[dateField]))||'Date inconnue';
+    (by[key]=by[key]||[]).push(r);
+  });
+  const cur=currentSeasonLabel();
+  return Object.keys(by).sort((a,b)=>{
+    if(a==='Date inconnue') return 1;
+    if(b==='Date inconnue') return -1;
+    return b.localeCompare(a);
+  }).map(season=>({season,isCurrent:season===cur,rows:by[season]}));
+}
+
+// Bandeau d'en-tête réutilisé pour chaque groupe-saison (même habillage visuel que le Grand Livre).
+function seasonGroupHeader(season,isCurrent,statsHtml){
+  const label=season==='Date inconnue'?'Date inconnue':`Saison ${esc(season)}`;
+  return `<div class="gl-hdr">
+  <strong style="${isCurrent?'color:var(--gold-d)':''}">${label}${isCurrent?' <span class="badge bwarn" style="margin-left:6px">en cours</span>':''}</strong>
+  <span style="font-size:12px;color:var(--txt2)">${statsHtml}</span>
+  </div>`;
+}
+
 function nextSeasonEnd(currentFin){
   const label=seasonFromDate(currentFin)||currentSeasonLabel();
   const m=(label||'').match(/^(\d{4})-(\d{4})$/);
@@ -4782,9 +4816,37 @@ function vAchat(){
     const matchesDateTo=!dateTo||dateOp<=dateTo;
     return matchesSearch && matchesStatus && matchesCat && matchesDateFrom && matchesDateTo;
   });
-  const {rows:f,totalPages}=paginateList(filtered,'achats');
   const tP=D.achats.filter(a=>a.statut==='paye').reduce((s,a)=>s+(+a.montant),0);
   const en=D.achats.filter(a=>a.statut==='nouveau'||a.statut==='valide').reduce((s,a)=>s+(+a.montant),0);
+  const achatTHead='<thead><tr><th>Date</th><th>Fournisseur</th><th>Désignation</th><th>Catégorie</th><th>Montant</th><th>Mode paiement</th><th>Référence</th><th>Pièce</th><th>PDF</th><th>Statut</th><th></th></tr></thead>';
+  const achatRow=a=>`<tr>
+    <td>${fd(a.date_op)}</td>
+    <td><strong style="font-weight:500">${a.fournisseur}</strong></td>
+    <td>${a.designation||''}</td>
+    <td><span class="badge bgray">${a.categorie}</span></td>
+    <td><strong style="font-weight:500">${(+a.montant).toFixed(2)} €</strong></td>
+    <td style="font-size:11px">${a.mode_paiement||'—'}</td>
+    <td style="font-size:11px;color:var(--txt2)">${a.reference_paiement||'—'}</td>
+    <td style="font-size:11px;color:var(--txt2)">${a.piece||'—'}</td>
+    <td style="white-space:nowrap">
+    ${a.pdf_public_url?`<button type="button" class="btn sm" data-storage-url="${esc(a.pdf_public_url)}" onclick="openStorageFile(this.dataset.storageUrl)">Voir</button>`:`<span class="badge bgray">Aucun</span>`}
+    </td>
+    <td><span class="badge ${a.statut==='paye'?'bok':a.statut==='valide'?'bblue':a.statut==='refuse'?'bno':'bwarn'}">${a.statut==='nouveau'?'Nouveau':a.statut==='valide'?'Validé':a.statut==='refuse'?'Refusé':'Payé'}</span></td>
+    <td style="white-space:nowrap">
+    ${canWrite?`<button class="btn sm" onclick="openModal('achat','${a.id}')">Modifier</button>
+    ${a.statut==='nouveau'?`<button class="btn sm" style="margin-left:4px" onclick="validerAchat('${a.id}')">Valider</button>`:''}
+    <button class="btn sm" style="margin-left:4px" onclick="trigPDF('achats','${a.id}')">${a.pdf_public_url?'Remplacer PDF':'Ajouter PDF'}</button>
+    <button class="btn sm danger" style="margin-left:4px" onclick="delAchat('${a.id}')">✕</button>`:''}
+    </td>
+    </tr>`;
+  const achatGroups=groupBySeason(filtered,'date_op').map(g=>{
+    const gTotal=g.rows.reduce((s,a)=>s+(+a.montant||0),0);
+    const gRegle=g.rows.filter(a=>a.statut==='paye').reduce((s,a)=>s+(+a.montant||0),0);
+    return`<div class="gl-acc" style="margin-bottom:14px">
+    ${seasonGroupHeader(g.season,g.isCurrent,`${g.rows.length} achat${g.rows.length>1?'s':''} · ${gTotal.toLocaleString('fr-FR',{minimumFractionDigits:2})} € engagés · ${gRegle.toLocaleString('fr-FR',{minimumFractionDigits:2})} € réglés`)}
+    <div style="overflow-x:auto"><table>${achatTHead}<tbody>${g.rows.map(achatRow).join('')}</tbody></table></div>
+    </div>`;
+  }).join('');
   return`<div class="view-head">
   <div>
   <div class="eyebrow">Fournisseurs et dépenses</div>
@@ -4822,32 +4884,7 @@ function vAchat(){
   <input type="date" title="Au" value="${UI.achatFilterDateTo||''}" style="width:auto" onchange="UI.achatFilterDateTo=this.value;render()">
   <button class="btn" onclick="UI.search.achats='';UI.achatFilterStatus='';UI.achatFilterCat='';UI.achatFilterDateFrom='';UI.achatFilterDateTo='';render()">Réinitialiser</button>
   </div>
-  <div class="wrap"><table>
-  <thead><tr><th>Date</th><th>Fournisseur</th><th>Désignation</th><th>Catégorie</th><th>Montant</th><th>Mode paiement</th><th>Référence</th><th>Pièce</th><th>PDF</th><th>Statut</th><th></th></tr></thead>
-  <tbody>${f.map(a=>`<tr>
-    <td>${fd(a.date_op)}</td>
-    <td><strong style="font-weight:500">${a.fournisseur}</strong></td>
-    <td>${a.designation||''}</td>
-    <td><span class="badge bgray">${a.categorie}</span></td>
-    <td><strong style="font-weight:500">${(+a.montant).toFixed(2)} €</strong></td>
-    <td style="font-size:11px">${a.mode_paiement||'—'}</td>
-    <td style="font-size:11px;color:var(--txt2)">${a.reference_paiement||'—'}</td>
-    <td style="font-size:11px;color:var(--txt2)">${a.piece||'—'}</td>
-    <td style="white-space:nowrap">
-    ${a.pdf_public_url?`<button type="button" class="btn sm" data-storage-url="${esc(a.pdf_public_url)}" onclick="openStorageFile(this.dataset.storageUrl)">Voir</button>`:`<span class="badge bgray">Aucun</span>`}
-    </td>
-    <td><span class="badge ${a.statut==='paye'?'bok':a.statut==='valide'?'bblue':a.statut==='refuse'?'bno':'bwarn'}">${a.statut==='nouveau'?'Nouveau':a.statut==='valide'?'Validé':a.statut==='refuse'?'Refusé':'Payé'}</span></td>
-    <td style="white-space:nowrap">
-    ${canWrite?`<button class="btn sm" onclick="openModal('achat','${a.id}')">Modifier</button>
-    ${a.statut==='nouveau'?`<button class="btn sm" style="margin-left:4px" onclick="validerAchat('${a.id}')">Valider</button>`:''}
-    <button class="btn sm" style="margin-left:4px" onclick="trigPDF('achats','${a.id}')">${a.pdf_public_url?'Remplacer PDF':'Ajouter PDF'}</button>
-    <button class="btn sm danger" style="margin-left:4px" onclick="delAchat('${a.id}')">✕</button>`:''}
-    </td>
-    </tr>`).join('')}
-    ${f.length===0?`<tr><td colspan="11" class="empty">Aucun achat</td></tr>`:''}
-    </tbody>
-    </table></div>
-    ${renderPager('achats',totalPages)}`;
+  ${filtered.length===0?`<div class="wrap"><table>${achatTHead}<tbody><tr><td colspan="11" class="empty">Aucun achat</td></tr></tbody></table></div>`:achatGroups}`;
 }
 
 // ═══════════════════════════════════════════════════
@@ -5140,17 +5177,38 @@ function vFacListe(){
   <div class="sc"><div class="v vg">${tPayee.toLocaleString('fr-FR',{minimumFractionDigits:2})} €</div><div class="l">Encaissé</div></div>
   <div class="sc"><div class="v vr">${tOuverte.toLocaleString('fr-FR',{minimumFractionDigits:2})} €</div><div class="l">En attente</div></div>
   </div>`;
-  const ventesRawSorted=[...ventesRaw].sort((a,b)=>{
-    const toISO=d=>{if(!d)return'';const p=d.split('/');return p.length===3?`${p[2]}-${p[1]}-${p[0]}`:d;};
-    return toISO(b.date_op).localeCompare(toISO(a.date_op));
-  });
-  const filtered=ventesRawSorted.filter(f=>{
+  const filtered=ventesRaw.filter(f=>{
     const haystack=`${f.numero||''} ${f.destinataire||''} ${f.objet||''} ${factureLineSummary(f).join(' ')}`.toLowerCase();
     const matchesSearch=haystack.includes((UI.search.factures||'').toLowerCase());
     const matchesStatus=factureMatchesFilter(f,UI.factureFilterStatus);
     return matchesSearch && matchesStatus;
   });
-  const {rows:ventes,totalPages}=paginateList(filtered,'factures');
+  const venteTHead='<thead><tr><th>N° vente</th><th>Date</th><th>Client / destinataire</th><th>Objet / détail</th><th>Total</th><th>Statut</th><th></th></tr></thead>';
+  const venteRow=f=>{
+    const tot=(f.lignes||[]).reduce((s,l)=>s+(+l.qte||0)*(+l.pu||0),0);
+    return`<tr>
+    <td><strong style="font-weight:500">${f.numero}</strong></td>
+    <td>${fd(f.date_op)}</td><td>${esc(f.destinataire||'')}</td><td>${esc(f.objet||'')}${renderFactureLineSummary(f)}</td>
+    <td><strong>${tot.toFixed(2)} €</strong></td>
+    <td><span class="badge ${factureStatusBadge(f.statut)}">${f.statut}</span>${f.statut==='Payée'&&f.date_paiement?`<br><span style="font-size:10px;color:var(--txt2)">le ${fd(f.date_paiement)}</span>`:''}</td>
+    <td style="white-space:nowrap">
+    <button class="btn sm" onclick="printFac('${f.id}')">🖨 Imprimer</button>
+    ${f.client_email?`<button class="btn sm" style="margin-left:4px" onclick="sendFactureEmail('${f.id}')" title="Envoyer le document par email à ${esc(f.client_email)}">📧 Envoyer</button>`:''}
+    ${canWrite&&(f.statut==='En retard'||f.statut==='Émise'||f.statut==='En attente')&&f.client_email?`<button class="btn sm bwarn" style="margin-left:4px" onclick="relanceFactureEmail('${f.id}')" title="Envoyer une relance par email">↻ Relance</button>`:''}
+    ${canWrite&&f.statut!=='Payée'?`<button class="btn sm" style="margin-left:4px" onclick="setFactureStatus('${f.id}','Payée')">Payée</button>`:''}
+    ${canWrite&&f.statut!=='En retard'?`<button class="btn sm gold" style="margin-left:4px" onclick="setFactureStatus('${f.id}','En retard')">Retard</button>`:''}
+    ${canWrite?`<button class="btn sm danger" style="margin-left:4px" onclick="delFac('${f.id}')">✕</button>`:''}
+    </td>
+    </tr>`;
+  };
+  const venteGroups=groupBySeason(filtered,'date_op').map(g=>{
+    const gTotal=g.rows.reduce((s,f)=>s+(f.lignes||[]).reduce((t,l)=>t+(+l.qte||0)*(+l.pu||0),0),0);
+    const gEncaisse=g.rows.filter(f=>f.statut==='Payée').reduce((s,f)=>s+(f.lignes||[]).reduce((t,l)=>t+(+l.qte||0)*(+l.pu||0),0),0);
+    return`<div class="gl-acc" style="margin-bottom:14px">
+    ${seasonGroupHeader(g.season,g.isCurrent,`${g.rows.length} vente${g.rows.length>1?'s':''} · ${gTotal.toLocaleString('fr-FR',{minimumFractionDigits:2})} € facturés · ${gEncaisse.toLocaleString('fr-FR',{minimumFractionDigits:2})} € encaissés`)}
+    <div style="overflow-x:auto"><table>${venteTHead}<tbody>${g.rows.map(venteRow).join('')}</tbody></table></div>
+    </div>`;
+  }).join('');
   return`<div>
   ${statsHtml}
   <div class="toolbar">
@@ -5167,43 +5225,15 @@ function vFacListe(){
   ${canWrite?`<button class="btn primary" onclick="nouvFac()">+ Nouvelle vente</button>`:''}
   <button class="btn" onclick="UI.search.factures='';UI.factureFilterStatus='';render()">Réinitialiser</button>
   </div>
-  <div class="wrap"><table>
-  <thead><tr><th>N° vente</th><th>Date</th><th>Client / destinataire</th><th>Objet / détail</th><th>Total</th><th>Statut</th><th></th></tr></thead>
-  <tbody>${ventes.map(f=>{
-    const tot=(f.lignes||[]).reduce((s,l)=>s+(+l.qte||0)*(+l.pu||0),0);
-    return`<tr>
-    <td><strong style="font-weight:500">${f.numero}</strong></td>
-    <td>${fd(f.date_op)}</td><td>${esc(f.destinataire||'')}</td><td>${esc(f.objet||'')}${renderFactureLineSummary(f)}</td>
-    <td><strong>${tot.toFixed(2)} €</strong></td>
-    <td><span class="badge ${factureStatusBadge(f.statut)}">${f.statut}</span>${f.statut==='Payée'&&f.date_paiement?`<br><span style="font-size:10px;color:var(--txt2)">le ${fd(f.date_paiement)}</span>`:''}</td>
-    <td style="white-space:nowrap">
-    <button class="btn sm" onclick="printFac('${f.id}')">🖨 Imprimer</button>
-    ${f.client_email?`<button class="btn sm" style="margin-left:4px" onclick="sendFactureEmail('${f.id}')" title="Envoyer le document par email à ${esc(f.client_email)}">📧 Envoyer</button>`:''}
-    ${canWrite&&(f.statut==='En retard'||f.statut==='Émise'||f.statut==='En attente')&&f.client_email?`<button class="btn sm bwarn" style="margin-left:4px" onclick="relanceFactureEmail('${f.id}')" title="Envoyer une relance par email">↻ Relance</button>`:''}
-    ${canWrite&&f.statut!=='Payée'?`<button class="btn sm" style="margin-left:4px" onclick="setFactureStatus('${f.id}','Payée')">Payée</button>`:''}
-    ${canWrite&&f.statut!=='En retard'?`<button class="btn sm gold" style="margin-left:4px" onclick="setFactureStatus('${f.id}','En retard')">Retard</button>`:''}
-    ${canWrite?`<button class="btn sm danger" style="margin-left:4px" onclick="delFac('${f.id}')">✕</button>`:''}
-    </td>
-    </tr>`;
-  }).join('')}
-  ${ventes.length===0?`<tr><td colspan="7" class="empty">Aucune vente${UI.search.factures||UI.factureFilterStatus?' pour ce filtre':''}</td></tr>`:''}
-  </tbody>
-  </table></div>
-  ${renderPager('factures',totalPages)}</div>`;
+  ${filtered.length===0?`<div class="wrap"><table>${venteTHead}<tbody><tr><td colspan="7" class="empty">Aucune vente${UI.search.factures||UI.factureFilterStatus?' pour ce filtre':''}</td></tr></tbody></table></div>`:venteGroups}
+  </div>`;
 }
 
 function vDonListe(){
   const canWrite=hasPerm('perm_facturation','write');
   const donsRaw=D.factures.filter(isDonationReceipt).map(f=>({...f,statut:normalizeFactureStatus(f.statut,f.date_op)}));
-  const {rows:dons,totalPages}=paginateList(donsRaw,'dons');
-  return`<div>
-  <div class="toolbar">
-  <div style="font-size:12px;color:var(--txt2);flex:1;min-width:180px">Créez et imprimez des reçus pour les dons manuels du club.</div>
-  ${canWrite?`<button class="btn primary" onclick="nouvDon()">+ Nouveau reçu de don</button>`:''}
-  </div>
-  <div class="wrap"><table>
-  <thead><tr><th>N° reçu</th><th>Date</th><th>Donateur</th><th>Objet</th><th>Montant</th><th></th></tr></thead>
-  <tbody>${dons.map(f=>{
+  const donTHead='<thead><tr><th>N° reçu</th><th>Date</th><th>Donateur</th><th>Objet</th><th>Montant</th><th></th></tr></thead>';
+  const donRow=f=>{
     const tot=(f.lignes||[]).reduce((s,l)=>s+(+l.qte||0)*(+l.pu||0),0);
     return`<tr>
     <td><strong style="font-weight:500">${f.numero}</strong></td>
@@ -5217,11 +5247,21 @@ function vDonListe(){
     ${canWrite?`<button class="btn sm danger" style="margin-left:4px" onclick="delFac('${f.id}')">✕</button>`:''}
     </td>
     </tr>`;
-  }).join('')}
-  ${dons.length===0?`<tr><td colspan="6" class="empty">Aucun reçu de don</td></tr>`:''}
-  </tbody>
-  </table></div>
-  ${renderPager('dons',totalPages)}`;
+  };
+  const donGroups=groupBySeason(donsRaw,'date_op').map(g=>{
+    const gTotal=g.rows.reduce((s,f)=>s+(f.lignes||[]).reduce((t,l)=>t+(+l.qte||0)*(+l.pu||0),0),0);
+    return`<div class="gl-acc" style="margin-bottom:14px">
+    ${seasonGroupHeader(g.season,g.isCurrent,`${g.rows.length} don${g.rows.length>1?'s':''} · ${gTotal.toLocaleString('fr-FR',{minimumFractionDigits:2})} € collectés`)}
+    <div style="overflow-x:auto"><table>${donTHead}<tbody>${g.rows.map(donRow).join('')}</tbody></table></div>
+    </div>`;
+  }).join('');
+  return`<div>
+  <div class="toolbar">
+  <div style="font-size:12px;color:var(--txt2);flex:1;min-width:180px">Créez et imprimez des reçus pour les dons manuels du club.</div>
+  ${canWrite?`<button class="btn primary" onclick="nouvDon()">+ Nouveau reçu de don</button>`:''}
+  </div>
+  ${donsRaw.length===0?`<div class="wrap"><table>${donTHead}<tbody><tr><td colspan="6" class="empty">Aucun reçu de don</td></tr></tbody></table></div>`:donGroups}
+  </div>`;
 }
 
 function vFacEditor(){
