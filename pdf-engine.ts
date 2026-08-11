@@ -1,0 +1,374 @@
+/**
+ * pdf-engine.ts — AFFBC (gestion)
+ * ─────────────────────────────────────────────────────────────────────────
+ * Port TypeScript de pdf-engine.js (copie identique côté boutique/inscription
+ * en JS pur). Même moteur, mêmes formats de sortie — seule la syntaxe change
+ * pour respecter le `strict: true` de ce projet. Garder les deux versions en
+ * phase manuellement lors de futures évolutions (pas de package npm partagé
+ * entre Workers Cloudflare déployés indépendamment).
+ */
+
+export type RGB = [number, number, number];
+
+export const W_PT = 595.28;
+export const H_PT = 841.89;
+export const MM = 2.8346;
+export const ML = 14 * MM;
+export const MR = 14 * MM;
+export const CW = W_PT - ML - MR;
+
+function rgb255(c: RGB): [number, number, number] {
+  return [c[0] / 255, c[1] / 255, c[2] / 255].map((v) => +v.toFixed(4)) as RGB;
+}
+function rg(c: RGB): string { const [r, g, b] = rgb255(c); return `${r} ${g} ${b} rg`; }
+function RG(c: RGB): string { const [r, g, b] = rgb255(c); return `${r} ${g} ${b} RG`; }
+
+export function safe(v: unknown): string {
+  return String(v ?? '')
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/[\u2018\u2019\u02BC]/g, "'")
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    // \u00B0 (°) est conservé : même code point en Latin-1/WinAnsi, donc un
+    // octet unique — strToBytes ci-dessous l'encode correctement. Le strip
+    // ASCII générique ne doit pas l'emporter (cf. bug "N " au lieu de "N°"
+    // sur tous les numéros de document).
+    .replace(/[^\x20-\x7E\u00B0]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function esc(v: unknown): string {
+  return safe(v).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+}
+
+function strToBytes(str: string): Uint8Array {
+  // Encodage octet-par-caractere (Latin-1/WinAnsi), PAS TextEncoder/UTF-8 :
+  // les chaines PDF (Tj) sont en 1 octet par caractere, pas en UTF-8. Avec
+  // TextEncoder, tout caractere hors ASCII (ex. \u00B0 degre) partait en 2
+  // octets UTF-8 et s'affichait mal — d'où le strip ASCII strict qui
+  // existait dans `safe()` jusqu'ici.
+  const bytes = new Uint8Array(str.length);
+  for (let i = 0; i < str.length; i++) bytes[i] = str.charCodeAt(i) & 0xFF;
+  return bytes;
+}
+
+function concatBytes(chunks: Uint8Array[]): Uint8Array {
+  const total = chunks.reduce((s, c) => s + c.length, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) { out.set(c, offset); offset += c.length; }
+  return out;
+}
+
+export function parseJpegInfo(bytes: Uint8Array): { width: number; height: number; numComponents: number } | null {
+  if (bytes.length < 4 || bytes[0] !== 0xFF || bytes[1] !== 0xD8) return null;
+  let offset = 2;
+  while (offset < bytes.length - 1) {
+    if (bytes[offset] !== 0xFF) { offset++; continue; }
+    const marker = bytes[offset + 1];
+    if (marker === 0xFF) { offset++; continue; }
+    if ((marker >= 0xD0 && marker <= 0xD9) || marker === 0x01) { offset += 2; continue; }
+    if (offset + 3 >= bytes.length) break;
+    const segLen = (bytes[offset + 2] << 8) | bytes[offset + 3];
+    const isSOF = marker >= 0xC0 && marker <= 0xCF && marker !== 0xC4 && marker !== 0xC8 && marker !== 0xCC;
+    if (isSOF) {
+      const p = offset + 4;
+      if (p + 5 >= bytes.length) return null;
+      const height = (bytes[p + 1] << 8) | bytes[p + 2];
+      const width = (bytes[p + 3] << 8) | bytes[p + 4];
+      const numComponents = bytes[p + 5];
+      if (!width || !height) return null;
+      return { width, height, numComponents };
+    }
+    if (marker === 0xDA) break;
+    offset += 2 + segLen;
+  }
+  return null;
+}
+
+export function base64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+const B64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+export function bytesToBase64(bytes: Uint8Array): string {
+  let result = '';
+  const len = bytes.length;
+  for (let i = 0; i < len; i += 3) {
+    const b0 = bytes[i];
+    const b1 = i + 1 < len ? bytes[i + 1] : 0;
+    const b2 = i + 2 < len ? bytes[i + 2] : 0;
+    result += B64_CHARS[b0 >> 2];
+    result += B64_CHARS[((b0 & 3) << 4) | (b1 >> 4)];
+    result += i + 1 < len ? B64_CHARS[((b1 & 15) << 2) | (b2 >> 6)] : '=';
+    result += i + 2 < len ? B64_CHARS[b2 & 63] : '=';
+  }
+  return result;
+}
+
+interface ImageEntry {
+  id: string;
+  bytes: Uint8Array;
+  filter: string;
+  colorSpace: string;
+  bpc: number;
+  width: number;
+  height: number;
+}
+
+export interface ImageDescriptor { id: string; width: number; height: number }
+
+type TextAlign = 'left' | 'center' | 'right';
+interface TextOpts { align?: TextAlign; fontName?: string; fontSize?: number; color?: RGB }
+
+// Largeurs de caracteres Helvetica / Helvetica-Bold (metriques AFM Adobe
+// standard, en 1/1000 em). Remplace l'ancienne estimation grossiere
+// `str.length * fs * 0.48` qui sous-estimait fortement les majuscules et
+// les chiffres (tres presents : titres en .toUpperCase(), en-tetes de
+// tableau, montants) et faisait deborder tout texte aligne a droite/centre
+// au-dela de sa position calculee — parfois au-dela de la page elle-meme.
+const HELV_WIDTHS: Record<string, number> = {
+  ' ': 278, '!': 278, '"': 355, '#': 556, '$': 556, '%': 889, '&': 667, "'": 191,
+  '(': 333, ')': 333, '*': 389, '+': 584, ',': 278, '-': 333, '.': 278, '/': 278,
+  '0': 556, '1': 556, '2': 556, '3': 556, '4': 556, '5': 556, '6': 556, '7': 556, '8': 556, '9': 556,
+  ':': 278, ';': 278, '<': 584, '=': 584, '>': 584, '?': 556, '@': 1015,
+  'A': 667, 'B': 667, 'C': 722, 'D': 722, 'E': 667, 'F': 611, 'G': 778, 'H': 722, 'I': 278, 'J': 500,
+  'K': 667, 'L': 556, 'M': 833, 'N': 722, 'O': 778, 'P': 667, 'Q': 778, 'R': 722, 'S': 667, 'T': 611,
+  'U': 722, 'V': 667, 'W': 944, 'X': 667, 'Y': 667, 'Z': 611,
+  '[': 278, '\\': 278, ']': 278, '^': 469, '_': 556, '`': 333,
+  'a': 556, 'b': 556, 'c': 500, 'd': 556, 'e': 556, 'f': 278, 'g': 556, 'h': 556, 'i': 222, 'j': 222,
+  'k': 500, 'l': 222, 'm': 833, 'n': 556, 'o': 556, 'p': 556, 'q': 556, 'r': 333, 's': 500, 't': 278,
+  'u': 556, 'v': 500, 'w': 722, 'x': 500, 'y': 500, 'z': 500,
+  '{': 334, '|': 260, '}': 334, '~': 584, '°': 400,
+};
+const HELV_BOLD_WIDTHS: Record<string, number> = {
+  ' ': 278, '!': 333, '"': 474, '#': 556, '$': 556, '%': 889, '&': 722, "'": 238,
+  '(': 333, ')': 333, '*': 389, '+': 584, ',': 278, '-': 333, '.': 278, '/': 278,
+  '0': 556, '1': 556, '2': 556, '3': 556, '4': 556, '5': 556, '6': 556, '7': 556, '8': 556, '9': 556,
+  ':': 333, ';': 333, '<': 584, '=': 584, '>': 584, '?': 611, '@': 975,
+  'A': 722, 'B': 722, 'C': 722, 'D': 722, 'E': 667, 'F': 611, 'G': 778, 'H': 722, 'I': 278, 'J': 556,
+  'K': 722, 'L': 611, 'M': 833, 'N': 722, 'O': 778, 'P': 667, 'Q': 778, 'R': 722, 'S': 667, 'T': 611,
+  'U': 722, 'V': 667, 'W': 944, 'X': 667, 'Y': 667, 'Z': 611,
+  '[': 333, '\\': 278, ']': 333, '^': 584, '_': 556, '`': 333,
+  'a': 556, 'b': 611, 'c': 556, 'd': 611, 'e': 556, 'f': 333, 'g': 611, 'h': 611, 'i': 278, 'j': 278,
+  'k': 556, 'l': 278, 'm': 889, 'n': 611, 'o': 611, 'p': 611, 'q': 611, 'r': 389, 's': 556, 't': 333,
+  'u': 611, 'v': 556, 'w': 778, 'x': 556, 'y': 556, 'z': 500,
+  '{': 389, '|': 280, '}': 389, '~': 584, '°': 400,
+};
+
+// F2 = Helvetica-Bold ; tout le reste (F1 Helvetica, F3 Times-Italic sans
+// table dediee) utilise les largeurs Helvetica normales comme approximation
+// raisonnable — F3 n'est jamais aligne a droite/centre dans les gabarits.
+export function measureTextWidth(str: string, fontName: string, fontSize: number): number {
+  const table = fontName === 'F2' ? HELV_BOLD_WIDTHS : HELV_WIDTHS;
+  let units = 0;
+  for (const ch of str) units += table[ch] ?? 556;
+  return (units / 1000) * fontSize;
+}
+
+export class PdfBuilder {
+  pages: string[][] = [[]];
+  pageIndex = 0;
+  font: string | null = null;
+  fontSize = 10;
+  images: ImageEntry[] = [];
+
+  private get ops(): string[] { return this.pages[this.pageIndex]; }
+
+  addImage(bytes: Uint8Array, opts: { filter: string; colorSpace?: string; bpc?: number; width: number; height: number }): ImageDescriptor {
+    const id = `Im${this.images.length + 1}`;
+    this.images.push({
+      id, bytes, filter: opts.filter, colorSpace: opts.colorSpace || 'DeviceRGB',
+      bpc: opts.bpc ?? 8, width: opts.width, height: opts.height,
+    });
+    return { id, width: opts.width, height: opts.height };
+  }
+
+  drawImage(imageId: string, xMm: number, yMm: number, wMm: number, hMm: number): void {
+    const x = xMm * MM, y = H_PT - (yMm + hMm) * MM, w = wMm * MM, h = hMm * MM;
+    this.push('q', `${+w.toFixed(2)} 0 0 ${+h.toFixed(2)} ${+x.toFixed(2)} ${+y.toFixed(2)} cm`, `/${imageId} Do`, 'Q');
+  }
+
+  drawImageContain(imageId: string, boxXMm: number, boxYMm: number, boxWMm: number, boxHMm: number, imgWidthPx: number, imgHeightPx: number): void {
+    const boxRatio = boxWMm / boxHMm;
+    const imgRatio = imgWidthPx / imgHeightPx;
+    let drawW: number, drawH: number;
+    if (imgRatio > boxRatio) { drawW = boxWMm; drawH = boxWMm / imgRatio; }
+    else { drawH = boxHMm; drawW = boxHMm * imgRatio; }
+    const offX = boxXMm + (boxWMm - drawW) / 2;
+    const offY = boxYMm + (boxHMm - drawH) / 2;
+    this.drawImage(imageId, offX, offY, drawW, drawH);
+  }
+
+  newPage(): void { this.pages.push([]); this.pageIndex++; }
+  push(...lines: string[]): void { this.ops.push(...lines); }
+  saveState(): void { this.push('q'); }
+  restoreState(): void { this.push('Q'); }
+  setLineWidth(w: number): void { this.push(`${+w.toFixed(3)} w`); }
+  setFillRgb(c: RGB): void { this.push(rg(c)); }
+  setStrokeRgb(c: RGB): void { this.push(RG(c)); }
+  setFont(name: string, size: number): void { this.font = name; this.fontSize = size; this.push(`/${name} ${size} Tf`); }
+
+  rect(xMm: number, yMm: number, wMm: number, hMm: number, mode: string = 'f'): void {
+    const x = xMm * MM, y = H_PT - (yMm + hMm) * MM, w = wMm * MM, h = hMm * MM;
+    this.push(`${+x.toFixed(2)} ${+y.toFixed(2)} ${+w.toFixed(2)} ${+h.toFixed(2)} re ${mode}`);
+  }
+
+  roundedRect(xMm: number, yMm: number, wMm: number, hMm: number, rMm: number, mode: string = 'f'): void {
+    const x = xMm * MM, y = H_PT - (yMm + hMm) * MM, w = wMm * MM, h = hMm * MM, r = rMm * MM, k = 0.5523;
+    this.push(
+      `${+(x + r).toFixed(2)} ${+(y).toFixed(2)} m`,
+      `${+(x + w - r).toFixed(2)} ${+(y).toFixed(2)} l`,
+      `${+(x + w - r + k * r).toFixed(2)} ${+(y).toFixed(2)} ${+(x + w).toFixed(2)} ${+(y + r - k * r).toFixed(2)} ${+(x + w).toFixed(2)} ${+(y + r).toFixed(2)} c`,
+      `${+(x + w).toFixed(2)} ${+(y + h - r).toFixed(2)} l`,
+      `${+(x + w).toFixed(2)} ${+(y + h - r + k * r).toFixed(2)} ${+(x + w - r + k * r).toFixed(2)} ${+(y + h).toFixed(2)} ${+(x + w - r).toFixed(2)} ${+(y + h).toFixed(2)} c`,
+      `${+(x + r).toFixed(2)} ${+(y + h).toFixed(2)} l`,
+      `${+(x + r - k * r).toFixed(2)} ${+(y + h).toFixed(2)} ${+(x).toFixed(2)} ${+(y + h - r + k * r).toFixed(2)} ${+(x).toFixed(2)} ${+(y + h - r).toFixed(2)} c`,
+      `${+(x).toFixed(2)} ${+(y + r).toFixed(2)} l`,
+      `${+(x).toFixed(2)} ${+(y + r - k * r).toFixed(2)} ${+(x + r - k * r).toFixed(2)} ${+(y).toFixed(2)} ${+(x + r).toFixed(2)} ${+(y).toFixed(2)} c`,
+      mode,
+    );
+  }
+
+  circle(xMm: number, yMm: number, rMm: number, mode: string = 'f'): void {
+    const x = xMm * MM, y = H_PT - yMm * MM, r = rMm * MM, k = 0.5523 * r;
+    this.push(
+      `${+(x).toFixed(2)} ${+(y + r).toFixed(2)} m`,
+      `${+(x + k).toFixed(2)} ${+(y + r).toFixed(2)} ${+(x + r).toFixed(2)} ${+(y + k).toFixed(2)} ${+(x + r).toFixed(2)} ${+(y).toFixed(2)} c`,
+      `${+(x + r).toFixed(2)} ${+(y - k).toFixed(2)} ${+(x + k).toFixed(2)} ${+(y - r).toFixed(2)} ${+(x).toFixed(2)} ${+(y - r).toFixed(2)} c`,
+      `${+(x - k).toFixed(2)} ${+(y - r).toFixed(2)} ${+(x - r).toFixed(2)} ${+(y - k).toFixed(2)} ${+(x - r).toFixed(2)} ${+(y).toFixed(2)} c`,
+      `${+(x - r).toFixed(2)} ${+(y + k).toFixed(2)} ${+(x - k).toFixed(2)} ${+(y + r).toFixed(2)} ${+(x).toFixed(2)} ${+(y + r).toFixed(2)} c`,
+      mode,
+    );
+  }
+
+  line(x1Mm: number, y1Mm: number, x2Mm: number, y2Mm: number): void {
+    this.push(`${+(x1Mm * MM).toFixed(2)} ${+(H_PT - y1Mm * MM).toFixed(2)} m`, `${+(x2Mm * MM).toFixed(2)} ${+(H_PT - y2Mm * MM).toFixed(2)} l S`);
+  }
+
+  text(txt: unknown, xMm: number, yMm: number, opts: TextOpts = {}): void {
+    const { align = 'left', fontName, fontSize, color } = opts;
+    const str = esc(txt);
+    if (!str) return;
+    let px = xMm * MM;
+    const py = H_PT - yMm * MM;
+    const fn = fontName || this.font || 'F1';
+    const fs = fontSize || this.fontSize;
+    const w = measureTextWidth(str, fn, fs);
+    if (align === 'center') px -= w / 2;
+    if (align === 'right') px -= w;
+    this.push('BT');
+    if (color) this.push(rg(color));
+    this.push(`/${fn} ${fs} Tf`);
+    this.push(`${+px.toFixed(2)} ${+py.toFixed(2)} Td`);
+    this.push(`(${str}) Tj`);
+    this.push('ET');
+  }
+
+  textWrapped(txt: unknown, xMm: number, yMm: number, maxWMm: number, opts: TextOpts = {}): number {
+    const { fontName, fontSize, color } = opts;
+    const fn = fontName || this.font || 'F1';
+    const fs = fontSize || this.fontSize;
+    const maxPt = maxWMm * MM;
+    const words = safe(txt).split(' ');
+    const lines: string[] = [];
+    let cur = '';
+    for (const w of words) {
+      const candidate = cur ? `${cur} ${w}` : w;
+      if (measureTextWidth(candidate, fn, fs) <= maxPt) { cur = candidate; continue; }
+      if (cur) lines.push(cur);
+      cur = w;
+    }
+    if (cur) lines.push(cur);
+    const lh = (fs * 1.35) / MM;
+    lines.forEach((l, i) => this.text(l, xMm, yMm + i * lh, { fontName, fontSize, color }));
+    return lines.length;
+  }
+
+  getStreams(): string[] { return this.pages.map((ops) => ops.join('\n')); }
+}
+
+export function addJpegImage(builder: PdfBuilder, jpegBytes: Uint8Array): ImageDescriptor | null {
+  const info = parseJpegInfo(jpegBytes);
+  if (!info) return null;
+  const colorSpace = info.numComponents === 1 ? 'DeviceGray' : 'DeviceRGB';
+  return builder.addImage(jpegBytes, { filter: 'DCTDecode', colorSpace, bpc: 8, width: info.width, height: info.height });
+}
+
+export function buildPdfDocument(contentStreams: string[], images: ImageEntry[] = []): Uint8Array {
+  const pageCount = contentStreams.length;
+  const pageObjStart = 3;
+  const streamObjStart = pageObjStart + pageCount;
+  const font1ObjNum = streamObjStart + pageCount;
+  const font2ObjNum = font1ObjNum + 1;
+  const font3ObjNum = font2ObjNum + 1;
+  const imageObjStart = font3ObjNum + 1;
+  const imageObjNums = images.map((_, i) => imageObjStart + i);
+  const lastObjNum = imageObjStart + images.length - 1;
+
+  const objChunks: Uint8Array[][] = new Array(lastObjNum);
+
+  objChunks[0] = [strToBytes(`1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n`)];
+
+  const kidsRef = Array.from({ length: pageCount }, (_, i) => `${pageObjStart + i} 0 R`).join(' ');
+  objChunks[1] = [strToBytes(`2 0 obj\n<< /Type /Pages /Kids [${kidsRef}] /Count ${pageCount} >>\nendobj\n`)];
+
+  const xobjectDict = images.length
+    ? ` /XObject << ${images.map((img, i) => `/${img.id} ${imageObjNums[i]} 0 R`).join(' ')} >>`
+    : '';
+
+  for (let i = 0; i < pageCount; i++) {
+    const pageNum = pageObjStart + i;
+    const streamNum = streamObjStart + i;
+    objChunks[pageNum - 1] = [strToBytes(
+      `${pageNum} 0 obj\n<< /Type /Page /Parent 2 0 R\n` +
+      `/MediaBox [0 0 ${W_PT.toFixed(2)} ${H_PT.toFixed(2)}]\n` +
+      `/Resources << /Font << /F1 ${font1ObjNum} 0 R /F2 ${font2ObjNum} 0 R /F3 ${font3ObjNum} 0 R >>${xobjectDict} >>\n` +
+      `/Contents ${streamNum} 0 R >>\nendobj\n`,
+    )];
+  }
+
+  for (let i = 0; i < pageCount; i++) {
+    const streamNum = streamObjStart + i;
+    const streamBytes = strToBytes(contentStreams[i]);
+    objChunks[streamNum - 1] = [
+      strToBytes(`${streamNum} 0 obj\n<< /Length ${streamBytes.length} >>\nstream\n`),
+      streamBytes,
+      strToBytes(`\nendstream\nendobj\n`),
+    ];
+  }
+
+  objChunks[font1ObjNum - 1] = [strToBytes(`${font1ObjNum} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>\nendobj\n`)];
+  objChunks[font2ObjNum - 1] = [strToBytes(`${font2ObjNum} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>\nendobj\n`)];
+  objChunks[font3ObjNum - 1] = [strToBytes(`${font3ObjNum} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Times-Italic /Encoding /WinAnsiEncoding >>\nendobj\n`)];
+
+  images.forEach((img, i) => {
+    const objNum = imageObjNums[i];
+    const header = strToBytes(
+      `${objNum} 0 obj\n<< /Type /XObject /Subtype /Image /Width ${img.width} /Height ${img.height} ` +
+      `/ColorSpace /${img.colorSpace} /BitsPerComponent ${img.bpc} /Filter /${img.filter} /Length ${img.bytes.length} >>\nstream\n`,
+    );
+    objChunks[objNum - 1] = [header, img.bytes, strToBytes(`\nendstream\nendobj\n`)];
+  });
+
+  const header = strToBytes('%PDF-1.4\n');
+  const offsets: number[] = [];
+  const allChunks: Uint8Array[] = [header];
+  let cursor = header.length;
+  for (const chunkList of objChunks) {
+    offsets.push(cursor);
+    for (const chunk of chunkList) { allChunks.push(chunk); cursor += chunk.length; }
+  }
+  const xrefOffset = cursor;
+  const n = lastObjNum + 1;
+  let xrefStr = `xref\n0 ${n}\n0000000000 65535 f \n`;
+  for (const off of offsets) xrefStr += `${String(off).padStart(10, '0')} 00000 n \n`;
+  xrefStr += `trailer\n<< /Size ${n} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  allChunks.push(strToBytes(xrefStr));
+
+  return concatBytes(allChunks);
+}

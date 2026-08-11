@@ -1,0 +1,51 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration : ajoute la colonne submitted_at manquante sur feedback_responses
+-- Fichier   : migrations/0016_feedback_responses_submitted_at.sql
+-- Contexte  : cf. l'historique documenté dans 0010_feedback.sql (incident du
+-- 2026-06-27 : "no such column: submitted_at") et 0014_feedback_schema_align.sql
+-- ("feedback_responses réel → created_at (existe) → submitted_at (absent)").
+--
+-- ⚠️ INCIDENT DU 2026-07-02 : le premier déploiement de cette migration a bien
+-- exécuté l'ALTER TABLE ci-dessous en production (colonne créée avec succès,
+-- confirmé via `SELECT name FROM pragma_table_info('feedback_responses')`),
+-- mais la migration n'a pas été enregistrée comme appliquée côté D1 (fichier
+-- à deux instructions, la seconde — le backfill — a dû échouer ou la
+-- validation n'a pas persisté). Conséquence : chaque redéploiement suivant
+-- retentait l'ALTER TABLE et échouait avec "duplicate column name:
+-- submitted_at", bloquant TOUT déploiement ultérieur (y compris des
+-- changements sans rapport avec le feedback).
+--
+-- L'ALTER TABLE a donc été retiré de cette migration (colonne déjà présente,
+-- confirmé) : ne reste que le backfill, idempotent et sans risque.
+--
+-- ⚠️ CORRECTIF DU 2026-07-23 : le backfill ci-dessous a été retiré à son tour.
+-- Le garde-fou EXISTS (SELECT 1 FROM pragma_table_info(...) WHERE name =
+-- 'created_at') ne protège que l'évaluation logique des lignes à modifier ; il
+-- ne protège PAS la clause SET ni la clause WHERE de l'UPDATE, qui référencent
+-- created_at directement sur la table feedback_responses. SQLite résout ces
+-- références de colonnes à la PRÉPARATION de la requête, avant même
+-- d'évaluer le sous-SELECT du EXISTS — donc si created_at n'existe pas dans
+-- le schéma, la requête échoue immédiatement avec "no such column:
+-- created_at", quel que soit le contenu du EXISTS.
+--
+-- C'est exactement la même classe de bug déjà documentée et corrigée plus
+-- haut dans 0014_feedback_schema_align.sql : sur une base neuve (CI, poste
+-- d'un nouveau contributeur, nouvelle installation), aucune migration
+-- versionnée ne crée de colonne created_at sur feedback_responses (0010 crée
+-- la table avec submitted_at uniquement) — created_at est une colonne legacy
+-- qui n'a existé que dans un schéma de production antérieur, hors pipeline
+-- de migrations. `wrangler d1 migrations apply` échoue donc pour tout le
+-- monde sur une base fraîche, pas seulement pour la prod historique visée.
+--
+-- Ce backfill n'est pas bloquant pour le fonctionnement de l'application (le
+-- code ne lit/écrit que submitted_at, jamais created_at). S'il faut
+-- réellement rapatrier des données depuis la colonne legacy created_at d'une
+-- base de production existante, exécuter ponctuellement et manuellement
+-- (hors pipeline de migrations), après avoir vérifié l'existence de la
+-- colonne avec :
+--   SELECT name FROM pragma_table_info('feedback_responses');
+--
+-- puis :
+--   UPDATE feedback_responses SET submitted_at = created_at
+--   WHERE created_at IS NOT NULL AND (submitted_at IS NULL OR submitted_at = '');
+-- ─────────────────────────────────────────────────────────────────────────────

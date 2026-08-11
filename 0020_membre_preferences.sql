@@ -1,0 +1,12 @@
+-- Préférences de notification de l'espace membre. Portées par
+-- `adherent_comptes` (et non `adherents`) car ce compte est l'identité
+-- stable de l'adhérent d'une saison à l'autre — `adherents` génère une
+-- nouvelle ligne à chaque réinscription (une par exercice_id), ce qui en
+-- ferait un mauvais endroit pour stocker un réglage censé persister.
+--
+-- Défaut à 1 (opt-out) plutôt qu'opt-in : contrairement à annuaire_visible
+-- (migration 0019, consentement RGPD explicite requis), il s'agit ici d'un
+-- email fonctionnel que l'adhérent recevait déjà implicitement — on ne
+-- réduit pas silencieusement la portée des campagnes existantes en
+-- déployant cette colonne.
+ALTER TABLE adherent_comptes ADD COLUMN pref_email_feedback INTEGER NOT NULL DEFAULT 1;

@@ -92,3 +92,50 @@ factures — aucun changement à `wrangler.json`.
 
 ⚠️ Avant d'appliquer les migrations, vérifiez le point d'attention du §1
 (colonnes `factures`) sur votre instance D1 réelle.
+
+---
+
+## Correctif — doublons de trésorerie à l'import du relevé bancaire (11/08/2026)
+
+**Problème.** À la validation d'un paiement HelloAsso, `inscription`
+(`upsertHelloAssoBankTransaction`) écrivait directement une ligne
+synthétique dans `transactions` (l'onglet Banque de `gestion`), déjà
+marquée `rapproche: 1`. Or HelloAsso reverse les fonds par virement
+périodique regroupant plusieurs inscriptions (libellé, montant et date
+différents de cette ligne synthétique) : l'import du relevé réel (PDF/CSV),
+dont la déduplication compare `compte_id + date_op + libellé + débit +
+crédit`, ne reconnaissait donc jamais cette ligne comme un doublon et en
+insérait une vraie en plus — l'argent était compté deux fois dans le solde
+affiché.
+
+**Correctif.**
+- `inscription/src/routes/api/public/payment/helloasso/status.js` :
+  suppression de `upsertHelloAssoBankTransaction` et
+  `findHelloAssoBankAccountId`. Seules les écritures du
+  `journal_comptable` (compte "512 - Banque") sont désormais créées à la
+  confirmation du paiement — `transactions` n'est plus alimentée que par un
+  import réel (CSV/PDF) côté `gestion`.
+- `gestion/public/assets/app.js` :
+  - nouvelle fonction `pendingBankPieces()` : écritures 512-Banque pas
+    encore liées à une transaction réelle rapprochée (même logique que
+    `consumedPieces()`, déjà utilisée par le Rapprochement groupé).
+  - `Banque > Écritures 512` affiche désormais un badge par ligne
+    (rapproché / en attente de relevé) et une carte "en attente" en tête
+    d'écran.
+  - Carte "Trésorerie" du dashboard et nouvelle alerte dédiée (visible avec
+    `perm_banque` + `perm_comptabilite`) : nombre d'encaissements confirmés
+    pas encore rapprochés à un relevé importé.
+  - `public/index.html` : `?v=` de `app.js` incrémenté (cache-busting).
+
+**Nettoyage ponctuel (optionnel, manuel).** Les lignes `transactions` déjà
+créées par l'ancien mécanisme (`source_format = 'helloasso'`) peuvent être
+supprimées sans risque une fois ce correctif en place — la pièce comptable
+correspondante redevient alors "en attente de relevé" au lieu de rester
+associée à une ligne fictive. Voir
+`scripts/cleanup_helloasso_synthetic_transactions.sql` : prévisualisation
+puis suppression, à exécuter à la main via `wrangler d1 execute DB --remote
+--file=...`. Volontairement **hors** du dossier `migrations/` — jamais
+appliqué automatiquement.
+
+`tsc --noEmit` et les tests existants sont propres après ce correctif dans
+les deux repos (`inscription` : 16/16 tests ; `gestion` : 31/31 tests).
