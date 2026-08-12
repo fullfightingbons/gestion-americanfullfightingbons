@@ -4087,6 +4087,20 @@ function compteCode(compte){
   return m?m[1]:'';
 }
 
+// Sens normal d'un compte (débit ou crédit), pour avertir en saisie libre
+// si l'utilisateur s'apprête à saisir l'inverse. Ne couvre que les classes
+// non ambiguës ; les comptes d'attente (47/48) et 46 sont volontairement
+// ignorés (utilisés dans les deux sens selon le cas).
+function sensNormalCompte(compte){
+  const c=compteCode(compte);
+  if(!c) return null;
+  const debitPrefixes=['20','21','23','26','27','28','29','37','38','39','411','50','51','52','53','54','55','58','6'];
+  const creditPrefixes=['10','12','16','40','42','43','44','7'];
+  if(debitPrefixes.some(p=>c.startsWith(p))) return 'debit';
+  if(creditPrefixes.some(p=>c.startsWith(p))) return 'credit';
+  return null;
+}
+
 function findPlanCompte(codePrefix,fallback='471 - Comptes d attente'){
   return PLAN.find(p=>p.startsWith(codePrefix))||fallback;
 }
@@ -7018,19 +7032,26 @@ function renderModal(){
 
   }else if(UI.modal==='ecr'){
     const e=UI.editObj||{date_op:td(),piece:'',compte:'471 - Comptes d attente',contrepartie:'512 - Banque',libelle:'',debit:0,credit:0};
-    const typeBanner=e._isType?`<div id="ecr-type-hint" style="margin-bottom:14px;padding:10px 14px;background:#e8f4ea;border-radius:10px;border:1px solid #b2d8b5;font-size:12px;color:#1e7e34;display:flex;gap:8px;align-items:center"><span>⚡</span><span><strong>${esc(e._typeLabel||'Écriture type')}</strong> — vérifiez les montants et le libellé avant d'enregistrer.</span></div>`:'';
+    const isType=!!e._isType;
+    const sens0=e._lignesType?.[0]?.sens||'debit';
+    const sens1=e._lignesType?.[1]?.sens||'credit';
+    const sensTag=s=>s==='debit'?`<span style="color:var(--red);font-weight:600;font-size:11px">→ débit</span>`:`<span style="color:#1e7e34;font-weight:600;font-size:11px">→ crédit</span>`;
+    const typeBanner=isType?`<div id="ecr-type-hint" style="margin-bottom:14px;padding:10px 14px;background:#e8f4ea;border-radius:10px;border:1px solid #b2d8b5;font-size:12px;color:#1e7e34;display:flex;gap:8px;align-items:center"><span>⚡</span><span><strong>${esc(e._typeLabel||'Écriture type')}</strong> — le sens (débit/crédit) est fixé par ce modèle, seul le montant est à saisir.</span></div>`:'';
+    const montantField=isType
+      ?`<div class="fg"><label>Montant (€)</label><input id="e-mnt" type="number" value="${e.montant||0}" min="0" step="0.01"></div>`
+      :`<div class="fg"><label>Débit (€)</label><input id="e-deb" type="number" value="${e.debit||0}" min="0" step="0.01"></div>
+    <div class="fg"><label>Crédit (€)</label><input id="e-cre" type="number" value="${e.credit||0}" min="0" step="0.01"></div>`;
     html=`<div class="modal" style="max-width:540px"><h2>📊 Nouvelle écriture</h2>
     ${typeBanner}
     <div class="g2">
     <div class="fg"><label>Date</label><input id="e-dat" type="date" value="${e.date_op||td()}"></div>
     <div class="fg"><label>N° pièce</label><input id="e-pie" value="${esc(e.piece||'')}" placeholder="FAC-2025-001"></div>
-    <div class="fg full"><label>Compte — Plan comptable loi 1901</label><select id="e-cpt" style="width:100%">${PLAN.map(p=>`<option value="${p}" ${p===e.compte?'selected':''}>${p}</option>`).join('')}</select></div>
-    <div class="fg full"><label>Compte de contrepartie</label><select id="e-cpt-ctr" style="width:100%">${PLAN.map(p=>`<option value="${p}" ${p===e.contrepartie?'selected':''}>${p}</option>`).join('')}</select></div>
+    <div class="fg full"><label>Compte — Plan comptable loi 1901 ${isType?sensTag(sens0):''}</label><select id="e-cpt" style="width:100%">${PLAN.map(p=>`<option value="${p}" ${p===e.compte?'selected':''}>${p}</option>`).join('')}</select></div>
+    <div class="fg full"><label>Compte de contrepartie ${isType?sensTag(sens1):''}</label><select id="e-cpt-ctr" style="width:100%">${PLAN.map(p=>`<option value="${p}" ${p===e.contrepartie?'selected':''}>${p}</option>`).join('')}</select></div>
     <div class="fg full"><label>Libellé</label><input id="e-lib" value="${esc(e.libelle||'')}" placeholder="Description de l'opération"></div>
-    <div class="fg"><label>Débit (€)</label><input id="e-deb" type="number" value="${e.debit||0}" min="0" step="0.01"></div>
-    <div class="fg"><label>Crédit (€)</label><input id="e-cre" type="number" value="${e.credit||0}" min="0" step="0.01"></div>
+    ${montantField}
     </div>
-    <div style="background:var(--bg2);border-radius:var(--r);padding:10px;margin-top:12px;font-size:12px;color:var(--txt2)">Si vous ne renseignez qu'un débit ou qu'un crédit, la ligne de contrepartie sera créée automatiquement pour garder le journal équilibré.</div>
+    ${isType?'':`<div style="background:var(--bg2);border-radius:var(--r);padding:10px;margin-top:12px;font-size:12px;color:var(--txt2)">Si vous ne renseignez qu'un débit ou qu'un crédit, la ligne de contrepartie sera créée automatiquement pour garder le journal équilibré.</div>`}
     <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="saveEcr()">Enregistrer</button></div>
     </div>`;
 
@@ -7278,27 +7299,33 @@ function renderModal(){
   document.getElementById('app').appendChild(div);
 }
 
-// Écritures types — préremplir la modal écriture selon un modèle
+// Écritures types — préremplir la modal écriture selon un modèle.
+// `sens` fixe le côté (débit/crédit) de chaque ligne : c'est le modèle qui
+// décide, jamais une saisie libre de l'utilisateur (cf. inversion du
+// 11/08/2026 sur une pièce SUB-... où le débit/crédit avait été intervertis).
 const ECRITURE_TYPES={
   cotisation:{
     label:'Encaissement cotisation',
+    montant:320,
     lignes:[
-      {compte:'512 - Banque',libelle:'Cotisation membre',debit:320,credit:0},
-      {compte:'7561 - Cotisations membres actifs',libelle:'Cotisation membre',debit:0,credit:320},
+      {compte:'512 - Banque',libelle:'Cotisation membre',sens:'debit'},
+      {compte:'7561 - Cotisations membres actifs',libelle:'Cotisation membre',sens:'credit'},
     ]
   },
   achat_fournisseur:{
     label:'Achat fournisseur',
+    montant:0,
     lignes:[
-      {compte:'6061 - Fournitures non stockées',libelle:'Achat fournisseur',debit:0,credit:0},
-      {compte:'512 - Banque',libelle:'Achat fournisseur',debit:0,credit:0},
+      {compte:'6061 - Fournitures non stockées',libelle:'Achat fournisseur',sens:'debit'},
+      {compte:'512 - Banque',libelle:'Achat fournisseur',sens:'credit'},
     ]
   },
   subvention:{
     label:'Subvention / Don',
+    montant:0,
     lignes:[
-      {compte:'512 - Banque',libelle:'Subvention reçue',debit:0,credit:0},
-      {compte:'741 - Subventions',libelle:'Subvention reçue',debit:0,credit:0},
+      {compte:'512 - Banque',libelle:'Subvention reçue',sens:'debit'},
+      {compte:'741 - Subventions',libelle:'Subvention reçue',sens:'credit'},
     ]
   }
 };
@@ -7310,7 +7337,7 @@ function openEcritureType(type){
   // Pré-remplir l'état de la modal avec le modèle
   UI.modal='ecr';
   UI.editObj={
-    _isType:true,
+    _isType:type,
     _typeLabel:tpl.label,
     _lignesType:tpl.lignes,
     date_op:td(),
@@ -7319,8 +7346,7 @@ function openEcritureType(type){
     compte:tpl.lignes[0]?.compte||'',
     contrepartie:tpl.lignes[1]?.compte||'',
     libelle:tpl.label,
-    debit:(+tpl.lignes[0]?.debit||0).toFixed(2),
-    credit:(+tpl.lignes[0]?.credit||0).toFixed(2),
+    montant:(+tpl.montant||0).toFixed(2),
   };
   renderModal();
   setTimeout(()=>{
@@ -8021,10 +8047,26 @@ async function saveEcr(){
   const piece=document.getElementById('e-pie').value.trim()||`MAN-${Date.now()}`;
   const compte=document.getElementById('e-cpt').value;
   const contrepartie=document.getElementById('e-cpt-ctr').value;
-  const debit=parseFloat(document.getElementById('e-deb').value)||0;
-  const credit=parseFloat(document.getElementById('e-cre').value)||0;
-  if(debit<=0&&credit<=0)return alert('Saisissez un débit ou un crédit.');
-  if(debit>0&&credit>0)return alert('Saisissez un seul montant par ligne. La contrepartie sera créée automatiquement.');
+  const typeLignes=UI.editObj?._lignesType;
+  let debit,credit;
+  if(typeLignes){
+    // Écriture type : le sens vient du modèle (ECRITURE_TYPES), jamais d'une case cochée par l'utilisateur.
+    const montant=parseFloat(document.getElementById('e-mnt').value)||0;
+    if(montant<=0)return alert('Saisissez un montant.');
+    const sens0=typeLignes[0]?.sens||'debit';
+    debit=sens0==='debit'?montant:0;
+    credit=sens0==='credit'?montant:0;
+  }else{
+    debit=parseFloat(document.getElementById('e-deb').value)||0;
+    credit=parseFloat(document.getElementById('e-cre').value)||0;
+    if(debit<=0&&credit<=0)return alert('Saisissez un débit ou un crédit.');
+    if(debit>0&&credit>0)return alert('Saisissez un seul montant par ligne. La contrepartie sera créée automatiquement.');
+    const normal=sensNormalCompte(compte);
+    const sensSaisi=debit>0?'debit':'credit';
+    if(normal&&normal!==sensSaisi){
+      if(!confirm(`Le compte ${compte} est habituellement ${normal==='debit'?'débité':'crédité'}. Vous êtes en train de le ${sensSaisi==='debit'?'débiter':'créditer'} — est-ce voulu ?`))return;
+    }
+  }
   const rows=[
     {id:crypto.randomUUID(),date_op:dateOp,piece:`${piece}-L1`,compte,libelle:lib,debit,credit,exercice_id:D.currentExo?.id||null,created_at:new Date().toISOString()},
     {id:crypto.randomUUID(),date_op:dateOp,piece:`${piece}-L2`,compte:contrepartie,libelle:`Contrepartie - ${lib}`,debit:credit>0?credit:0,credit:debit>0?debit:0,exercice_id:D.currentExo?.id||null,created_at:new Date().toISOString()}
