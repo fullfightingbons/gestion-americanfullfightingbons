@@ -201,7 +201,7 @@ tr:hover td{background:#fbf6ef}
 .bilan-table .is-result .label,.bilan-table .is-result .amount{font-weight:700}
 .bilan-table .total td{padding-top:14px;padding-bottom:14px;border-top:1.5px solid rgba(38,22,15,.32);background:rgba(246,240,232,.66);font-weight:800}
 .bilan-table .total .amount{font-size:14px}
-.bilan-notes{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:12px;margin-top:18px}
+.bilan-notes{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}
 .bilan-note{background:rgba(255,255,255,.74);border:1px solid rgba(15,23,32,.1);border-radius:18px;padding:16px}
 .bilan-note h4{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:10px}
 .bilan-kv{display:flex;justify-content:space-between;gap:10px;padding:6px 0;font-size:12px;border-bottom:1px dashed rgba(15,23,32,.12)}

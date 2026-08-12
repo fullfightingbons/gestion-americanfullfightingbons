@@ -4503,12 +4503,61 @@ function calcBilan(){
   const emprunts=Math.max(0,-compteSolde(/^164/));
   const fondsAssociatifs=Math.max(0,sumJournal(/^(10|12)/, 'credit')-sumJournal(/^(10|12)/, 'debit'));
 
-  const cotisations=sumJournal(/^756/, 'credit');
+  const cotisations=sumJournal(/^75[36]/, 'credit');
   const subventions=sumJournal(/^74/, 'credit')+sumJournal(/^751/, 'credit');
-  const autresProduits=sumJournal(/^70/, 'credit')+sumJournal(/^708/, 'credit')+sumJournal(/^75(?!6|1)/, 'credit')+sumJournal(/^758/, 'credit');
   const produits=diag.produits;
   const charges=diag.charges;
   const resultat=diag.resultat;
+
+  // Détail des produits par poste : chaque poste nommé cible des comptes du plan
+  // mutuellement exclusifs ; "Autres produits" est calculé en résidu (total - somme
+  // des postes nommés) pour garantir que rien ne peut disparaître silencieusement,
+  // même si un compte imprévu apparaît dans le journal.
+  const posteStages=sumJournal(/^706/, 'credit');
+  const posteVentes=sumJournal(/^707/, 'credit');
+  const posteDons=sumJournal(/^754/, 'credit');
+  const posteAutresProduits=+(produits-(cotisations+posteStages+posteVentes+subventions+posteDons)).toFixed(2);
+  const produitsPostes=[
+    {label:'Cotisations',value:cotisations},
+    {label:'Stages et prestations',value:posteStages},
+    {label:'Ventes (vêtements, équipements)',value:posteVentes},
+    {label:'Subventions',value:subventions},
+    {label:'Dons',value:posteDons},
+    {label:'Autres produits',value:posteAutresProduits},
+  ].map(r=>({...r,value:+r.value.toFixed(2)})).filter(r=>r.value!==0).sort((a,b)=>b.value-a.value);
+
+  // Détail des charges par poste : même logique, "Autres charges" en résidu.
+  const posteAchatsSport=sumJournal(/^6051/, 'debit');
+  const posteAchatsTextile=sumJournal(/^6052/, 'debit');
+  const posteAchatsFournitures=sumJournal(/^606/, 'debit');
+  const posteNourriture=sumJournal(/^6257/, 'debit');
+  const posteDeplacements=sumJournal(/^(6241|6251|625 )/, 'debit');
+  const posteLocations=sumJournal(/^6132/, 'debit');
+  const posteAssurances=sumJournal(/^616/, 'debit');
+  const posteCommunication=sumJournal(/^623/, 'debit');
+  const posteTelephone=sumJournal(/^626/, 'debit');
+  const posteBancaire=sumJournal(/^627/, 'debit');
+  const posteHonoraires=sumJournal(/^6226/, 'debit');
+  const posteCotisFederales=sumJournal(/^628/, 'debit');
+  const posteSacem=sumJournal(/^651/, 'debit');
+  const posteNommeesCharges=posteAchatsSport+posteAchatsTextile+posteAchatsFournitures+posteNourriture+posteDeplacements+posteLocations+posteAssurances+posteCommunication+posteTelephone+posteBancaire+posteHonoraires+posteCotisFederales+posteSacem;
+  const posteAutresCharges=+(charges-posteNommeesCharges).toFixed(2);
+  const chargesPostes=[
+    {label:'Achats matériel et équipement sportif',value:posteAchatsSport},
+    {label:'Achats textile et tenues',value:posteAchatsTextile},
+    {label:'Achats fournitures et petit équipement',value:posteAchatsFournitures},
+    {label:'Nourriture et réceptions',value:posteNourriture},
+    {label:'Déplacements et voyages',value:posteDeplacements},
+    {label:'Locations',value:posteLocations},
+    {label:'Assurances',value:posteAssurances},
+    {label:'Communication et publicité',value:posteCommunication},
+    {label:'Téléphone et frais postaux',value:posteTelephone},
+    {label:'Frais bancaires',value:posteBancaire},
+    {label:'Honoraires',value:posteHonoraires},
+    {label:'Cotisations et licences fédérales',value:posteCotisFederales},
+    {label:'Droits d’auteur (SACEM)',value:posteSacem},
+    {label:'Autres charges',value:posteAutresCharges},
+  ].map(r=>({...r,value:+r.value.toFixed(2)})).filter(r=>r.value!==0).sort((a,b)=>b.value-a.value);
 
   const actifRows=[
     {label:'2150/2180 - Immobilisations',value:immobilisations},
@@ -4529,11 +4578,11 @@ function calcBilan(){
   ];
   const totalActif=actifRows.reduce((s,r)=>s+Math.max(0,r.value),0);
   const totalPassif=passifRows.reduce((s,r)=>s+Math.max(0,r.value),0);
-  return{actifRows,passifRows,totalActif,totalPassif,banques,caisse,creancesAdherents,immobilisations,cotisations,subventions,autresProduits,charges,produits,resultat,ecartJournal:diag.ecartJournal,ecartBilan:diag.ecartBilan};
+  return{actifRows,passifRows,totalActif,totalPassif,banques,caisse,creancesAdherents,immobilisations,cotisations,subventions,produitsPostes,chargesPostes,charges,produits,resultat,ecartJournal:diag.ecartJournal,ecartBilan:diag.ecartBilan};
 }
 
 function vBilan(){
-  const {actifRows,passifRows,totalActif,totalPassif,cotisations,subventions,autresProduits,charges,produits,resultat,ecartJournal,ecartBilan}=calcBilan();
+  const {actifRows,passifRows,totalActif,totalPassif,cotisations,subventions,produitsPostes,chargesPostes,charges,produits,resultat,ecartJournal,ecartBilan}=calcBilan();
   const exL=D.currentExo?.libelle||'Exercice actif';
   const dateEdition=new Date().toLocaleDateString('fr-FR');
   return`<div class="bilan-shell">
@@ -4590,13 +4639,29 @@ function vBilan(){
   </tbody></table>
   </section>
   </div>
-  <div class="bilan-notes">
-  <div class="bilan-note">
-  <h4>Composition des produits</h4>
-  <div class="bilan-kv"><span>Cotisations</span><strong>${cotisations.toFixed(2)} €</strong></div>
-  <div class="bilan-kv"><span>Subventions</span><strong>${subventions.toFixed(2)} €</strong></div>
-  <div class="bilan-kv"><span>Autres produits</span><strong>${autresProduits.toFixed(2)} €</strong></div>
+  <div class="bilan-grid">
+  <section class="bilan-panel">
+  <div class="bilan-panel-head">
+  <div><h3>Produits par poste</h3><p>Détail des recettes de l'exercice, classées du poste le plus important au plus modeste.</p></div>
+  <span class="badge bgray">Total ${produits.toFixed(2)} €</span>
   </div>
+  <table class="bilan-table"><tbody>
+  ${produitsPostes.length?produitsPostes.map(r=>`<tr><td class="label">${r.label}</td><td class="amount">${r.value.toFixed(2)} € <span style="color:var(--muted);font-weight:400;font-size:11px">(${produits?Math.round(r.value/produits*100):0}%)</span></td></tr>`).join(''):'<tr><td class="label" colspan="2">Aucun produit enregistré sur l’exercice.</td></tr>'}
+  <tr class="total"><td class="label">Total produits</td><td class="amount">${produits.toFixed(2)} €</td></tr>
+  </tbody></table>
+  </section>
+  <section class="bilan-panel">
+  <div class="bilan-panel-head">
+  <div><h3>Charges par poste</h3><p>Détail des dépenses de l'exercice, classées du poste le plus important au plus modeste.</p></div>
+  <span class="badge bgray">Total ${charges.toFixed(2)} €</span>
+  </div>
+  <table class="bilan-table"><tbody>
+  ${chargesPostes.length?chargesPostes.map(r=>`<tr><td class="label">${r.label}</td><td class="amount">${r.value.toFixed(2)} € <span style="color:var(--muted);font-weight:400;font-size:11px">(${charges?Math.round(r.value/charges*100):0}%)</span></td></tr>`).join(''):'<tr><td class="label" colspan="2">Aucune charge enregistrée sur l’exercice.</td></tr>'}
+  <tr class="total"><td class="label">Total charges</td><td class="amount">${charges.toFixed(2)} €</td></tr>
+  </tbody></table>
+  </section>
+  </div>
+  <div class="bilan-notes">
   <div class="bilan-note">
   <h4>Lecture</h4>
   <p style="font-size:12px;color:var(--txt2);line-height:1.7">Le résultat de l'exercice est intégré au passif. Les classes 2, 4 et 5 structurent principalement l'actif, tandis que les capitaux associatifs et dettes constituent le passif présenté.</p>
@@ -4619,7 +4684,7 @@ function vBilan(){
 }
 
 function printBilan(){
-  const {actifRows,passifRows,totalActif,totalPassif,charges,produits,resultat,cotisations,subventions,autresProduits,ecartJournal,ecartBilan}=calcBilan();
+  const {actifRows,passifRows,totalActif,totalPassif,charges,produits,resultat,cotisations,subventions,produitsPostes,chargesPostes,ecartJournal,ecartBilan}=calcBilan();
   const ci=D.clubInfo||{};
   const exL=D.currentExo?.libelle||'';
   const logo=D.logoUrl?`<img src="${D.logoUrl}" style="width:66px;height:66px;object-fit:contain;border-radius:50%;border:1px solid #cdbd9f;padding:6px;background:#fff">` :`<span style="font-size:40px">🥊</span>`;
@@ -4650,7 +4715,7 @@ function printBilan(){
   td{padding:8px 12px;border-bottom:.7px solid #ece3d8;vertical-align:top}
   td:last-child{text-align:right;font-weight:700;white-space:nowrap}
   .tot td{font-weight:700;border-top:1.2px solid #2b211b;border-bottom:none;background:#faf7f2}
-  .notes{display:grid;grid-template-columns:1.15fr 1fr 1fr;gap:10px;margin-top:14px}
+  .notes{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
   .note{border:1px solid #d8cec3;border-radius:12px;padding:10px 12px}
   .note h3{margin:0 0 8px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#7b7067}
   .kv{display:flex;justify-content:space-between;gap:10px;padding:4px 0;font-size:11px;border-bottom:.7px dashed #ddd1c6}
@@ -4696,13 +4761,17 @@ function printBilan(){
   <tr class="tot"><td>Total passif</td><td>${totalPassif.toFixed(2)} €</td></tr>
   </table></div>
   </div>
-  <div class="notes">
-  <div class="note">
-  <h3>Composition des produits</h3>
-  <div class="kv"><span>Cotisations</span><strong>${cotisations.toFixed(2)} €</strong></div>
-  <div class="kv"><span>Subventions</span><strong>${subventions.toFixed(2)} €</strong></div>
-  <div class="kv"><span>Autres produits</span><strong>${autresProduits.toFixed(2)} €</strong></div>
+  <div class="grid">
+  <div class="panel"><div class="panel-h"><h2>Produits par poste</h2><p>Recettes classées du poste le plus important au plus modeste.</p></div><table>
+  ${produitsPostes.length?produitsPostes.map(r=>`<tr><td>${r.label}</td><td>${r.value.toFixed(2)} € <span style="color:#7b7067;font-weight:400">(${produits?Math.round(r.value/produits*100):0}%)</span></td></tr>`).join(''):'<tr><td>Aucun produit enregistré sur l’exercice.</td><td></td></tr>'}
+  <tr class="tot"><td>Total produits</td><td>${produits.toFixed(2)} €</td></tr>
+  </table></div>
+  <div class="panel"><div class="panel-h"><h2>Charges par poste</h2><p>Dépenses classées du poste le plus important au plus modeste.</p></div><table>
+  ${chargesPostes.length?chargesPostes.map(r=>`<tr><td>${r.label}</td><td>${r.value.toFixed(2)} € <span style="color:#7b7067;font-weight:400">(${charges?Math.round(r.value/charges*100):0}%)</span></td></tr>`).join(''):'<tr><td>Aucune charge enregistrée sur l’exercice.</td><td></td></tr>'}
+  <tr class="tot"><td>Total charges</td><td>${charges.toFixed(2)} €</td></tr>
+  </table></div>
   </div>
+  <div class="notes">
   <div class="note">
   <h3>Contrôle technique</h3>
   <div class="kv"><span>Journal débit - crédit</span><strong style="color:${ecartJournal===0?'#1e7e34':'#b33627'}">${ecartJournal.toFixed(2)} €</strong></div>
