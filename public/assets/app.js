@@ -1758,6 +1758,7 @@ function dashboardData(){
   const totalDebit=exoJournal.reduce((sum,j)=>sum+(+j.debit||0),0);
   const totalCredit=exoJournal.reduce((sum,j)=>sum+(+j.credit||0),0);
   const accountingGap=Math.round((totalDebit-totalCredit)*100)/100;
+  const ecartBilan=journalDiagnostics().ecartBilan;
   const purchasesPending=achats.filter(a=>pendingBuyStatuses.has((a.statut||'').trim().toLowerCase()));
   const purchasesPaid=achats.filter(a=>paidBuyStatuses.has((a.statut||'').trim().toLowerCase()));
   const purchasesRefused=achats.filter(a=>(a.statut||'').trim().toLowerCase()==='refuse');
@@ -1789,6 +1790,7 @@ function dashboardData(){
   if(hasPerm('perm_banque') && unreconciledTransactions.length) alerts.push({title:`${unreconciledTransactions.length} transaction(s) non rapprochée(s)`,detail:'Le rapprochement bancaire reste à finaliser.',tab:'banque',badge:'bwarn'});
   if(hasPerm('perm_banque') && hasPerm('perm_comptabilite') && pendingBankEntries.length) alerts.push({title:`${pendingBankEntries.length} encaissement(s) en attente de relevé`,detail:'Paiements confirmés (HelloAsso, etc.) pas encore rapprochés à une opération bancaire réelle importée.',tab:'banque',badge:'bwarn'});
   if(hasPerm('perm_comptabilite') && accountingGap!==0) alerts.push({title:`Journal déséquilibré de ${euro(accountingGap)}`,detail:'Le total débit / crédit de l’exercice actif n’est pas équilibré.',tab:'comptabilite',badge:'bno'});
+  if(hasPerm('perm_comptabilite') && ecartBilan!==0) alerts.push({title:`Écart actif / passif de ${euro(ecartBilan)}`,detail:'L’actif et le passif reconstitués pour le Bilan ne se compensent pas, alors même que le journal est équilibré.',tab:'comptabilite',badge:'bno'});
   if(hasPerm('perm_achats') && purchasesPending.length) alerts.push({title:`${purchasesPending.length} achat(s) à traiter`,detail:'Des dépenses sont encore en attente de validation ou de paiement.',tab:'achat',badge:'bwarn'});
   if(hasPerm('perm_facturation') && invoicesOpen.length) alerts.push({title:`${invoicesOpen.length} facture(s) ouvertes`,detail:'Des ventes restent à encaisser ou à clôturer.',tab:'facture',badge:'bwarn'});
   alerts.sort((a,b)=>{
@@ -1798,7 +1800,7 @@ function dashboardData(){
   return {
     adherents,achats,factures,journal,comptes,currentSeason,currentSeasonAdherents,
     adherentsSoon,adherentsExpired,renewList,incompleteList,
-    totalBank,bankTransactions,unreconciledTransactions,pendingBankEntries,monthEntriesList,prevMonthEntriesList,exoJournal,totalDebit,totalCredit,accountingGap,
+    totalBank,bankTransactions,unreconciledTransactions,pendingBankEntries,monthEntriesList,prevMonthEntriesList,exoJournal,totalDebit,totalCredit,accountingGap,ecartBilan,
     purchasesPending,purchasesPaid,purchasesRefused,pendingBuyAmount,paidBuyAmount,
     invoicesOpen,invoicesPaid,openInvoiceAmount,paidInvoiceAmount,monthInvoices,prevMonthInvoices,monthInvoiceAmount,prevMonthInvoiceAmount,monthBuys,prevMonthBuys,monthBuyAmount,prevMonthBuyAmount,donations,donationAmount,
     recentInvoices,recentBuys,recentEntries,recentTransactions,alerts
@@ -1965,6 +1967,12 @@ async function focusComptabiliteAssistant(){
   setTimeout(()=>openEquilibreAssistant(),60);
 }
 
+async function focusComptabiliteBilan(){
+  UI.subTab.compta='bilan';
+  await showTab('comptabilite');
+  render();
+}
+
 async function openNewFacture(){
   await showTab('facture');
   nouvFac();
@@ -2033,6 +2041,19 @@ function buildDashboardAttentionItems(d){
                badgeText:'Compta',
                actions:[
                  {label:'Ouvrir l’assistant',onclick:"focusComptabiliteAssistant()",primary:true},
+               {label:'Voir le journal',onclick:"focusComptabiliteJournal()"}
+               ]
+    });
+  }
+  if(hasPerm('perm_comptabilite') && d.ecartBilan!==0){
+    items.push({
+      title:`Écart actif / passif de ${euro(d.ecartBilan)}`,
+               detail:'Le journal est équilibré (débit = crédit) mais l’actif et le passif reconstitués pour le Bilan ne se compensent pas : signe d’une pièce enregistrée sur le mauvais compte plutôt que d’un simple oubli.',
+               advice:'Ouvre le Bilan pour repérer le poste concerné, puis vérifie les pièces récentes dont le sens débit/crédit a pu être inversé entre les deux comptes — l’assistant de déséquilibre ne le verra pas puisque chaque pièce reste équilibrée à elle seule.',
+               badge:'bno',
+               badgeText:'Bilan',
+               actions:[
+                 {label:'Ouvrir le bilan',onclick:"focusComptabiliteBilan()",primary:true},
                {label:'Voir le journal',onclick:"focusComptabiliteJournal()"}
                ]
     });
@@ -8066,6 +8087,10 @@ async function saveEcr(){
     if(normal&&normal!==sensSaisi){
       if(!confirm(`Le compte ${compte} est habituellement ${normal==='debit'?'débité':'crédité'}. Vous êtes en train de le ${sensSaisi==='debit'?'débiter':'créditer'} — est-ce voulu ?`))return;
     }
+  }
+  const pieceKey=normalizePieceGroupKey(piece);
+  if(D.journal.some(j=>normalizePieceGroupKey(j.piece)===pieceKey)){
+    if(!confirm(`La référence de pièce « ${piece} » est déjà utilisée par une autre écriture du journal. Les deux seront regroupées comme une seule pièce (assistant de déséquilibre inclus). Continuer quand même ?`))return;
   }
   const rows=[
     {id:crypto.randomUUID(),date_op:dateOp,piece:`${piece}-L1`,compte,libelle:lib,debit,credit,exercice_id:D.currentExo?.id||null,created_at:new Date().toISOString()},
