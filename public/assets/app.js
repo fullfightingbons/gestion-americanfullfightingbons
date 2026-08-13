@@ -4357,6 +4357,7 @@ function vJournal(){
   ${canWrite?`<button class="btn" onclick="openEcritureType('cotisation')" title="Écriture type encaissement cotisation">⚡ Cotisation</button>`:''}
   ${canWrite?`<button class="btn" onclick="openEcritureType('achat_fournisseur')" title="Écriture type paiement fournisseur">⚡ Achat</button>`:''}
   ${canWrite?`<button class="btn" onclick="openEcritureType('subvention')" title="Écriture type subvention/don">⚡ Subvention</button>`:''}
+  ${canWrite?`<button class="btn" onclick="openEcritureType('facture_telecom')" title="Écriture type paiement facture télécom (téléphone, internet, mobile)">⚡ Facture Télécom</button>`:''}
   <button class="btn" onclick="openEquilibreAssistant()">Assistant déséquilibres${issues.length?` (${issues.length})`:''}</button>
   ${canWrite&&issues.length?`<button class="btn gold" onclick="regulariserEquilibreExo()">Équilibrer l'exercice</button>`:''}
   </div>
@@ -7416,6 +7417,14 @@ const ECRITURE_TYPES={
     lignes:[
       {compte:'512 - Banque',libelle:'Subvention reçue',sens:'debit'},
       {compte:'741 - Subventions',libelle:'Subvention reçue',sens:'credit'},
+    ]
+  },
+  facture_telecom:{
+    label:'Facture télécom',
+    montant:0,
+    lignes:[
+      {compte:'6260 - Téléphone et communications',libelle:'Facture télécom',sens:'debit'},
+      {compte:'512 - Banque',libelle:'Facture télécom',sens:'credit'},
     ]
   }
 };
