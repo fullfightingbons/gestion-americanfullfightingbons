@@ -4356,6 +4356,7 @@ function vJournal(){
   ${canWrite?`<button class="btn primary" onclick="openModal('ecr')">+ Nouvelle écriture</button>`:''}
   ${canWrite?`<button class="btn" onclick="openEcritureType('cotisation')" title="Écriture type encaissement cotisation">⚡ Cotisation</button>`:''}
   ${canWrite?`<button class="btn" onclick="openEcritureType('achat_fournisseur')" title="Écriture type paiement fournisseur">⚡ Achat</button>`:''}
+  ${canWrite?`<button class="btn" onclick="openEcritureType('achat_licence')" title="Écriture type achat de licence fédérale">⚡ Achat licence</button>`:''}
   ${canWrite?`<button class="btn" onclick="openEcritureType('subvention')" title="Écriture type subvention/don">⚡ Subvention</button>`:''}
   ${canWrite?`<button class="btn" onclick="openEcritureType('facture_telecom')" title="Écriture type paiement facture télécom (téléphone, internet, mobile)">⚡ Facture Télécom</button>`:''}
   ${canWrite?`<button class="btn" onclick="openEcritureType('frais_bancaires')" title="Écriture type frais bancaires prélevés par la banque">⚡ Frais bancaires</button>`:''}
@@ -4480,8 +4481,12 @@ function journalDiagnostics(){
   const totalDebit=jnl.reduce((s,j)=>s+(+j.debit||0),0);
   const totalCredit=jnl.reduce((s,j)=>s+(+j.credit||0),0);
   const ecartJournal=+(totalDebit-totalCredit).toFixed(2);
-  const produits=totalClasse(['7'],'credit');
-  const charges=totalClasse(['6'],'debit');
+  // Net (et non brut) : sumJournal/totalClasse à sens unique ignorait toute
+  // écriture inverse sur un compte de charge/produit (ex. remboursement de
+  // frais bancaires crédité sur 6270) — le remboursement disparaissait du
+  // Bilan alors que la banque l'avait bien reçu (13/08/2026).
+  const produits=totalClasse(['7'],'credit')-totalClasse(['7'],'debit');
+  const charges=totalClasse(['6'],'debit')-totalClasse(['6'],'credit');
   const resultat=+(produits-charges).toFixed(2);
   const capitauxPropres=totalClasse(['10','12'],'credit')-totalClasse(['10','12'],'debit');
   const dettes=totalClasse(['16','40','42','43','44','45','46','47','48'],'credit')-totalClasse(['16','40','42','43','44','45','46','47','48'],'debit');
@@ -4506,8 +4511,8 @@ function calcBilan(){
   const emprunts=Math.max(0,-compteSolde(/^164/));
   const fondsAssociatifs=Math.max(0,sumJournal(/^(10|12)/, 'credit')-sumJournal(/^(10|12)/, 'debit'));
 
-  const cotisations=sumJournal(/^75[36]/, 'credit');
-  const subventions=sumJournal(/^74/, 'credit')+sumJournal(/^751/, 'credit');
+  const cotisations=sumJournal(/^75[36]/, 'credit')-sumJournal(/^75[36]/, 'debit');
+  const subventions=(sumJournal(/^74/, 'credit')-sumJournal(/^74/, 'debit'))+(sumJournal(/^751/, 'credit')-sumJournal(/^751/, 'debit'));
   const produits=diag.produits;
   const charges=diag.charges;
   const resultat=diag.resultat;
@@ -4516,9 +4521,12 @@ function calcBilan(){
   // mutuellement exclusifs ; "Autres produits" est calculé en résidu (total - somme
   // des postes nommés) pour garantir que rien ne peut disparaître silencieusement,
   // même si un compte imprévu apparaît dans le journal.
-  const posteStages=sumJournal(/^706/, 'credit');
-  const posteVentes=sumJournal(/^707/, 'credit');
-  const posteDons=sumJournal(/^754/, 'credit');
+  // Chaque poste est en solde net (débit-crédit / crédit-débit) et non en somme
+  // brute, pour rester cohérent avec `charges`/`produits` ci-dessus et absorber
+  // toute écriture inverse (remboursement, avoir) sur le même compte.
+  const posteStages=sumJournal(/^706/, 'credit')-sumJournal(/^706/, 'debit');
+  const posteVentes=sumJournal(/^707/, 'credit')-sumJournal(/^707/, 'debit');
+  const posteDons=sumJournal(/^754/, 'credit')-sumJournal(/^754/, 'debit');
   const posteAutresProduits=+(produits-(cotisations+posteStages+posteVentes+subventions+posteDons)).toFixed(2);
   const produitsPostes=[
     {label:'Cotisations',value:cotisations},
@@ -4530,19 +4538,19 @@ function calcBilan(){
   ].map(r=>({...r,value:+r.value.toFixed(2)})).filter(r=>r.value!==0).sort((a,b)=>b.value-a.value);
 
   // Détail des charges par poste : même logique, "Autres charges" en résidu.
-  const posteAchatsSport=sumJournal(/^6051/, 'debit');
-  const posteAchatsTextile=sumJournal(/^6052/, 'debit');
-  const posteAchatsFournitures=sumJournal(/^606/, 'debit');
-  const posteNourriture=sumJournal(/^6257/, 'debit');
-  const posteDeplacements=sumJournal(/^(6241|6251|625 )/, 'debit');
-  const posteLocations=sumJournal(/^6132/, 'debit');
-  const posteAssurances=sumJournal(/^616/, 'debit');
-  const posteCommunication=sumJournal(/^623/, 'debit');
-  const posteTelephone=sumJournal(/^626/, 'debit');
-  const posteBancaire=sumJournal(/^627/, 'debit');
-  const posteHonoraires=sumJournal(/^6226/, 'debit');
-  const posteCotisFederales=sumJournal(/^628/, 'debit');
-  const posteSacem=sumJournal(/^651/, 'debit');
+  const posteAchatsSport=sumJournal(/^6051/, 'debit')-sumJournal(/^6051/, 'credit');
+  const posteAchatsTextile=sumJournal(/^6052/, 'debit')-sumJournal(/^6052/, 'credit');
+  const posteAchatsFournitures=sumJournal(/^606/, 'debit')-sumJournal(/^606/, 'credit');
+  const posteNourriture=sumJournal(/^6257/, 'debit')-sumJournal(/^6257/, 'credit');
+  const posteDeplacements=sumJournal(/^(6241|6251|625 )/, 'debit')-sumJournal(/^(6241|6251|625 )/, 'credit');
+  const posteLocations=sumJournal(/^6132/, 'debit')-sumJournal(/^6132/, 'credit');
+  const posteAssurances=sumJournal(/^616/, 'debit')-sumJournal(/^616/, 'credit');
+  const posteCommunication=sumJournal(/^623/, 'debit')-sumJournal(/^623/, 'credit');
+  const posteTelephone=sumJournal(/^626/, 'debit')-sumJournal(/^626/, 'credit');
+  const posteBancaire=sumJournal(/^627/, 'debit')-sumJournal(/^627/, 'credit');
+  const posteHonoraires=sumJournal(/^6226/, 'debit')-sumJournal(/^6226/, 'credit');
+  const posteCotisFederales=sumJournal(/^628/, 'debit')-sumJournal(/^628/, 'credit');
+  const posteSacem=sumJournal(/^651/, 'debit')-sumJournal(/^651/, 'credit');
   const posteNommeesCharges=posteAchatsSport+posteAchatsTextile+posteAchatsFournitures+posteNourriture+posteDeplacements+posteLocations+posteAssurances+posteCommunication+posteTelephone+posteBancaire+posteHonoraires+posteCotisFederales+posteSacem;
   const posteAutresCharges=+(charges-posteNommeesCharges).toFixed(2);
   const chargesPostes=[
@@ -7411,6 +7419,14 @@ const ECRITURE_TYPES={
     lignes:[
       {compte:'6061 - Fournitures non stockées',libelle:'Achat fournisseur',sens:'debit'},
       {compte:'512 - Banque',libelle:'Achat fournisseur',sens:'credit'},
+    ]
+  },
+  achat_licence:{
+    label:'Achat licence',
+    montant:0,
+    lignes:[
+      {compte:'6281 - Cotisations fédérales et licences',libelle:'Achat licence',sens:'debit'},
+      {compte:'512 - Banque',libelle:'Achat licence',sens:'credit'},
     ]
   },
   subvention:{
