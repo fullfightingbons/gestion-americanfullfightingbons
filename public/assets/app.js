@@ -4358,6 +4358,8 @@ function vJournal(){
   ${canWrite?`<button class="btn" onclick="openEcritureType('achat_fournisseur')" title="Écriture type paiement fournisseur">⚡ Achat</button>`:''}
   ${canWrite?`<button class="btn" onclick="openEcritureType('subvention')" title="Écriture type subvention/don">⚡ Subvention</button>`:''}
   ${canWrite?`<button class="btn" onclick="openEcritureType('facture_telecom')" title="Écriture type paiement facture télécom (téléphone, internet, mobile)">⚡ Facture Télécom</button>`:''}
+  ${canWrite?`<button class="btn" onclick="openEcritureType('frais_bancaires')" title="Écriture type frais bancaires prélevés par la banque">⚡ Frais bancaires</button>`:''}
+  ${canWrite?`<button class="btn" onclick="openEcritureType('remboursement_frais_bancaires')" title="Écriture type remboursement de frais bancaires par la banque">⚡ Remboursement frais bancaires</button>`:''}
   <button class="btn" onclick="openEquilibreAssistant()">Assistant déséquilibres${issues.length?` (${issues.length})`:''}</button>
   ${canWrite&&issues.length?`<button class="btn gold" onclick="regulariserEquilibreExo()">Équilibrer l'exercice</button>`:''}
   </div>
@@ -7425,6 +7427,25 @@ const ECRITURE_TYPES={
     lignes:[
       {compte:'6260 - Téléphone et communications',libelle:'Facture télécom',sens:'debit'},
       {compte:'512 - Banque',libelle:'Facture télécom',sens:'credit'},
+    ]
+  },
+  frais_bancaires:{
+    label:'Frais bancaires',
+    montant:0,
+    lignes:[
+      {compte:'6270 - Frais bancaires',libelle:'Frais bancaires',sens:'debit'},
+      {compte:'512 - Banque',libelle:'Frais bancaires',sens:'credit'},
+    ]
+  },
+  remboursement_frais_bancaires:{
+    label:'Remboursement frais bancaires',
+    montant:0,
+    lignes:[
+      // Extourne le même compte 6270 (et non un compte de produit) : c'est un
+      // remboursement de la charge déjà passée, pas un nouveau revenu — effet
+      // net nul sur 6270 si la banque rembourse l'intégralité des frais.
+      {compte:'512 - Banque',libelle:'Remboursement frais bancaires',sens:'debit'},
+      {compte:'6270 - Frais bancaires',libelle:'Remboursement frais bancaires',sens:'credit'},
     ]
   }
 };
