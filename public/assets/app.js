@@ -502,6 +502,13 @@ function sortAdherentsList(list){
       va=a[key]||''; vb=b[key]||'';
       return dir==='asc'?va.localeCompare(vb):vb.localeCompare(va);
     }
+    if(key==='couleur_ceinture'){
+      // Ordre de progression pédagogique (CEINTURE_COLORS), pas alphabétique.
+      va=CEINTURE_COLORS.indexOf(a.couleur_ceinture); vb=CEINTURE_COLORS.indexOf(b.couleur_ceinture);
+      if(va===-1) va=CEINTURE_COLORS.length;
+      if(vb===-1) vb=CEINTURE_COLORS.length;
+      return dir==='asc'?va-vb:vb-va;
+    }
     va=String(a[key]??''); vb=String(b[key]??'');
     const c=va.localeCompare(vb,'fr',{sensitivity:'base'});
     return dir==='asc'?c:-c;
@@ -1854,6 +1861,25 @@ function countByMonth(rows,dateKey){
   return sumByMonth(rows,dateKey,()=>1);
 }
 
+// Évolution du solde bancaire réel : grandeur cumulative (contrairement à
+// sumByMonth/countByMonth, qui totalisent un flux propre à chaque mois).
+// Pour chaque mois : solde initial + tous les mouvements des comptes réels
+// (D.comptes[].transactions, la même source que totalBank dans
+// dashboardData) survenus jusqu'à la fin de ce mois inclus. Comparaison
+// lexicographique YYYY-MM, valide car les deux clés viennent du même format
+// (monthKeyFromOffset / date_op tronquée à 7 caractères).
+function tresorerieSeries(comptes, months=6){
+  const baseline=(comptes||[]).reduce((sum,c)=>sum+(+c.solde_initial||0),0);
+  const allTx=(comptes||[]).flatMap(c=>c.transactions||[]);
+  const items=[];
+  for(let offset=-(months-1);offset<=0;offset++){
+    const key=monthKeyFromOffset(offset);
+    const solde=baseline+allTx.filter(t=>(t.date_op||'').slice(0,7)<=key).reduce((acc,t)=>acc+(+t.credit||0)-(+t.debit||0),0);
+    items.push({key,label:monthLabelFromKey(key),value:+solde.toFixed(2)});
+  }
+  return items;
+}
+
 function achatMatchesFilter(achat, status){
   const current=(achat?.statut||'').trim().toLowerCase();
   if(!status) return true;
@@ -2148,11 +2174,11 @@ function vDashboard(){
     admin:['adherents','banque','comptabilite','ventes'],
   };
   const DASH_VIZ_ORDER={
-    tresorier:['ventes-viz','achats-viz','qualite-viz'],
-    admin:['ventes-viz','achats-viz','qualite-viz'],
+    tresorier:['tresorerie-viz','ventes-viz','achats-viz','qualite-viz'],
+    admin:['tresorerie-viz','ventes-viz','achats-viz','qualite-viz'],
   };
   const DASH_GRID_DEFAULT=['adherents','banque','comptabilite','ventes'];
-  const DASH_VIZ_DEFAULT=['ventes-viz','achats-viz','qualite-viz'];
+  const DASH_VIZ_DEFAULT=['tresorerie-viz','ventes-viz','achats-viz','qualite-viz'];
   function orderDashCards(cards,order){
     const visible=cards.filter(c=>c.visible);
     const rank=id=>{const i=order.indexOf(id);return i===-1?order.length:i;};
@@ -2190,8 +2216,10 @@ function vDashboard(){
   const invoiceSeries=buildMonthSeries(sumByMonth(d.factures,'date_op',f=>(f.lignes||[]).reduce((sum,l)=>sum+(+l.qte||0)*(+l.pu||0),0)),dashM);
   const buySeries=buildMonthSeries(sumByMonth(d.achats,'date_op',a=>+a.montant||0),dashM);
   const entrySeries=buildMonthSeries(countByMonth(d.journal,'date_op'),dashM);
+  const tresorerieSeriesData=tresorerieSeries(d.comptes,dashM);
   const docsComplete=d.adherents.length-d.incompleteList.length;
   const dashVizCards=orderDashCards([
+    {id:'tresorerie-viz',visible:hasPerm('perm_banque'),html:`<div class="dash-viz-card"><div class="dash-viz-title">Trésorerie 6 mois</div><div class="dash-viz-value">${euro(d.totalBank)}</div><div class="dash-viz-sub">Solde actuel</div><div class="dash-chart">${renderLineChart(tresorerieSeriesData,'#378ADD')}<div class="dash-chart-legend"><span>${esc(tresorerieSeriesData[0]?.label||'')}</span><span>${esc(tresorerieSeriesData.at(-1)?.label||'')}</span></div></div></div>`},
     {id:'ventes-viz',visible:hasPerm('perm_facturation'),html:`<div class="dash-viz-card"><div class="dash-viz-title">Ventes 6 mois</div><div class="dash-viz-value">${euro(d.monthInvoiceAmount)}</div><div class="dash-viz-sub">Ce mois</div><div class="dash-chart">${renderBarChart(invoiceSeries,'#d84a2f')}<div class="dash-chart-legend"><span>${esc(invoiceSeries[0]?.label||'')}</span><span>${esc(invoiceSeries.at(-1)?.label||'')}</span></div></div></div>`},
     {id:'achats-viz',visible:hasPerm('perm_achats'),html:`<div class="dash-viz-card"><div class="dash-viz-title">Achats 6 mois</div><div class="dash-viz-value">${euro(d.monthBuyAmount)}</div><div class="dash-viz-sub">Ce mois</div><div class="dash-chart">${renderLineChart(buySeries,'#a67c2e')}<div class="dash-chart-legend"><span>${esc(buySeries[0]?.label||'')}</span><span>${esc(buySeries.at(-1)?.label||'')}</span></div></div></div>`},
     {id:'qualite-viz',visible:hasPerm('perm_adherents'),html:`<div class="dash-viz-card"><div class="dash-viz-title">Qualité des données</div><div class="dash-viz-value">${docsComplete}/${d.adherents.length||0}</div><div class="dash-viz-sub">Dossiers complets</div><div class="dash-chart">${renderGauge(docsComplete,d.adherents.length||1,'#1e7e34')}</div></div>`},
@@ -2444,7 +2472,7 @@ function vAdh(){
   if(!D.loaded.materiel && UI.adhSection==='familles'){ loadTabData('materiel'); }
   if(UI.adhSection==='familles') return vAdhFamilles(canWrite);
   const season=currentSeasonLabel();
-  const filtered=D.adherents.filter(a=>{
+  const filtered=sortAdherentsList(D.adherents.filter(a=>{
     const txt=(a.nom+' '+a.prenom+' '+(a.ville||'')).toLowerCase();
     const matchesSearch=txt.includes((UI.search.adherents||'').toLowerCase());
     const matchesStatut=!UI.adhFilters.statut || a.statut===UI.adhFilters.statut;
@@ -2453,7 +2481,7 @@ function vAdh(){
     const matchesSeason=UI.adhFilters.season==='all' || !UI.adhFilters.season || adhSeason===season;
     const matchesSpecial=adherentMatchesSpecialFilter(a,UI.adhFilters.special);
     return matchesSearch&&matchesStatut&&matchesType&&matchesSeason&&matchesSpecial;
-  }).sort((a,b)=>compareAlpha(a.nom,b.nom) || compareAlpha(a.prenom,b.prenom));
+  }));
   const {rows:f,totalPages}=paginateList(filtered,'adherents');
   const tot=filtered.reduce((s,a)=>s+(+a.cotisation||0)+(+a.montant_pass_region||0),0);
   const ok=filtered.filter(a=>a.droit_image&&a.certificat&&a.reglement).length;
@@ -2478,7 +2506,7 @@ function vAdh(){
   </div>
   <div class="g2" style="margin-bottom:14px">
   <div class="card" style="padding:12px 16px"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:12px"><span>Annulées : <strong>${filtered.filter(a=>a.statut==='Adhésion annulée').length}</strong></span><span>Inactives : <strong>${filtered.filter(a=>a.statut==='Inactif').length}</strong></span><span>Expirées : <strong>${exp}</strong></span></div></div>
-  <div class="card" style="padding:12px 16px"><div style="font-size:12px;color:var(--txt2)">Tri courant</div><div style="margin-top:4px;font-weight:600">Classement alphabétique par nom puis prénom</div></div>
+  <div class="card" style="padding:12px 16px"><div style="font-size:12px;color:var(--txt2)">Tri</div><div style="margin-top:4px;font-weight:600">Cliquez sur un intitulé de colonne pour trier ↕</div></div>
   </div>
   <div class="toolbar">
   <input style="flex:1;min-width:160px" placeholder="Rechercher..." value="${UI.search.adherents||''}" oninput="UI.search.adherents=this.value;render()">
@@ -2515,19 +2543,21 @@ function vAdh(){
   <button class="btn" onclick="clearAdhSelection()">Désélectionner tout</button>
   </div>`:''}
   <div class="wrap"><table>
-  <thead><tr>${canWrite?`<th style="width:32px"><input type="checkbox" style="width:auto" onchange='toggleAdhSelectAllVisible(${JSON.stringify(f.map(a=>a.id))})' ${f.length&&f.every(a=>UI.adhSelected[a.id])?'checked':''}></th>`:''}${thSort('Nom / Prénom','nom')}${thSort('Type','discipline')}${thSort('Certif.','certificat')}${thSort('Droit img','droit_image')}${thSort('Pass Région','pass_region')}<th>Règlement</th>${thSort('Cotisation','cotisation')}${thSort('Paiement','paiement')}${thSort('Statut','statut')}<th>Saison</th>${thSort('Fin adhésion','date_fin_adhesion')}<th>PDF</th><th></th></tr></thead>
+  <thead><tr>${canWrite?`<th style="width:32px"><input type="checkbox" style="width:auto" onchange='toggleAdhSelectAllVisible(${JSON.stringify(f.map(a=>a.id))})' ${f.length&&f.every(a=>UI.adhSelected[a.id])?'checked':''}></th>`:''}${thSort('Nom / Prénom','nom')}${thSort('Type','discipline')}${thSort('Ceinture','couleur_ceinture')}${thSort('Certif.','certificat')}${thSort('Droit img','droit_image')}${thSort('Pass Région','pass_region')}<th>Règlement</th>${thSort('Cotisation','cotisation')}${thSort('Paiement','paiement')}${thSort('Statut','statut')}${thSort('Inscrit le','date_inscription')}<th>Saison</th>${thSort('Fin adhésion','date_fin_adhesion')}<th>PDF</th><th></th></tr></thead>
   <tbody>${f.map(a=>{
     const docs=getAdherentDocuments(a.id);
     return `<tr class="${adhStatus(a)==='expire'?'adh-expire':adhStatus(a)==='soon'?'adh-soon':'adh-valid'}">
     ${canWrite?`<td><input type="checkbox" style="width:auto" ${UI.adhSelected[a.id]?'checked':''} onchange="toggleAdhSelect('${a.id}')"></td>`:''}
     <td><strong style="font-weight:500">${esc(a.nom)} ${esc(a.prenom)}</strong>${a.ville?`<br><span style="font-size:10px;color:var(--txt2)">${esc(a.ville)}</span>`:''}</td>
     <td><span class="badge bgray">${a.discipline||'Club'}</span></td>
+    <td>${esc(a.couleur_ceinture)||'—'}</td>
     <td>${bdg(a.certificat)}</td><td>${bdg(a.droit_image)}</td>
     <td>${bdg(a.pass_region)}${+a.montant_pass_region>0?` <span style="font-size:11px;color:var(--gold-d)">+${(+a.montant_pass_region).toFixed(0)}€</span>`:''}</td>
     <td>${bdg(a.reglement)}</td>
     <td><strong style="font-weight:500">${(+a.cotisation).toFixed(2)} €</strong>${+a.montant_pass_region>0?`<br><span style="font-size:10px;color:var(--txt2)">Pass: ${(+a.montant_pass_region).toFixed(2)}€</span>`:''}</td>
     <td style="font-size:11px">${a.paiement||''}</td>
     <td><span class="badge ${adhStatutBadge(a.statut)}">${a.statut||'—'}</span></td>
+    <td>${fd(a.date_inscription)||'—'}</td>
     <td>${seasonFromDate(a.date_fin_adhesion||a.date_inscription)||'—'}</td>
     <td>${adhBadge(a)}</td>
     <td style="white-space:nowrap">
