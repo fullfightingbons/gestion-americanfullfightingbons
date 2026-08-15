@@ -66,4 +66,4 @@ npm test
 ## Notes de maintenance
 
 - PDF.js est actuellement vendorisé en dur dans `public/vendor/pdfjs/` plutôt que géré comme dépendance npm — à surveiller pour les mises à jour de sécurité de cette librairie.
-- `wrangler.local.json` est versionné dans le dépôt : à vérifier qu'aucune information d'environnement sensible ne doit en être retirée (fichier habituellement exclu via `.gitignore`).
+- `wrangler.local.json` n'est plus présent dans l'arborescence actuelle (seul `wrangler.local.example.json` l'est) et `.gitignore` l'exclut bien désormais. Reste à vérifier qu'il n'a jamais été committé par le passé — `git log --all --full-history -- wrangler.local.json` — car un fichier retiré du HEAD reste récupérable dans l'historique tant qu'il n'a pas été purgé (`git filter-repo`/BFG) et que le dépôt n'a pas été forcé-poussé. S'il apparaît dans l'historique, vérifier son contenu à l'époque et faire tourner les secrets concernés le cas échéant avant purge.

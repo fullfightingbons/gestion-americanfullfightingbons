@@ -333,7 +333,7 @@ async function getFeedbackOptedOutEmails(env: Env): Promise<Set<string>> {
   }
 }
 
-function requestIp(request: Request): string {
+export function requestIp(request: Request): string {
   return request.headers.get('CF-Connecting-IP') || 'unknown';
 }
 
@@ -344,7 +344,7 @@ function bytesToHex(bytes: Uint8Array): string {
 // Échappement minimal pour les quelques champs (prénom, nom) interpolés dans
 // les emails HTML envoyés par ce Worker — pas un usage général, juste de quoi
 // éviter qu'un prénom/nom contenant "<" ou "&" ne casse le rendu du message.
-function escapeHtmlLite(value: string): string {
+export function escapeHtmlLite(value: string): string {
   return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
@@ -367,7 +367,7 @@ async function requireAuth(request: Request, env: Env): Promise<boolean> {
 // disparaître ces routes : le frontend (app.js → CloudflareQueryBuilder)
 // dépend entièrement de /api/db/:table pour toutes les données de l'appli.
 
-type PermissionMatrix = Record<string, Record<string, string>>;
+export type PermissionMatrix = Record<string, Record<string, string>>;
 
 const DB_TABLES = new Set([
   'adherents', 'achats', 'audit_logs', 'club_info', 'comptes_bancaires',
@@ -418,7 +418,7 @@ const DB_TABLE_PERMISSIONS: Record<string, { read: string; write: string }> = {
   planning_encadrants: { read: 'perm_planning', write: 'perm_planning' },
 };
 
-const DB_DEFAULT_ROLE_PERMS: PermissionMatrix = {
+export const DB_DEFAULT_ROLE_PERMS: PermissionMatrix = {
   admin:      { perm_adherents: 'write', perm_banque: 'write', perm_comptabilite: 'write', perm_achats: 'write', perm_facturation: 'write', perm_administration: 'write', perm_diplomes: 'write', perm_feedback: 'write', perm_services: 'write', perm_presences: 'write', perm_materiel: 'write', perm_planning: 'write' },
   tresorier:  { perm_adherents: 'write', perm_banque: 'write', perm_comptabilite: 'write', perm_achats: 'write', perm_facturation: 'write', perm_administration: 'none', perm_diplomes: 'read', perm_feedback: 'none', perm_services: 'none', perm_presences: 'none', perm_materiel: 'write', perm_planning: 'read' },
   secretaire: { perm_adherents: 'write', perm_banque: 'none', perm_comptabilite: 'none', perm_achats: 'none', perm_facturation: 'none', perm_administration: 'none', perm_diplomes: 'write', perm_feedback: 'none', perm_services: 'none', perm_presences: 'read', perm_materiel: 'none', perm_planning: 'write' },
@@ -430,12 +430,12 @@ const PUBLIC_CLUB_INFO_KEYS = new Set(['nom', 'logo', 'email', 'telephone', 'adr
 
 const DB_MAX_QUERY_LIMIT = 5000;
 
-function dbQuoteIdentifier(value: string): string {
+export function dbQuoteIdentifier(value: string): string {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) throw new Error(`Identifiant invalide: ${value}`);
   return `"${value}"`;
 }
 
-function dbNormalizeValue(value: unknown): unknown {
+export function dbNormalizeValue(value: unknown): unknown {
   if (value === undefined) return null;
   if (typeof value === 'boolean') return value ? 1 : 0;
   if (value && typeof value === 'object') return JSON.stringify(value);
@@ -469,14 +469,14 @@ async function getRolePerms(env: Env): Promise<PermissionMatrix> {
   return DB_DEFAULT_ROLE_PERMS;
 }
 
-function getPermLevel(user: Record<string, any>, key: string, rolePerms: PermissionMatrix): string {
+export function getPermLevel(user: Record<string, any>, key: string, rolePerms: PermissionMatrix): string {
   const direct = String(user[key] ?? '');
   if (direct === 'write' || direct === 'read' || direct === 'none') return direct;
   const role = String(user.role || '');
   return rolePerms[role]?.[key] || 'none';
 }
 
-function dbHasPermission(user: Record<string, any>, permKey: string, mode: 'read' | 'write', rolePerms: PermissionMatrix): boolean {
+export function dbHasPermission(user: Record<string, any>, permKey: string, mode: 'read' | 'write', rolePerms: PermissionMatrix): boolean {
   if (String(user.role || '') === 'admin') return true;
   const level = getPermLevel(user, permKey, rolePerms);
   if (mode === 'read') return level === 'read' || level === 'write';
@@ -494,7 +494,7 @@ function dbHasPermission(user: Record<string, any>, permKey: string, mode: 'read
 // journal doit rester consultable sans devenir lui-même une fuite de secrets.
 const AUDIT_REDACT_KEYS = new Set(['password', 'password_hash', 'mot_de_passe', 'admin_password']);
 
-function auditRedact(payload: unknown): unknown {
+export function auditRedact(payload: unknown): unknown {
   if (!payload || typeof payload !== 'object') return payload;
   const clone: Record<string, unknown> = { ...(payload as Record<string, unknown>) };
   for (const key of Object.keys(clone)) {
@@ -597,7 +597,18 @@ async function handleDbApi(request: Request, env: Env, table: string, ctx: Execu
       const offset = Math.max(0, Math.trunc(Number(body?.offset)) || 0);
       if (!body?.single && offset > 0) sql += ` OFFSET ${offset}`;
       const { results } = await env.DB.prepare(sql).bind(...params).all();
-      const rows = results || [];
+      let rows = results || [];
+      // Le hash (mot_de_passe) ne doit jamais transiter vers le navigateur,
+      // même pour un admin légitime consultant /api/db/utilisateurs : aucun
+      // usage front n'en a besoin (réinitialisation/changement passent par
+      // des routes dédiées qui hashent côté serveur), donc on le retire
+      // systématiquement de la réponse, que `columns` l'ait demandé ou non.
+      if (table === 'utilisateurs') {
+        rows = rows.map((r: Record<string, unknown>) => {
+          const { mot_de_passe, ...rest } = r;
+          return rest;
+        });
+      }
       // Total optionnel (indépendant de limit/offset) : ne coûte une 2e
       // requête que si le frontend le demande explicitement via withCount.
       let total: number | undefined;
@@ -1014,7 +1025,7 @@ async function checkCertificatsExpirants(env: Env): Promise<{ checked: number; s
       ? `Certificat médical à renouveler — ${row.prenom} ${row.nom}`
       : `Certificat médical : échéance le ${echeanceFr}`;
     const html = `
-      <p>Bonjour ${row.prenom},</p>
+      <p>Bonjour ${escapeHtmlLite(row.prenom || '')},</p>
       <p>${expire
         ? `Votre certificat médical / questionnaire de santé est arrivé à échéance le ${echeanceFr}.`
         : `Votre certificat médical / questionnaire de santé arrive à échéance le ${echeanceFr}.`}</p>
@@ -1070,8 +1081,8 @@ async function checkMaterielEnRetard(env: Env): Promise<{ checked: number; sent:
 
     const dateFr = new Date(row.date_retour_prevue).toLocaleDateString('fr-FR');
     const html = `
-      <p>Bonjour ${row.prenom},</p>
-      <p>Le matériel du club que vous avez emprunté (<strong>${row.materiel_nom}</strong>${row.quantite > 1 ? ` × ${row.quantite}` : ''}) devait être rendu le ${dateFr}.</p>
+      <p>Bonjour ${escapeHtmlLite(row.prenom || '')},</p>
+      <p>Le matériel du club que vous avez emprunté (<strong>${escapeHtmlLite(row.materiel_nom || '')}</strong>${row.quantite > 1 ? ` × ${row.quantite}` : ''}) devait être rendu le ${dateFr}.</p>
       <p>Merci de le rapporter au dojo dès que possible, ou de nous prévenir si vous avez besoin d'un délai supplémentaire.</p>
       <p>Sportivement,<br>AFFBC</p>`;
 
@@ -1273,9 +1284,13 @@ async function checkFacturesEnRetard(env: Env): Promise<{ checked: number; sent:
     const montant = typeof f.montant_total === 'number'
       ? `${f.montant_total.toFixed(2)} €`
       : (f.montant_total ? `${f.montant_total} €` : 'montant à confirmer');
+    // Numéro saisissable manuellement par le staff (vente créée à la main) :
+    // échappé uniquement pour l'usage HTML ci-dessous — `numero` reste brut
+    // pour le sujet (texte simple) et les logs plus bas.
+    const numeroHtml = escapeHtmlLite(String(numero));
     const html = `
       <p>Bonjour,</p>
-      <p>Nous vous rappelons que la vente <strong>${numero}</strong>${montant ? ` d'un montant de <strong>${montant}</strong>` : ''} est en attente de règlement depuis ${joursRetard} jours.</p>
+      <p>Nous vous rappelons que la vente <strong>${numeroHtml}</strong>${montant ? ` d'un montant de <strong>${montant}</strong>` : ''} est en attente de règlement depuis ${joursRetard} jours.</p>
       <p>Merci de procéder au paiement dans les meilleurs délais, ou de nous contacter en cas de difficulté.</p>
       <p>Cordialement,<br>AFFBC</p>`;
 
@@ -1342,9 +1357,9 @@ async function checkDeletionRequestsEligibility(env: Env): Promise<{ checked: nu
 
   const clubEmail = await getClubContactEmail(env);
   const items = rows.map((r) => {
-    const nomComplet = `${r.prenom || ''} ${r.nom || ''}`.trim() || '(fiche adhérent introuvable)';
+    const nomComplet = escapeHtmlLite(`${r.prenom || ''} ${r.nom || ''}`.trim() || '(fiche adhérent introuvable)');
     const eligibleFr = new Date(r.eligible_at).toLocaleDateString('fr-FR');
-    return `<li>${nomComplet} — ${r.email} — éligible depuis le ${eligibleFr}</li>`;
+    return `<li>${nomComplet} — ${escapeHtmlLite(r.email || '')} — éligible depuis le ${eligibleFr}</li>`;
   }).join('');
 
   const html = `
@@ -1413,11 +1428,12 @@ function defaultEndOfSeasonQuestions(): Array<Record<string, unknown>> {
 }
 
 function feedbackReminderEmailHtml(opts: { seasonLabel: string; link: string }): string {
+  const seasonLabel = escapeHtmlLite(opts.seasonLabel || '');
   return `
   <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;">
     <h2 style="color:#b3001b;">Rappel — ton avis compte 🥊</h2>
     <p>Salut,</p>
-    <p>On t'a envoyé un questionnaire sur la saison <strong>${opts.seasonLabel}</strong> il y a quelques jours. Si tu n'as pas encore eu le temps d'y répondre, c'est encore possible !</p>
+    <p>On t'a envoyé un questionnaire sur la saison <strong>${seasonLabel}</strong> il y a quelques jours. Si tu n'as pas encore eu le temps d'y répondre, c'est encore possible !</p>
     <p>Cela prend environ 5 minutes et tes retours sont précieux pour préparer la prochaine saison :</p>
     <p style="text-align:center;margin:24px 0;">
       <a href="${opts.link}" style="background:#b3001b;color:#fff;padding:12px 24px;border-radius:4px;text-decoration:none;font-weight:bold;">Répondre au questionnaire</a>
@@ -1428,11 +1444,12 @@ function feedbackReminderEmailHtml(opts: { seasonLabel: string; link: string }):
 }
 
 function feedbackInviteEmailHtml(opts: { seasonLabel: string; link: string }): string {
+  const seasonLabel = escapeHtmlLite(opts.seasonLabel || '');
   return `
   <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;">
     <h2 style="color:#b3001b;">On a besoin de ton avis 🥊</h2>
     <p>Salut,</p>
-    <p>La saison <strong>${opts.seasonLabel}</strong> se termine. Aide-nous à préparer la prochaine en répondant à ce questionnaire (5 minutes environ) :</p>
+    <p>La saison <strong>${seasonLabel}</strong> se termine. Aide-nous à préparer la prochaine en répondant à ce questionnaire (5 minutes environ) :</p>
     <p style="text-align:center;margin:24px 0;">
       <a href="${opts.link}" style="background:#b3001b;color:#fff;padding:12px 24px;border-radius:4px;text-decoration:none;font-weight:bold;">Répondre au questionnaire</a>
     </p>
@@ -2213,18 +2230,16 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
 
     // POST /api/admin/login
     if (method === 'POST' && path === '/api/admin/login') {
+      const ip = requestIp(request);
+      if (!(await checkAuthRateLimit(ip, env))) {
+        return err('Trop de tentatives. Réessayez dans quelques minutes.', 429);
+      }
+
       const body = await request.json<{ password?: string }>();
       if (!body?.password) return err('Mot de passe requis', 400);
 
-      // Comparaison en temps constant
-      const encoder = new TextEncoder();
-      const a = encoder.encode(body.password);
-      const b = encoder.encode(env.ADMIN_PASSWORD);
-      let same = a.length === b.length;
-      for (let i = 0; i < Math.min(a.length, b.length); i++) {
-        if (a[i] !== b[i]) same = false;
-      }
-      if (!same) return err('Mot de passe incorrect', 401);
+      if (!secureEquals(body.password, env.ADMIN_PASSWORD)) return err('Mot de passe incorrect', 401);
+      await resetAuthRateLimit(ip, env);
 
       const token = crypto.randomUUID();
       const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
@@ -2252,20 +2267,18 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
     // des comptes utilisateurs, donc utilisable même si plus personne ne peut
     // se connecter via /api/auth/login.
     if (method === 'POST' && path === '/api/admin/reset-password') {
+      const ip = requestIp(request);
+      if (!(await checkAuthRateLimit(ip, env))) {
+        return err('Trop de tentatives. Réessayez dans quelques minutes.', 429);
+      }
+
       const body = await request.json<{ adminPassword?: string; email?: string; newPassword?: string }>();
       if (!body?.adminPassword || !body?.email || !body?.newPassword) {
         return err('adminPassword, email et newPassword sont requis', 400);
       }
 
-      // Comparaison en temps constant, identique à /api/admin/login
-      const encoder = new TextEncoder();
-      const a = encoder.encode(body.adminPassword);
-      const b = encoder.encode(env.ADMIN_PASSWORD);
-      let same = a.length === b.length;
-      for (let i = 0; i < Math.min(a.length, b.length); i++) {
-        if (a[i] !== b[i]) same = false;
-      }
-      if (!same) return err('Mot de passe admin incorrect', 401);
+      if (!secureEquals(body.adminPassword, env.ADMIN_PASSWORD)) return err('Mot de passe admin incorrect', 401);
+      await resetAuthRateLimit(ip, env);
 
       if (body.newPassword.length < 8) {
         return err('Le nouveau mot de passe doit faire au moins 8 caractères', 400);
@@ -2289,12 +2302,17 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
 
     // POST /api/auth/login
     if (method === 'POST' && path === '/api/auth/login') {
+      const ip = requestIp(request);
+      if (!(await checkAuthRateLimit(ip, env))) {
+        return err('Trop de tentatives. Réessayez dans quelques minutes.', 429);
+      }
       const body= await request.json<any>();
       const emailNormalized = String(body?.email || '').trim().toLowerCase();
       const user= await env.DB.prepare(`SELECT * FROM utilisateurs WHERE LOWER(TRIM(email))=? AND (actif=1 OR actif IS NULL)`).bind(emailNormalized).first<any>();
       if(!user) return err('Utilisateur introuvable',401);
       const check= await verifyPassword(body.password,user.mot_de_passe,env as any,'pbkdf2_sha256',100000,/^[a-f0-9]{64}$/i);
       if(!check.valid) return err('Email ou mot de passe incorrect',401);
+      await resetAuthRateLimit(ip, env);
       const maxAgeSeconds = 86400;
       const token= await createSessionToken({userId:user.id,expiresAt:Date.now()+maxAgeSeconds*1000,pwdStamp:user.password_changed_at||''},env as any);
       // Le token reste renvoyé dans le corps (compat scripts existants) et est en
@@ -3032,7 +3050,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       const clubNom = 'American Full Fighting Bons en Chablais';
       const safeNumero = String(facture.numero || facture.id).replace(/[^A-Za-z0-9_-]/g, '');
 
-      const html = `<p>Bonjour,</p><p>Veuillez trouver ci-joint votre ${isDon ? 'reçu de don' : 'document'} <strong>${doc.numero}</strong>.</p><p>Cordialement,<br>${clubNom}</p>`;
+      const html = `<p>Bonjour,</p><p>Veuillez trouver ci-joint votre ${isDon ? 'reçu de don' : 'document'} <strong>${escapeHtmlLite(String(doc.numero || ''))}</strong>.</p><p>Cordialement,<br>${clubNom}</p>`;
 
       const recipients = [
         { email: clientEmail, name: facture.destinataire || clientEmail },
@@ -3590,6 +3608,17 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
     if (method === 'POST' && path === '/api/email/send') {
       const user = await getCurrentUserFromBearer(request, env);
       if (!user) return err('Unauthorized', 401);
+      // Route générique utilisée par deux features distinctes côté front
+      // (émission de diplôme, relance de facture impayée — cf. app.js) :
+      // on exige l'un OU l'autre des droits d'écriture correspondants,
+      // plutôt qu'une permission unique qui casserait l'un des deux usages.
+      const rolePerms = await getRolePerms(env);
+      if (
+        !dbHasPermission(user, 'perm_diplomes', 'write', rolePerms) &&
+        !dbHasPermission(user, 'perm_facturation', 'write', rolePerms)
+      ) {
+        return err('Permission refusée', 403);
+      }
 
       if (!env.BREVO_API_KEY) {
         return err('Service email non configuré (BREVO_API_KEY manquant)', 503);
@@ -3654,14 +3683,14 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       }
 
       // Vérification mot de passe admin en plus du Bearer
+      const ip = requestIp(request);
+      if (!(await checkAuthRateLimit(ip, env))) {
+        return err('Trop de tentatives. Réessayez dans quelques minutes.', 429);
+      }
       const adminPwd = String(body?.adminPassword || '');
       if (!adminPwd) return err('adminPassword requis pour la restauration', 400);
-      const encoder = new TextEncoder();
-      const a = encoder.encode(adminPwd);
-      const b = encoder.encode(env.ADMIN_PASSWORD);
-      let same = a.length === b.length;
-      for (let i = 0; i < Math.min(a.length, b.length); i++) { if (a[i] !== b[i]) same = false; }
-      if (!same) return err('Mot de passe admin incorrect', 401);
+      if (!secureEquals(adminPwd, env.ADMIN_PASSWORD)) return err('Mot de passe admin incorrect', 401);
+      await resetAuthRateLimit(ip, env);
 
       // Tables restaurables (dans l'ordre pour respecter les FK)
       const RESTORE_ORDER: string[] = [
