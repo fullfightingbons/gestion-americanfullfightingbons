@@ -503,6 +503,39 @@ export function auditRedact(payload: unknown): unknown {
   return clone;
 }
 
+// Comparatif budget/réalisé (cf. route /api/budget/:exercice_id/comparatif) —
+// deux fonctions pures, testées séparément, pour éviter de refaire l'erreur
+// corrigée le 16/08/2026 : un montant/écart en simple `crédit - débit`
+// uniforme est correct pour un compte de produit (7xx) mais donne un écart
+// systématiquement négatif pour un compte de charge (6xx) quel que soit le
+// niveau réel de dépense (dépassé, dans les clous ou même à 0€ dépensé).
+
+/**
+ * Montant réalisé au sens naturel de sa classe de compte : positif quand une
+ * charge (6xx) est dépensée (débit) ou qu'un produit (7xx) est encaissé
+ * (crédit) — dans les deux cas, "plus c'est grand, plus il y a eu
+ * d'activité". Comptes hors 6/7 (rares dans un budget prévisionnel
+ * associatif) : convention crédit-débit par défaut, inchangée par rapport à
+ * avant.
+ */
+export function budgetMontantRealise(compte: string, debit: number, credit: number): number {
+  const classe = (compte || '')[0];
+  if (classe === '6') return debit - credit;
+  return credit - debit;
+}
+
+/**
+ * Écart prévu/réalisé en sens uniforme "positif = maîtrisé" : pour une
+ * charge, positif = il reste du budget ; pour un produit, positif = objectif
+ * atteint ou dépassé. Un seul code couleur peut donc s'appliquer côté front
+ * (vert si ecart >= 0) et avoir un sens correct dans les deux cas.
+ */
+export function budgetEcart(compte: string, montantRealise: number, montantPrevu: number): number {
+  const classe = (compte || '')[0];
+  if (classe === '6') return montantPrevu - montantRealise;
+  return montantRealise - montantPrevu;
+}
+
 async function writeAuditLog(
   env: Env,
   params: {
@@ -3858,26 +3891,27 @@ if (path.startsWith("/api/") && !publicApiRoutes.has(path)) {
         ).bind(exerciceId).all<{ compte: string; libelle: string; montant_prevu: number }>();
 
         const realise = await env.DB.prepare(
-          `SELECT compte, SUM(COALESCE(credit, 0)) - SUM(COALESCE(debit, 0)) AS solde
+          `SELECT compte, SUM(COALESCE(debit, 0)) AS total_debit, SUM(COALESCE(credit, 0)) AS total_credit
            FROM journal_comptable WHERE exercice_id = ? GROUP BY compte`
-        ).bind(exerciceId).all<{ compte: string; solde: number }>();
+        ).bind(exerciceId).all<{ compte: string; total_debit: number; total_credit: number }>();
 
-        const realiseByCompte = new Map((realise.results || []).map((r) => [r.compte, r.solde]));
+        const realiseByCompte = new Map(
+          (realise.results || []).map((r) => [
+            r.compte,
+            budgetMontantRealise(r.compte, Number(r.total_debit) || 0, Number(r.total_credit) || 0),
+          ]),
+        );
         const lignes = (previsionnel.results || []).map((p) => {
           const montantRealise = realiseByCompte.get(p.compte) ?? 0;
-          // Un compte de charge (6xx) est prévu en négatif conceptuellement
-          // dans un budget associatif classique, mais on reste ici en valeur
-          // absolue comparable au solde du journal (crédit - débit), pour que
-          // le signe indique directement l'écart dans le même sens pour tous
-          // les comptes plutôt que de complexifier avec une distinction
-          // charges/produits que le référentiel de comptes ne formalise pas
-          // explicitement dans ce schéma.
+          // cf. budgetMontantRealise/budgetEcart : signe dépendant de la
+          // classe de compte (charge 6xx vs produit 7xx), corrigé le
+          // 16/08/2026 — voir le commentaire au-dessus de ces fonctions.
           return {
             compte: p.compte,
             libelle: p.libelle,
             montant_prevu: p.montant_prevu,
             montant_realise: montantRealise,
-            ecart: montantRealise - p.montant_prevu,
+            ecart: budgetEcart(p.compte, montantRealise, p.montant_prevu),
           };
         });
 

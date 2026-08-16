@@ -16,6 +16,8 @@
 import { describe, it, expect } from "vitest";
 import {
   auditRedact,
+  budgetEcart,
+  budgetMontantRealise,
   DB_DEFAULT_ROLE_PERMS,
   dbHasPermission,
   dbNormalizeValue,
@@ -175,5 +177,51 @@ describe("RBAC (dbHasPermission / getPermLevel) contre la matrice de rôles rée
     expect(canSendEmail({ role: "tresorier" })).toBe(true);
     expect(canSendEmail({ role: "secretaire" })).toBe(true);
     expect(canSendEmail({ role: "admin" })).toBe(true);
+  });
+});
+
+describe("budgetMontantRealise / budgetEcart — comparatif budget/réalisé (/api/budget/:exercice_id/comparatif)", () => {
+  // Régression du 16/08/2026 : un calcul uniforme en crédit-débit était
+  // correct pour un compte de produit (7xx) mais donnait un écart toujours
+  // négatif pour un compte de charge (6xx), quel que soit le montant
+  // réellement dépensé — la colonne "Écart" ne renseignait donc jamais si
+  // une charge était sous ou au-dessus de son budget.
+
+  it("compte de charge (6xx) : le montant réalisé est positif quand dépensé (débit)", () => {
+    expect(budgetMontantRealise("606100", 300, 0)).toBeCloseTo(300, 2);
+  });
+
+  it("compte de produit (7xx) : le montant réalisé est positif quand encaissé (crédit)", () => {
+    expect(budgetMontantRealise("756000", 0, 4000)).toBeCloseTo(4000, 2);
+  });
+
+  it("charge sous le budget (100€ dépensés / 500€ prévus) : écart positif (vert)", () => {
+    const realise = budgetMontantRealise("606100", 100, 0);
+    expect(budgetEcart("606100", realise, 500)).toBeCloseTo(400, 2);
+  });
+
+  it("charge pile dans le budget (500€ dépensés / 500€ prévus) : écart nul, pas négatif", () => {
+    const realise = budgetMontantRealise("606100", 500, 0);
+    expect(budgetEcart("606100", realise, 500)).toBeCloseTo(0, 2);
+  });
+
+  it("charge dépassée (1000€ dépensés / 500€ prévus) : écart négatif (rouge)", () => {
+    const realise = budgetMontantRealise("606100", 1000, 0);
+    expect(budgetEcart("606100", realise, 500)).toBeCloseTo(-500, 2);
+  });
+
+  it("charge à 0€ dépensé / 500€ prévus : écart positif, pas rouge par défaut", () => {
+    const realise = budgetMontantRealise("606100", 0, 0);
+    expect(budgetEcart("606100", realise, 500)).toBeCloseTo(500, 2);
+  });
+
+  it("produit sous l'objectif (2000€ encaissés / 5000€ prévus) : écart négatif (rouge)", () => {
+    const realise = budgetMontantRealise("756000", 0, 2000);
+    expect(budgetEcart("756000", realise, 5000)).toBeCloseTo(-3000, 2);
+  });
+
+  it("produit dépassant l'objectif (6000€ encaissés / 5000€ prévus) : écart positif (vert)", () => {
+    const realise = budgetMontantRealise("756000", 0, 6000);
+    expect(budgetEcart("756000", realise, 5000)).toBeCloseTo(1000, 2);
   });
 });
