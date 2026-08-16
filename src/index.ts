@@ -3983,6 +3983,10 @@ const SECURITY_HEADERS: Record<string, string> = {
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
+  // Worker Cloudflare : toujours servi en HTTPS, donc sans risque à activer.
+  // Pas de "preload" (irréversible via les listes des navigateurs) : à
+  // ajouter séparément si le club veut soumettre le domaine plus tard.
+  'Strict-Transport-Security': 'max-age=63072000; includeSubDomains',
   // 'unsafe-inline' nécessaire : le front (public/assets/app.js) utilise des
   // attributs onclick/oninput inline de façon massive (pas de build/CSP nonce).
   // Le CSP protège malgré tout contre le chargement de scripts/styles externes

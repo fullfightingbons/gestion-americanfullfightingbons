@@ -4437,14 +4437,18 @@ function vGL(){
     const en=by[acc];
     const tD=en.reduce((s,j)=>s+(+j.debit||0),0);
     const tC=en.reduce((s,j)=>s+(+j.credit||0),0);
-    const sol=tC-tD;
+    // Solde en débit-crédit, même convention que compteSolde() (Bilan) et
+    // vEcr512() — corrigé le 15/08/2026 : c'était en crédit-débit, donc
+    // inversé par rapport au reste de l'appli (même défaut que celui trouvé
+    // sur 512 le mois dernier, jamais vérifié ici).
+    const sol=tD-tC;
     const cls=acc[0]||'';
     let classBanner='';
     if(cls!==lastClass&&'1234567'.includes(cls)){
       lastClass=cls;
       const clsTotal=allAccs.filter(a=>a.startsWith(cls)).reduce((s,a)=>{
         const enC=by[a]||[];
-        return s+enC.reduce((r,j)=>r+(+j.credit||0)-(+j.debit||0),0);
+        return s+enC.reduce((r,j)=>r+(+j.debit||0)-(+j.credit||0),0);
       },0);
       classBanner=`<div style="margin-top:16px;margin-bottom:6px;padding:6px 10px;background:var(--bg3,#f0f0f0);border-radius:6px;font-weight:600;font-size:12px;display:flex;justify-content:space-between;align-items:center">
         <span>${classLabels[cls]||('Classe '+cls)}</span>
@@ -4454,7 +4458,7 @@ function vGL(){
     return classBanner+`<div class="gl-acc">
     <div class="gl-hdr"><strong>${acc}</strong><span style="font-size:12px;color:${sol>=0?'#1e7e34':'var(--red)'}">Solde : ${sol>=0?'+':''}${sol.toFixed(2)} €</span></div>
     <div class="gl-row gl-head"><span>Date</span><span>Libellé / Pièce</span><span style="text-align:right">Débit</span><span style="text-align:right">Crédit</span><span style="text-align:right">Cumulé</span></div>
-    ${(()=>{let s=0;return en.map(j=>{s+=(+j.credit||0)-(+j.debit||0);return`<div class="gl-row">
+    ${(()=>{let s=0;return en.map(j=>{s+=(+j.debit||0)-(+j.credit||0);return`<div class="gl-row">
       <span style="font-size:11px">${fd(j.date_op)||'—'}</span>
       <span>${esc(j.libelle||'')}<br><span style="font-size:10px;color:var(--txt2)">${esc(j.piece||'')}</span></span>
       <span style="color:var(--red);text-align:right">${+j.debit>0?(+j.debit).toFixed(2)+' €':''}</span>
@@ -4483,7 +4487,7 @@ function vGL(){
   <button class="btn sm" onclick="exportGLCSV()">⬇ Export CSV</button>
   </div>
   <div style="font-size:11px;color:var(--txt2);margin-bottom:10px">
-    ${filteredAccs.length} compte(s) affiché(s) · Total débit : ${totalD.toFixed(2)} € · Total crédit : ${totalC.toFixed(2)} € · Écart : <span style="color:${Math.abs(totalD-totalC)<0.01?'#1e7e34':'var(--red)'}">${(totalC-totalD).toFixed(2)} €</span>
+    ${filteredAccs.length} compte(s) affiché(s) · Total débit : ${totalD.toFixed(2)} € · Total crédit : ${totalC.toFixed(2)} € · Écart : <span style="color:${Math.abs(totalD-totalC)<0.01?'#1e7e34':'var(--red)'}">${(totalD-totalC).toFixed(2)} €</span>
   </div>
   ${rows}
   ${filteredAccs.length===0?`<div class="empty">Aucune écriture${filter||classFilter?' pour ce filtre':''}</div>`:''}`;
@@ -9414,16 +9418,18 @@ function exportGLCSV(){
   const sorted=[...jnl].sort((a,b)=>(a.date_op||'').localeCompare(b.date_op||''));
   const by={};
   sorted.forEach(j=>{if(!by[j.compte])by[j.compte]=[];by[j.compte].push(j);});
+  // Solde cumulé en débit-crédit — même convention que vGL()/compteSolde(),
+  // corrigé en même temps qu'eux le 15/08/2026 (était en crédit-débit).
   const rows=[['Compte','Date','Pièce','Libellé','Débit','Crédit','Solde cumulé']];
   Object.keys(by).sort().forEach(acc=>{
     let s=0;
     by[acc].forEach(j=>{
-      s+=(+j.credit||0)-(+j.debit||0);
+      s+=(+j.debit||0)-(+j.credit||0);
       rows.push([acc,j.date_op,csvSafe(j.piece||''),csvSafe(j.libelle),(+j.debit).toFixed(2),(+j.credit).toFixed(2),s.toFixed(2)]);
     });
     const tD=by[acc].reduce((r,j)=>r+(+j.debit||0),0);
     const tC=by[acc].reduce((r,j)=>r+(+j.credit||0),0);
-    rows.push([acc,'---TOTAL---','','',tD.toFixed(2),tC.toFixed(2),(tC-tD).toFixed(2)]);
+    rows.push([acc,'---TOTAL---','','',tD.toFixed(2),tC.toFixed(2),(tD-tC).toFixed(2)]);
     rows.push(['','','','','','','']); // ligne vide entre comptes
   });
   const exoLabel=D.currentExo?.libelle||'exercice';
