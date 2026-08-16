@@ -20,6 +20,8 @@ export interface Env {
   BREVO_API_KEY?: string;      // clé API Brevo pour l'envoi d'emails (wrangler secret put BREVO_API_KEY)
   BREVO_FROM_EMAIL?: string;   // adresse expéditeur Brevo (wrangler secret put BREVO_FROM_EMAIL)
   BREVO_FROM_NAME?: string;    // nom expéditeur Brevo (wrangler secret put BREVO_FROM_NAME)
+  AUTOMATION_ALERTS_EMAIL?: string; // destinataire optionnel des alertes d'automatisations échouées
+  AUTOMATION_ALERTS_DISABLED?: string; // "1" pour désactiver les alertes sans toucher au code
   ASSETS: Fetcher;
   R2_STORAGE?: R2Bucket;
   R2_PDF?: R2Bucket;
@@ -377,6 +379,13 @@ const DB_TABLES = new Set([
   'presences', 'materiel', 'materiel_emprunts', 'materiel_mouvements', 'budget_previsionnel', 'planning_encadrants',
 ]);
 
+const RESTORE_ORDER: string[] = [
+  'exercices', 'adherents', 'comptes_bancaires', 'transactions',
+  'journal_comptable', 'achats', 'factures', 'diplomes',
+  'feedback_campaigns', 'feedback_recipients', 'feedback_responses',
+  'inscriptions_publiques', 'club_info', 'deletion_requests',
+];
+
 const DB_PRIMARY_KEYS: Record<string, string> = {
   adherents: 'id', achats: 'id', audit_logs: 'id', club_info: 'cle',
   comptes_bancaires: 'id', diplomes: 'id', exercices: 'id', factures: 'id',
@@ -565,6 +574,107 @@ async function writeAuditLog(
   } catch (e) {
     // Le journal ne doit jamais faire échouer l'opération métier qu'il journalise.
     console.error('[audit_logs]', e instanceof Error ? e.message : String(e));
+  }
+}
+
+const AUTOMATION_STATUS_PREFIX = 'automation_status:';
+
+type AutomationStatusEntry = {
+  key: string;
+  label: string;
+  trigger: 'cron' | 'manual';
+  started_at: string;
+  finished_at: string;
+  ok: boolean;
+  result?: unknown;
+  error?: string;
+};
+
+function compactAutomationPayload(value: unknown): unknown {
+  try {
+    const jsonText = JSON.stringify(value);
+    if (jsonText.length <= 12000) return value;
+    return { truncated: true, preview: jsonText.slice(0, 12000) };
+  } catch {
+    return String(value);
+  }
+}
+
+async function saveAutomationStatus(env: Env, entry: AutomationStatusEntry): Promise<void> {
+  try {
+    const key = `${AUTOMATION_STATUS_PREFIX}${entry.key}`;
+    await env.DB.prepare(
+      `INSERT INTO club_info (cle, valeur, created_at, updated_at)
+       VALUES (?, ?, datetime('now'), datetime('now'))
+       ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur, updated_at = datetime('now')`
+    ).bind(key, JSON.stringify(entry)).run();
+  } catch (e) {
+    console.error('[automation:status]', e instanceof Error ? e.message : String(e));
+  }
+}
+
+async function runTrackedAutomation<T>(
+  env: Env,
+  key: string,
+  label: string,
+  trigger: 'cron' | 'manual',
+  task: () => Promise<T>,
+): Promise<T> {
+  const startedAt = new Date().toISOString();
+  try {
+    const result = await task();
+    await saveAutomationStatus(env, {
+      key, label, trigger, started_at: startedAt, finished_at: new Date().toISOString(),
+      ok: true, result: compactAutomationPayload(result),
+    });
+    return result;
+  } catch (e) {
+    const message = e instanceof Error ? e.stack || e.message : String(e);
+    const error = message.slice(0, 4000);
+    await saveAutomationStatus(env, {
+      key, label, trigger, started_at: startedAt, finished_at: new Date().toISOString(),
+      ok: false, error,
+    });
+    await notifyAutomationFailure(env, { key, label, trigger, startedAt, error });
+    throw e;
+  }
+}
+
+async function readAutomationStatuses(env: Env): Promise<AutomationStatusEntry[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT valeur FROM club_info WHERE substr(cle, 1, ?) = ? ORDER BY updated_at DESC`
+  ).bind(AUTOMATION_STATUS_PREFIX.length, AUTOMATION_STATUS_PREFIX).all<{ valeur: string }>();
+  return (results || [])
+    .map((row) => {
+      try { return JSON.parse(String(row.valeur || '')); } catch { return null; }
+    })
+    .filter((row): row is AutomationStatusEntry => !!row && typeof row === 'object' && typeof row.key === 'string');
+}
+
+async function notifyAutomationFailure(
+  env: Env,
+  params: { key: string; label: string; trigger: 'cron' | 'manual'; startedAt: string; error: string },
+): Promise<void> {
+  try {
+    if (String(env.AUTOMATION_ALERTS_DISABLED || '').trim() === '1') return;
+    const toEmail = String(env.AUTOMATION_ALERTS_EMAIL || '').trim() || await getClubContactEmail(env);
+    if (!toEmail) return;
+    const sent = await sendBrevoEmail(env, {
+      to: [{ email: toEmail, name: 'Bureau AFFBC' }],
+      subject: `[AFFBC Gestion] Automatisation en échec : ${params.label}`,
+      html: `
+        <p>Une automatisation Gestion a échoué.</p>
+        <ul>
+          <li><strong>Tâche :</strong> ${escapeHtmlLite(params.label)} (${escapeHtmlLite(params.key)})</li>
+          <li><strong>Déclenchement :</strong> ${escapeHtmlLite(params.trigger)}</li>
+          <li><strong>Démarrage :</strong> ${escapeHtmlLite(params.startedAt)}</li>
+        </ul>
+        <pre style="white-space:pre-wrap;background:#f6f7f9;border:1px solid #e5e7eb;padding:12px;border-radius:8px">${escapeHtmlLite(params.error.slice(0, 2000))}</pre>
+      `,
+    });
+    if (!sent.ok) console.error('[automation:alert]', sent.error);
+  } catch (e) {
+    console.error('[automation:alert]', e instanceof Error ? e.message : String(e));
   }
 }
 
@@ -2250,13 +2360,26 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       const rolePerms = await getRolePerms(env);
       if (!dbHasPermission(user, 'perm_administration', 'write', rolePerms)) return err('Permission refusée', 403);
 
-      const result = await runFullBackup(env);
+      const result = await runTrackedAutomation(env, 'backup', 'Sauvegarde complète', 'manual', () => runFullBackup(env));
       ctx.waitUntil(writeAuditLog(env, {
         userId: user.id, action: 'backup_run_manual', entityType: 'system', entityId: result.dateFolder,
         details: { results: result.results.map((r) => ({ label: r.label, ok: r.ok, rows: r.rows, errorCount: r.errors.length })) },
         ip: request.headers.get('CF-Connecting-IP'),
       }));
       return json({ data: result, error: null });
+    }
+
+    // GET /api/admin/automation/status — dernier résultat connu des tâches
+    // automatiques/manuelles instrumentées. Stocké dans club_info pour éviter
+    // une migration D1 dédiée : ce ne sont que des indicateurs d'exploitation.
+    if (method === 'GET' && path === '/api/admin/automation/status') {
+      const user = await getCurrentUserFromBearer(request, env);
+      if (!user) return err('Unauthorized', 401);
+      const rolePerms = await getRolePerms(env);
+      if (!dbHasPermission(user, 'perm_administration', 'read', rolePerms)) return err('Permission refusée', 403);
+
+      const statuses = await readAutomationStatuses(env);
+      return json({ data: statuses, error: null });
     }
 
     // ── Authentification ──────────────────────────────────────────────────
@@ -3702,6 +3825,39 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       return json({ data: { ok: true }, error: null });
     }
 
+    // POST /api/admin/restore/preview — aperçu non destructif d'un export JSON.
+    // Sert à comparer ce que le fichier contient avec l'état actuel avant de
+    // demander la confirmation critique et le mot de passe administrateur.
+    if (method === 'POST' && path === '/api/admin/restore/preview') {
+      const user = await getCurrentUserFromBearer(request, env);
+      if (!user) return err('Unauthorized', 401);
+      if (String(user.role || '') !== 'admin') return err('Réservé aux administrateurs', 403);
+
+      const body = await request.json<Record<string, unknown>>();
+      const tables = [];
+      for (const table of RESTORE_ORDER) {
+        const rows = body[table];
+        const inBackup = Array.isArray(rows);
+        const countRow = await env.DB.prepare(
+          `SELECT COUNT(*) AS n FROM ${dbQuoteIdentifier(table)}`
+        ).first<{ n: number }>();
+        const backupRows = inBackup ? rows.length : 0;
+        tables.push({
+          table,
+          in_backup: inBackup,
+          backup_rows: backupRows,
+          current_rows: Number(countRow?.n || 0),
+          will_replace: inBackup && backupRows > 0,
+        });
+      }
+      const restoreable = new Set(RESTORE_ORDER);
+      const ignored = Object.entries(body)
+        .filter(([table, value]) => Array.isArray(value) && !restoreable.has(table))
+        .map(([table, value]) => ({ table, backup_rows: Array.isArray(value) ? value.length : 0 }));
+
+      return json({ data: { ok: true, tables, ignored }, error: null });
+    }
+
     // POST /api/admin/restore — restauration complète de la base depuis un export JSON.
     // OPÉRATION DESTRUCTIVE : protégée par le mot de passe admin en plus du token Bearer.
     // Le frontend envoie { confirmText, adherents:[], achats:[], ... }.
@@ -3724,14 +3880,6 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       if (!adminPwd) return err('adminPassword requis pour la restauration', 400);
       if (!secureEquals(adminPwd, env.ADMIN_PASSWORD)) return err('Mot de passe admin incorrect', 401);
       await resetAuthRateLimit(ip, env);
-
-      // Tables restaurables (dans l'ordre pour respecter les FK)
-      const RESTORE_ORDER: string[] = [
-        'exercices', 'adherents', 'comptes_bancaires', 'transactions',
-        'journal_comptable', 'achats', 'factures', 'diplomes',
-        'feedback_campaigns', 'feedback_recipients', 'feedback_responses',
-        'inscriptions_publiques', 'club_info', 'deletion_requests',
-      ];
 
       for (const table of RESTORE_ORDER) {
         const rows = body[table];
@@ -3862,14 +4010,14 @@ if (path.startsWith("/api/") && !publicApiRoutes.has(path)) {
     // vérification que le cron quotidien (utile pour tester ou forcer un envoi
     // sans attendre l'exécution planifiée).
     if (method === 'POST' && path === '/api/admin/certificats/verifier') {
-        const result = await checkCertificatsExpirants(env);
+        const result = await runTrackedAutomation(env, 'certificats', 'Rappels certificats', 'manual', () => checkCertificatsExpirants(env));
         return json({ data: result, error: null });
     }
 
     // POST /api/admin/factures/relancer-impayes — équivalent manuel du cron
     // quotidien de relance des factures impayées (cf. checkFacturesEnRetard).
     if (method === 'POST' && path === '/api/admin/factures/relancer-impayes') {
-        const result = await checkFacturesEnRetard(env);
+        const result = await runTrackedAutomation(env, 'factures_retard', 'Relances factures impayées', 'manual', () => checkFacturesEnRetard(env));
         return json({ data: result, error: null });
     }
 
@@ -4113,7 +4261,7 @@ export default {
     // Vérification quotidienne des certificats médicaux arrivant à échéance
     // (cf. checkCertificatsExpirants) — trigger cron à ajouter dans wrangler.json.
     ctx.waitUntil(
-      checkCertificatsExpirants(env).then(
+      runTrackedAutomation(env, 'certificats', 'Rappels certificats', 'cron', () => checkCertificatsExpirants(env)).then(
         (r) => console.log('[cron:certificats]', JSON.stringify(r)),
         (e) => console.error('[cron:certificats] échec', e instanceof Error ? e.stack || e.message : String(e)),
       ),
@@ -4122,7 +4270,7 @@ export default {
     // (cf. checkDeletionRequestsEligibility) — même trigger cron, pas besoin
     // d'un déclencheur séparé dans wrangler.json.
     ctx.waitUntil(
-      checkDeletionRequestsEligibility(env).then(
+      runTrackedAutomation(env, 'rgpd', 'Signalement RGPD', 'cron', () => checkDeletionRequestsEligibility(env)).then(
         (r) => console.log('[cron:rgpd]', JSON.stringify(r)),
         (e) => console.error('[cron:rgpd] échec', e instanceof Error ? e.stack || e.message : String(e)),
       ),
@@ -4130,7 +4278,7 @@ export default {
     // Relance automatique des factures impayées à J+15 puis J+30
     // (cf. checkFacturesEnRetard) — même trigger cron.
     ctx.waitUntil(
-      checkFacturesEnRetard(env).then(
+      runTrackedAutomation(env, 'factures_retard', 'Relances factures impayées', 'cron', () => checkFacturesEnRetard(env)).then(
         (r) => console.log('[cron:relances-factures]', JSON.stringify(r)),
         (e) => console.error('[cron:relances-factures] échec', e instanceof Error ? e.stack || e.message : String(e)),
       ),
@@ -4138,7 +4286,7 @@ export default {
     // Relance automatique des prêts de matériel en retard
     // (cf. checkMaterielEnRetard) — même trigger cron.
     ctx.waitUntil(
-      checkMaterielEnRetard(env).then(
+      runTrackedAutomation(env, 'materiel_retard', 'Relances matériel en retard', 'cron', () => checkMaterielEnRetard(env)).then(
         (r) => console.log('[cron:materiel-retard]', JSON.stringify(r)),
         (e) => console.error('[cron:materiel-retard] échec', e instanceof Error ? e.stack || e.message : String(e)),
       ),
@@ -4146,7 +4294,7 @@ export default {
     // Sauvegarde complète quotidienne des 4 bases D1 du club vers R2
     // (cf. runFullBackup) — même trigger cron, pas de déclencheur séparé.
     ctx.waitUntil(
-      runFullBackup(env).then(
+      runTrackedAutomation(env, 'backup', 'Sauvegarde complète', 'cron', () => runFullBackup(env)).then(
         (r) => console.log('[cron:backup]', JSON.stringify({ dateFolder: r.dateFolder, pruned: r.pruned, results: r.results.map((x) => ({ label: x.label, ok: x.ok, rows: x.rows, errors: x.errors })) })),
         (e) => console.error('[cron:backup] échec', e instanceof Error ? e.stack || e.message : String(e)),
       ),

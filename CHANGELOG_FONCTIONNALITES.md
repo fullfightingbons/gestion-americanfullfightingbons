@@ -4,6 +4,19 @@ Ajoutées sur la base du projet existant, sans rien retirer. `tsc --noEmit`,
 les 31 tests existants (`vitest run`) et `wrangler deploy --dry-run` sont
 propres après ajout.
 
+## Correctifs complémentaires — 16/08/2026
+
+- `gestion/public/assets/app.js` : correction du renouvellement groupé des
+  adhérents, qui appelait `update(patch)` sans définir `patch` dans la boucle.
+- `inscription/src/routes/api/public/payment/helloasso/status.js` : suppression
+  effective des transactions bancaires synthétiques HelloAsso. Les paiements
+  confirmés créent uniquement les écritures comptables 512/411 ; l'onglet
+  Banque reste alimenté par les relevés réels importés dans `gestion`.
+- `gestion/src/index.ts` + interface Administration : ajout d'un suivi des
+  automatisations (dernier résultat des crons et lancements manuels :
+  certificats, factures impayées, matériel, RGPD, sauvegardes), stocké sans
+  migration dédiée dans `club_info`.
+
 ## 1. Relances automatiques des factures impayées
 
 - Table de suivi `facture_relances_auto` (migration `0024`) — même principe

@@ -30,6 +30,10 @@ const appJsSource = readFileSync(
   path.join(__dirname, "../public/assets/app.js"),
   "utf8"
 );
+const workerSource = readFileSync(
+  path.join(__dirname, "../src/index.ts"),
+  "utf8"
+);
 
 /**
  * Charge public/assets/app.js dans un contexte vm isolé, puis exécute
@@ -238,5 +242,60 @@ describe("journalDiagnostics() — calcul net (pas à sens unique) des produits/
     expect(result.totalCredit).toBe(0);
     expect(result.ecartJournal).toBe(0);
     expect(result.resultat).toBe(0);
+  });
+});
+
+describe("Adhérents — renouvellement groupé", () => {
+  it("bulkRenewSelectedAdh construit le patch avant de mettre à jour chaque adhérent", () => {
+    const start = appJsSource.indexOf("async function bulkRenewSelectedAdh");
+    const end = appJsSource.indexOf("async function renewAdh", start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const fn = appJsSource.slice(start, end);
+
+    expect(fn).toContain("const patch=");
+    expect(fn).toContain("date_fin_adhesion:newFin");
+    expect(fn).toContain("SB.from('adherents').update(patch)");
+  });
+});
+
+describe("Adhérents — détection prudente des doublons", () => {
+  it("signale deux fiches identiques sur la même saison sans confondre un renouvellement d'une autre saison", () => {
+    const result = loadAppAndRun(`
+      D.adherents = [
+        {id:'a1', nom:'Martin', prenom:'Lea', naissance:'2010-01-01', email:'lea@example.test', exercice_id:'2026', statut:'Actif'},
+        {id:'a2', nom:'Martin', prenom:'Lea', naissance:'2010-01-01', email:'lea@example.test', exercice_id:'2026', statut:'Actif'},
+        {id:'a3', nom:'Martin', prenom:'Lea', naissance:'2010-01-01', email:'lea@example.test', exercice_id:'2025', statut:'Inactif'}
+      ];
+      capture(buildAdherentDuplicateGroups().map(g => g.rows.map(a => a.id)));
+    `);
+    expect(result).toEqual([["a1", "a2"]]);
+  });
+});
+
+describe("Restauration — garde-fous serveur et interface", () => {
+  it("expose un aperçu non destructif avant la route de restauration", () => {
+    expect(workerSource).toContain("path === '/api/admin/restore/preview'");
+    expect(workerSource.indexOf("path === '/api/admin/restore/preview'")).toBeLessThan(
+      workerSource.indexOf("path === '/api/admin/restore'")
+    );
+  });
+
+  it("le frontend demande le mot de passe admin et l'envoie à l'API de restauration", () => {
+    const start = appJsSource.indexOf("async function restoreBackupJSON");
+    const end = appJsSource.indexOf("// ═══════════════════════════════════════════════════", start);
+    const fn = appJsSource.slice(start, end);
+
+    expect(fn).toContain("/admin/restore/preview");
+    expect(fn).toContain("const adminPassword=window.prompt");
+    expect(fn).toContain("adminPassword");
+  });
+});
+
+describe("Automatisations — alerte d'échec", () => {
+  it("enregistre l'échec puis déclenche une notification best-effort", () => {
+    expect(workerSource).toContain("async function notifyAutomationFailure");
+    expect(workerSource).toContain("AUTOMATION_ALERTS_DISABLED");
+    expect(workerSource).toContain("await notifyAutomationFailure(env");
   });
 });

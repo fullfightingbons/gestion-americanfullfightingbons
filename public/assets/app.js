@@ -237,6 +237,7 @@ const UI = {
   guardianInfo:null,
   rgpdRequests:null,
   autoBackups:null,
+  automationStatus:null,
   diplome:{adherentId:'',date:td(),templatePath:'',titre:'Diplôme de ceinture',selectedField:'nomComplet',delivrePar:'',commentaire:''},
   diplomeArchive:{saison:'current',search:''},
   invState:{numero:'FAC-001',date:td(),destinataire:'',adresse:'',objet:'',lignes:[{desc:'',qte:1,pu:0}],notes:''},
@@ -2471,6 +2472,7 @@ function vAdh(){
   if(!D.loaded.familles && UI.adhSection==='familles'){ loadFamilles(); }
   if(!D.loaded.materiel && UI.adhSection==='familles'){ loadTabData('materiel'); }
   if(UI.adhSection==='familles') return vAdhFamilles(canWrite);
+  if(UI.adhSection==='doublons') return vAdhDoublons(canWrite);
   const season=currentSeasonLabel();
   const filtered=sortAdherentsList(D.adherents.filter(a=>{
     const txt=(a.nom+' '+a.prenom+' '+(a.ville||'')).toLowerCase();
@@ -2495,6 +2497,7 @@ function vAdh(){
   </div>
   <div style="display:flex;align-items:center;gap:10px">
   <button class="btn sm" onclick="UI.adhSection='familles';render()">👪 Par famille</button>
+  <button class="btn sm" onclick="UI.adhSection='doublons';render()">⚠ Doublons</button>
   <div class="exo-badge">Saison en cours : ${season}</div>
   </div>
   </div>
@@ -2635,6 +2638,14 @@ async function bulkRenewSelectedAdh(){
   for(const adh of adhs){
     const currentFin=adh.date_fin_adhesion||td();
     const newFin=nextSeasonEnd(currentFin);
+    const patch={
+      statut:'Actif',
+      date_fin_adhesion:newFin,
+      certificat:0,
+      reglement:0,
+      updated_at:new Date().toISOString(),
+      notes:(adh.notes?adh.notes+'\n':'')+`[Renouvelé le ${td()} — fin : ${newFin}]`
+    };
     const {error}=await SB.from('adherents').update(patch).eq('id',adh.id);
     if(error){ errCount++; continue; }
     Object.assign(adh,patch);
@@ -6238,9 +6249,10 @@ function vAdmin(){
   <button class="stab ${sub==='imp_adh'?'active':''}" onclick="showST('admin','imp_adh')">📥 Import adhérents</button>
   <button class="stab ${sub==='imp_ecr'?'active':''}" onclick="showST('admin','imp_ecr')">📥 Import écritures</button>
   <button class="stab ${sub==='backup'?'active':''}" onclick="showST('admin','backup')">Sauvegarde</button>
+  <button class="stab ${sub==='automations'?'active':''}" onclick="showST('admin','automations')">Automatisations</button>
   <button class="stab ${sub==='rgpd'?'active':''}" onclick="showST('admin','rgpd')">🔒 RGPD</button>
   </div>
-  ${sub==='users'?vUsers():sub==='audit'?vAudit():sub==='club'?vClub():sub==='logo'?vLogo():sub==='tarifs'?vTarifs():sub==='imp_adh'?vImpAdh():sub==='imp_ecr'?vImpEcr():sub==='rgpd'?vRgpd():vBackup()}`;
+  ${sub==='users'?vUsers():sub==='audit'?vAudit():sub==='club'?vClub():sub==='logo'?vLogo():sub==='tarifs'?vTarifs():sub==='imp_adh'?vImpAdh():sub==='imp_ecr'?vImpEcr():sub==='rgpd'?vRgpd():sub==='automations'?vAutomations():vBackup()}`;
 }
 
 function vUsers(){
@@ -6810,6 +6822,105 @@ function vAutoBackupSection(){
       </div>
       </div>
     `).join('')}
+  </div>`;
+}
+
+async function loadAutomationStatus(force=false){
+  if(UI.automationStatus && !force) return;
+  const res=await apiRequest('/admin/automation/status');
+  UI.automationStatus=res.error?{error:res.error.message||'Chargement impossible.'}:(res.data||[]);
+  render();
+}
+
+function automationDuration(entry){
+  const start=new Date(entry.started_at||'').getTime();
+  const end=new Date(entry.finished_at||'').getTime();
+  if(!Number.isFinite(start)||!Number.isFinite(end)||end<start) return '';
+  const sec=Math.round((end-start)/1000);
+  if(sec<60) return `${sec}s`;
+  return `${Math.floor(sec/60)}m ${sec%60}s`;
+}
+
+function automationSummary(entry){
+  if(entry.error) return entry.error.split('\n')[0].slice(0,220);
+  const r=entry.result||{};
+  if(Array.isArray(r.results)){
+    const failed=r.results.filter(x=>!x.ok);
+    const rows=r.results.reduce((s,x)=>s+(Number(x.rows)||0),0);
+    return failed.length
+      ? `${rows} ligne(s) exportée(s), ${failed.length} base(s) en erreur.`
+      : `${rows} ligne(s) exportée(s) depuis ${r.results.length} base(s).`;
+  }
+  const parts=[];
+  if(r.checked!==undefined) parts.push(`${r.checked} vérifié(s)`);
+  if(r.sent!==undefined) parts.push(`${r.sent} email(s) envoyé(s)`);
+  if(r.notified!==undefined) parts.push(r.notified?'bureau notifié':'aucune notification');
+  if(r.pruned!==undefined) parts.push(`${r.pruned} ancien(s) fichier(s) purgé(s)`);
+  if(Array.isArray(r.errors)&&r.errors.length) parts.push(`${r.errors.length} erreur(s)`);
+  if(parts.length) return parts.join(' · ');
+  try{return JSON.stringify(r).slice(0,220);}catch(e){return 'Résultat enregistré.';}
+}
+
+async function runAutomationManual(kind){
+  const cfg={
+    certificats:{path:'/admin/certificats/verifier',label:'Vérification des certificats'},
+    factures_retard:{path:'/admin/factures/relancer-impayes',label:'Relance des factures impayées'},
+    backup:{path:'/admin/backup/run',label:'Sauvegarde complète'},
+  }[kind];
+  if(!cfg) return;
+  if(!await confirmModal(`${cfg.label} maintenant ?`)) return;
+  UI.automationStatus=null;
+  render();
+  const res=await apiRequest(cfg.path,{method:'POST'});
+  if(res.error) notify('error',`${cfg.label} impossible : ${res.error.message}`,'Automatisations');
+  else notify('success',`${cfg.label} terminée.`,'Automatisations');
+  await loadAutomationStatus(true);
+}
+
+function vAutomations(){
+  if(!hasPerm('perm_administration')) return`<div class="empty">Accès réservé à l'administrateur</div>`;
+  if(UI.automationStatus===null){ loadAutomationStatus(); return `<div class="empty">Chargement des automatisations…</div>`; }
+  if(UI.automationStatus.error) return `<div class="empty">${esc(UI.automationStatus.error)}</div>`;
+  const expected=[
+    {key:'certificats',label:'Rappels certificats',manual:true},
+    {key:'factures_retard',label:'Relances factures impayées',manual:true},
+    {key:'materiel_retard',label:'Relances matériel en retard'},
+    {key:'rgpd',label:'Signalement RGPD'},
+    {key:'backup',label:'Sauvegarde complète',manual:true},
+  ];
+  const byKey={};
+  (UI.automationStatus||[]).forEach(e=>{byKey[e.key]=e;});
+  const rows=[
+    ...expected.map(item=>({meta:item,entry:byKey[item.key]||null})),
+    ...(UI.automationStatus||[]).filter(e=>!expected.find(item=>item.key===e.key)).map(e=>({meta:{key:e.key,label:e.label||e.key},entry:e})),
+  ];
+  return`<div>
+  <div class="view-head">
+  <div>
+  <div class="eyebrow">Exploitation</div>
+  <h2>Automatisations</h2>
+  <p>Dernier résultat connu des tâches planifiées et des lancements manuels.</p>
+  </div>
+  <button class="btn" onclick="UI.automationStatus=null;loadAutomationStatus(true)">Actualiser</button>
+  </div>
+  <div class="wrap"><table>
+  <thead><tr><th>Tâche</th><th>État</th><th>Dernier passage</th><th>Déclenchement</th><th>Durée</th><th>Résumé</th><th></th></tr></thead>
+  <tbody>${rows.map(({meta,entry})=>entry?`<tr>
+    <td><strong style="font-weight:600">${esc(meta.label)}</strong></td>
+    <td><span class="badge ${entry.ok?'bok':'bno'}">${entry.ok?'OK':'Échec'}</span></td>
+    <td>${fd(entry.finished_at)||'—'}</td>
+    <td><span class="badge bgray">${entry.trigger==='manual'?'Manuel':'Cron'}</span></td>
+    <td>${automationDuration(entry)||'—'}</td>
+    <td style="font-size:12px;color:var(--txt2)">${esc(automationSummary(entry))}</td>
+    <td>${meta.manual&&hasPerm('perm_administration','write')?`<button class="btn sm" onclick="runAutomationManual('${meta.key}')">Lancer</button>`:''}</td>
+    </tr>`:`<tr>
+    <td><strong style="font-weight:600">${esc(meta.label)}</strong></td>
+    <td><span class="badge bgray">Jamais vu</span></td>
+    <td>—</td><td>—</td><td>—</td>
+    <td style="font-size:12px;color:var(--txt2)">Aucun résultat enregistré depuis l'ajout du suivi.</td>
+    <td>${meta.manual&&hasPerm('perm_administration','write')?`<button class="btn sm" onclick="runAutomationManual('${meta.key}')">Lancer</button>`:''}</td>
+    </tr>`).join('')}</tbody></table></div>
+  <p style="font-size:12px;color:var(--txt2);margin-top:12px">Ces statuts complètent les logs Cloudflare : ils permettent au bureau de vérifier rapidement si les relances, contrôles RGPD et sauvegardes tournent correctement.</p>
   </div>`;
 }
 
@@ -7629,6 +7740,88 @@ function vAdhFamilles(canWrite){
       <div class="row-list">${rows}</div>
     </div>`;
   }).join('')}`;
+}
+
+function adhDuplicateSeasonKey(a){
+  return String(a.exercice_id||seasonFromDate(a.date_fin_adhesion||a.date_inscription)||'sans-saison');
+}
+
+function adhDuplicateNameKey(a){
+  return normalizeSearchText(`${a.nom||''} ${a.prenom||''}`).replace(/\s+/g,' ').trim();
+}
+
+function adhDuplicateKeys(a){
+  const season=adhDuplicateSeasonKey(a);
+  const name=adhDuplicateNameKey(a);
+  if(!name) return [];
+  const birth=String(a.naissance||'').trim();
+  const email=String(a.email||'').trim().toLowerCase();
+  const phone=String(a.telephone||'').replace(/\D/g,'');
+  const keys=[];
+  if(birth) keys.push({key:`identite:${season}:${name}:${birth}`,reason:'Même nom/prénom et date de naissance sur la même saison'});
+  if(email) keys.push({key:`email:${season}:${name}:${email}`,reason:'Même nom/prénom et email sur la même saison'});
+  if(phone.length>=8) keys.push({key:`telephone:${season}:${name}:${phone}`,reason:'Même nom/prénom et téléphone sur la même saison'});
+  return keys;
+}
+
+function buildAdherentDuplicateGroups(){
+  const buckets=new Map();
+  for(const a of (D.adherents||[])){
+    for(const item of adhDuplicateKeys(a)){
+      if(!buckets.has(item.key)) buckets.set(item.key,{key:item.key,reason:item.reason,rows:[]});
+      const group=buckets.get(item.key);
+      if(!group.rows.some(r=>r.id===a.id)) group.rows.push(a);
+    }
+  }
+  const bySignature=new Map();
+  for(const group of buckets.values()){
+    if(group.rows.length<2) continue;
+    const rows=group.rows.slice().sort((a,b)=>`${a.nom} ${a.prenom} ${a.date_inscription||''}`.localeCompare(`${b.nom} ${b.prenom} ${b.date_inscription||''}`));
+    const signature=rows.map(a=>a.id).sort().join('|');
+    const existing=bySignature.get(signature);
+    if(existing){
+      if(!existing.reasons.includes(group.reason)) existing.reasons.push(group.reason);
+    }else{
+      bySignature.set(signature,{rows,reasons:[group.reason],season:adhDuplicateSeasonKey(rows[0])});
+    }
+  }
+  return Array.from(bySignature.values()).sort((a,b)=>`${a.rows[0]?.nom||''} ${a.rows[0]?.prenom||''}`.localeCompare(`${b.rows[0]?.nom||''} ${b.rows[0]?.prenom||''}`));
+}
+
+function vAdhDoublons(canWrite){
+  const groups=buildAdherentDuplicateGroups();
+  return`<div class="view-head">
+  <div>
+  <div class="eyebrow">Qualité des données</div>
+  <h2>Doublons potentiels</h2>
+  <p>Repérez les fiches qui semblent dupliquées sur une même saison avant de corriger manuellement la donnée source.</p>
+  </div>
+  </div>
+  <div class="toolbar" style="margin-bottom:14px">
+  <button class="btn sm" onclick="UI.adhSection='liste';render()">← Retour à la liste</button>
+  <span class="badge ${groups.length?'bwarn':'bok'}">${groups.length} groupe${groups.length>1?'s':''} suspect${groups.length>1?'s':''}</span>
+  </div>
+  ${groups.length===0?`<div class="empty">Aucun doublon évident détecté sur les adhérents chargés.</div>`:groups.map((group,idx)=>`<div class="card" style="padding:16px;margin-bottom:14px">
+    <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-bottom:10px">
+      <div>
+        <div style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--txt2);margin-bottom:2px">Groupe ${idx+1}</div>
+        <div style="font-weight:700">${esc(group.reasons.join(' · '))}</div>
+      </div>
+      <span class="badge bwarn">${group.rows.length} fiches</span>
+    </div>
+    <div class="row-list">${group.rows.map(a=>`<div class="row" style="align-items:center">
+      <div style="flex:1;min-width:0">
+        <strong>${esc(a.nom)} ${esc(a.prenom)}</strong>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
+          ${adhBadge(a)}
+          ${certifBadge(a)}
+          <span class="badge bgray">${esc(a.email||'email manquant')}</span>
+          <span class="badge bgray">${esc(a.date_inscription?fd(a.date_inscription):'date inconnue')}</span>
+        </div>
+      </div>
+      <button class="btn sm" onclick="openModal('adh','${a.id}')" title="Voir la fiche">Voir la fiche</button>
+    </div>`).join('')}</div>
+  </div>`).join('')}`;
 }
 
 async function linkGuardian(adherentId,email){
@@ -9484,12 +9677,20 @@ function onBackupJSONFile(e){
 
 async function restoreBackupJSON(payload){
   if(!payload||typeof payload!=='object') throw new Error('Fichier JSON invalide.');
-  if(!await confirmModal('Cette restauration va remplacer les données actuelles. Voulez-vous continuer ?')) throw new Error('Import annulé.');
+  const preview=await apiRequest('/admin/restore/preview',{method:'POST',body:JSON.stringify(payload)});
+  if(preview.error) throw new Error(preview.error.message||'Aperçu de restauration refusé.');
+  const tables=(preview.data?.tables||[]).filter(t=>t.in_backup);
+  const ignored=(preview.data?.ignored||[]).filter(t=>t.backup_rows>0);
+  const previewLines=tables.map(t=>`${t.table} : ${t.backup_rows} ligne(s) dans le fichier, ${t.current_rows} actuellement${t.will_replace?' — remplacé':' — ignoré car vide'}`);
+  const ignoredLines=ignored.length?`\n\nTables non restaurées par sécurité :\n${ignored.map(t=>`${t.table} : ${t.backup_rows} ligne(s)`).join('\n')}`:'';
+  if(!await confirmModal(`Aperçu serveur avant restauration :\n\n${previewLines.join('\n')}${ignoredLines}\n\nCette restauration va remplacer les tables listées comme remplacées. Voulez-vous continuer ?`)) throw new Error('Import annulé.');
   const confirmText=window.prompt(`Opération critique. Saisissez ${DANGEROUS_RESTORE_PHRASE} pour confirmer la restauration complète.`);
   if(String(confirmText||'').trim().toUpperCase()!==DANGEROUS_RESTORE_PHRASE) throw new Error('Confirmation invalide.');
+  const adminPassword=window.prompt('Mot de passe administrateur requis pour lancer la restauration.');
+  if(!adminPassword) throw new Error('Mot de passe administrateur requis.');
   const {error}=await apiRequest('/admin/restore',{
     method:'POST',
-    body:JSON.stringify({...payload,confirmText:DANGEROUS_RESTORE_PHRASE})
+    body:JSON.stringify({...payload,confirmText:DANGEROUS_RESTORE_PHRASE,adminPassword})
   });
   if(error) throw new Error(error.message||'Restauration refusée.');
   notify('success','Restauration terminée. Les données ont été rechargées.');
