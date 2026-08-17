@@ -1160,7 +1160,20 @@ function getAdherentPublicRegistration(adherentId){
 }
 
 function getRegistrationDocuments(registration){
-  const docs=registration?.documents_json && typeof registration.documents_json==='object' ? registration.documents_json : {};
+  // documents_json est une colonne TEXT en D1 (migration 0002) : elle revient
+  // du endpoint générique /api/db/inscriptions_publiques (handleDbApi) comme
+  // une chaîne JSON brute, jamais comme un objet déjà parsé. L'ancien test
+  // `typeof documents_json==='object'` était donc toujours faux et cette
+  // fonction ne renvoyait jamais aucune pièce, même quand des fichiers
+  // existaient réellement sur R2. Cf. src/index.ts handleDbApi (aucun
+  // JSON.parse n'y est fait sur cette colonne — c'est donc bien ici, côté
+  // lecture, qu'il faut le faire).
+  const raw=registration?.documents_json;
+  let docs={};
+  if(raw && typeof raw==='object') docs=raw;
+  else if(typeof raw==='string' && raw.trim()){
+    try{ docs=JSON.parse(raw); }catch(e){ docs={}; }
+  }
   const labels={
     photoIdentity:"Photo d'identité",
     medicalCertificate:"Certificat médical",
