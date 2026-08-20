@@ -2153,6 +2153,111 @@ function buildDashboardOptimizationTips(d){
   return tips.slice(0,4);
 }
 
+// ─── Répartition démographique (âge / localisation) ─────────────────────
+// Âge calculé à partir de `naissance` (toISODate gère le format ISO natif
+// des <input type=date> et le format dd/mm/yyyy legacy éventuel). Retourne
+// null si la date est absente ou invalide plutôt que de fausser une tranche.
+function ageFromNaissance(naissance){
+  const iso=toISODate(naissance);
+  if(!iso) return null;
+  const d=new Date(iso);
+  if(Number.isNaN(d.getTime())) return null;
+  const today=new Date();
+  let age=today.getFullYear()-d.getFullYear();
+  const m=today.getMonth()-d.getMonth();
+  if(m<0||(m===0&&today.getDate()<d.getDate())) age--;
+  return (age>=0&&age<120)?age:null; // borne large anti-erreur de saisie
+}
+const AGE_BRACKETS=[
+  {label:'– 12 ans',    max:11},
+  {label:'12 – 17 ans', max:17},
+  {label:'18 – 25 ans', max:25},
+  {label:'26 – 40 ans', max:40},
+  {label:'41 – 60 ans', max:60},
+  {label:'61 ans et +', max:Infinity},
+];
+function ageBracketLabel(age){
+  if(age==null) return 'Non renseigné';
+  const b=AGE_BRACKETS.find(b=>age<=b.max);
+  return b?b.label:'Non renseigné';
+}
+
+// Base volontairement `currentSeasonAdherents` et non `D.adherents` : ce
+// dernier contient une ligne par adhérent PAR SAISON (cf. historique du
+// modèle de données), donc un adhérent fidèle depuis 5 ans y apparaît 5
+// fois et fausserait la répartition. La saison en cours reflète qui est
+// réellement adhérent aujourd'hui.
+function computeAdherentDemographics(list){
+  const rows=list||[];
+  const total=rows.length;
+
+  const ageCounts={};
+  rows.forEach(a=>{
+    const label=ageBracketLabel(ageFromNaissance(a.naissance));
+    ageCounts[label]=(ageCounts[label]||0)+1;
+  });
+  const age=AGE_BRACKETS.map(b=>({label:b.label,count:ageCounts[b.label]||0}));
+  if(ageCounts['Non renseigné']) age.push({label:'Non renseigné',count:ageCounts['Non renseigné']});
+
+  // Regroupement par ville : clé normalisée (majuscules, espaces
+  // compactés) pour fusionner les variantes de casse/espacement, mais
+  // libellé affiché repris tel que saisi par le club (pas de fantaisie sur
+  // les accents/tirets, dont la normalisation serait plus trompeuse
+  // qu'utile si elle fusionnait à tort deux communes différentes).
+  const villeCounts={};
+  let villeVide=0;
+  rows.forEach(a=>{
+    const raw=(a.ville||'').trim();
+    if(!raw){villeVide++;return;}
+    const key=raw.toLocaleUpperCase('fr-FR').replace(/\s+/g,' ');
+    villeCounts[key]=villeCounts[key]||{label:raw,count:0};
+    villeCounts[key].count++;
+  });
+  const villeSorted=Object.values(villeCounts).sort((x,y)=>y.count-x.count);
+  const villeTop=villeSorted.slice(0,6);
+  const villeAutresCount=villeSorted.slice(6).reduce((s,v)=>s+v.count,0);
+  const ville=villeTop.map(v=>({label:v.label,count:v.count}));
+  if(villeAutresCount) ville.push({label:`Autres communes (${villeSorted.length-6})`,count:villeAutresCount});
+  if(villeVide) ville.push({label:'Non renseigné',count:villeVide});
+
+  return {total,age,ville};
+}
+
+// Mini-tableau à barres proportionnelles (même esprit visuel que les
+// dash-viz-card à SVG, mais en <table> comme le reste de l'appli pour ce
+// type de récap catégoriel).
+function renderDemoBars(rows,total,color){
+  const max=Math.max(...rows.map(r=>r.count),1);
+  return `<div class="wrap"><table class="demo-table"><tbody>
+  ${rows.map(r=>{
+    const pct=total?Math.round((r.count/total)*100):0;
+    const barPct=r.count?Math.max(Math.round((r.count/max)*100),4):0;
+    return `<tr>
+    <td>${esc(r.label)}</td>
+    <td style="width:160px"><div class="demo-bar"><div class="demo-bar-fill" style="width:${barPct}%;background:${color}"></div></div></td>
+    <td style="width:88px;text-align:right;white-space:nowrap">${r.count} <span style="color:var(--muted);font-size:11px">(${pct}%)</span></td>
+    </tr>`;
+  }).join('')}
+  </tbody></table></div>`;
+}
+
+function renderDemographicsCard(d){
+  const demo=computeAdherentDemographics(d.currentSeasonAdherents);
+  if(!demo.total){
+    return `<div class="card" style="margin-bottom:16px">
+    <div class="stit" style="margin-top:0">Répartition démographique — saison ${esc(d.currentSeason)}</div>
+    <p style="font-size:12.5px;color:var(--muted)">Aucun adhérent sur la saison en cours pour établir une répartition.</p>
+    </div>`;
+  }
+  return `<div class="card" style="margin-bottom:16px">
+  <div class="stit" style="margin-top:0">Répartition démographique — saison ${esc(d.currentSeason)} (${demo.total} adhérent${demo.total>1?'s':''})</div>
+  <div class="dash-stat-label" style="margin-bottom:8px">Âge</div>
+  ${renderDemoBars(demo.age,demo.total,'var(--blue)')}
+  <div class="dash-stat-label" style="margin-top:16px;margin-bottom:8px">Localisation (commune)</div>
+  ${renderDemoBars(demo.ville,demo.total,'var(--red)')}
+  </div>`;
+}
+
 // Taux d'adhérents d'une saison retrouvés la saison suivante (cf.
 // GET /api/stats/renouvellement). Chargé une fois et mis en cache dans
 // D.renouvellement — lecture peu coûteuse mais pas nécessaire à chaque
@@ -2390,6 +2495,7 @@ function vDashboard(){
   </div>
   </div>
   </div>
+  ${hasPerm('perm_adherents')?renderDemographicsCard(d):''}
   <div class="dash-section-grid">
   <div class="card">
   <div class="stit" style="margin-top:0">Récapitulatif club</div>

@@ -159,6 +159,10 @@ tr:hover td{background:#fbf6ef}
 .dash-compare-delta.up{color:#1e7e34}
 .dash-compare-delta.down{color:var(--red)}
 .dash-compare-delta.flat{color:var(--muted)}
+.demo-table td{padding:6px 8px;border-bottom:none;font-size:12px;background:transparent}
+.demo-table tr:hover td{background:transparent}
+.demo-bar{background:var(--bg3);border-radius:99px;height:8px;overflow:hidden}
+.demo-bar-fill{height:100%;border-radius:99px}
 .dash-list{display:grid;grid-template-columns:1.2fr 1fr;gap:14px}
 .dash-item{display:flex;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid rgba(15,23,32,.08);font-size:12.5px}
 .dash-item:last-child{border-bottom:none;padding-bottom:0}
