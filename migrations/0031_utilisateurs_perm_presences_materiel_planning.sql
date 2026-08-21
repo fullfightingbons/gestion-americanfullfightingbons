@@ -1,0 +1,46 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration : permissions manquantes sur "utilisateurs" pour Présences,
+--             Matériel et Planning.
+-- Fichier   : migrations/0031_utilisateurs_perm_presences_materiel_planning.sql
+--
+-- Contexte  : les migrations 0025 (presences), 0026 (materiel) et 0028
+--             (planning_encadrants) ont introduit les permissions
+--             perm_presences / perm_materiel / perm_planning, utilisées
+--             partout côté frontend (matrice de rôles + formulaire "Nouvel
+--             utilisateur" de l'onglet Administration, cf. PERM_META dans
+--             public/assets/app.js) et backend (DB_DEFAULT_ROLE_PERMS dans
+--             src/index.ts). Mais contrairement à perm_diplomes /
+--             perm_feedback / perm_services (ajoutées correctement dans la
+--             migration 0011 pour le même besoin), aucune de ces 3 colonnes
+--             n'a jamais été ajoutée à la table "utilisateurs".
+--
+-- Effet du bug : le formulaire d'ajout/modification d'utilisateur envoie
+--             systématiquement ces 3 clés dans son payload. Le handler
+--             générique /api/db/:table (handleDbApi, src/index.ts) construit
+--             son INSERT/UPDATE à partir de TOUTES les clés reçues sans
+--             vérifier qu'elles correspondent à des colonnes existantes :
+--             D1/SQLite rejette la requête ("no such column: perm_presences"
+--             ou équivalent), l'erreur est interceptée par le catch générique
+--             (ligne ~875) et renvoyée telle quelle au frontend sous la forme
+--             "Erreur base de données" — c'est ce message qui s'affiche à la
+--             création ou à la modification de N'IMPORTE QUEL utilisateur
+--             dans l'onglet Administration.
+--
+-- ⚠️ Comme pour la migration 0011 : si le schéma réel de "utilisateurs" en
+-- production a déjà divergé et que l'une de ces colonnes existe sous ce nom
+-- exact, ALTER TABLE ADD COLUMN ci-dessous échouera et annulera toute la
+-- migration (Cloudflare D1 annule sans perte de données). Vérifier d'abord :
+--   npx wrangler d1 execute DB --remote --command "PRAGMA table_info(utilisateurs)"
+-- et retirer la ou les lignes déjà présentes avant de ré-appliquer.
+--
+-- Sûr et non destructif : colonnes TEXT nullables (même format que les
+-- colonnes perm_* existantes, valeurs 'read'/'write'/'none'/NULL). Les lignes
+-- existantes récupèrent NULL, ce qui déclenche exactement le même repli sur
+-- les permissions par défaut du rôle qu'aujourd'hui (getPermissionLevel dans
+-- src/lib/security.ts) : aucun changement de comportement pour les comptes
+-- déjà créés.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+ALTER TABLE utilisateurs ADD COLUMN perm_presences TEXT;
+ALTER TABLE utilisateurs ADD COLUMN perm_materiel TEXT;
+ALTER TABLE utilisateurs ADD COLUMN perm_planning TEXT;
