@@ -213,6 +213,7 @@ const UI = {
   notices:[],
   search:{adherents:'',achats:'',factures:'',feedback:''},
   adhFilters:{statut:'',type:'',season:'current',special:''},
+  presFilters:{from:'',to:'',creneau:'',statut:'',q:''},
   materielFilters:{q:'',categorie:'',etat:'',dispo:''},
   materielSection:'inventaire',
   adhSection:'liste',
@@ -2586,14 +2587,9 @@ function renderDashboardFeed(items, emptyText, badgeLabel){
   : `<div class="dash-empty">${esc(emptyText)}</div>`;
 }
 
-function vAdh(){
-  const canWrite=hasPerm('perm_adherents','write');
-  if(!D.loaded.familles && UI.adhSection==='familles'){ loadFamilles(); }
-  if(!D.loaded.materiel && UI.adhSection==='familles'){ loadTabData('materiel'); }
-  if(UI.adhSection==='familles') return vAdhFamilles(canWrite);
-  if(UI.adhSection==='doublons') return vAdhDoublons(canWrite);
+function filteredAdherentsList(){
   const season=currentSeasonLabel();
-  const filtered=sortAdherentsList(D.adherents.filter(a=>{
+  return D.adherents.filter(a=>{
     const txt=(a.nom+' '+a.prenom+' '+(a.ville||'')).toLowerCase();
     const matchesSearch=txt.includes((UI.search.adherents||'').toLowerCase());
     const matchesStatut=!UI.adhFilters.statut || a.statut===UI.adhFilters.statut;
@@ -2602,7 +2598,16 @@ function vAdh(){
     const matchesSeason=UI.adhFilters.season==='all' || !UI.adhFilters.season || adhSeason===season;
     const matchesSpecial=adherentMatchesSpecialFilter(a,UI.adhFilters.special);
     return matchesSearch&&matchesStatut&&matchesType&&matchesSeason&&matchesSpecial;
-  }));
+  });
+}
+function vAdh(){
+  const canWrite=hasPerm('perm_adherents','write');
+  if(!D.loaded.familles && UI.adhSection==='familles'){ loadFamilles(); }
+  if(!D.loaded.materiel && UI.adhSection==='familles'){ loadTabData('materiel'); }
+  if(UI.adhSection==='familles') return vAdhFamilles(canWrite);
+  if(UI.adhSection==='doublons') return vAdhDoublons(canWrite);
+  const season=currentSeasonLabel();
+  const filtered=sortAdherentsList(filteredAdherentsList());
   const {rows:f,totalPages}=paginateList(filtered,'adherents');
   const tot=filtered.reduce((s,a)=>s+(+a.cotisation||0)+(+a.montant_pass_region||0),0);
   const ok=filtered.filter(a=>a.droit_image&&a.certificat&&a.reglement).length;
@@ -2654,7 +2659,7 @@ function vAdh(){
   </select>
   ${canWrite?`<button class="btn primary" onclick="openModal('adh')">+ Nouvel adhérent</button>`:''}
   ${canWrite?`<button class="btn gold" onclick="openDiplomeForAdherent()">🎓 Nouveau diplôme</button>`:''}
-  <button class="btn" onclick="exportCSV()">⬇ Export CSV</button>
+  <button class="btn" onclick="exportCSV()" title="Exporte les adhérents affichés ci-dessous (recherche, type, statut, saison et dossier appliqués)">⬇ Export CSV</button>
   <button class="btn" onclick="exportAdhEmailsCSV()" title="Exporter les emails des adhérents filtrés pour envoi groupé">📧 Export emails</button>
   <button class="btn" onclick="showTab('administration');showST('admin','imp_adh')">Import DoliAsso</button>
   <button class="btn" onclick="UI.search.adherents='';UI.adhFilters={statut:'',type:'',season:'current',special:''};render()">Réinitialiser</button>
@@ -5196,20 +5201,61 @@ function vSuivi(){
   ${sub==='planning'&&canSeePlanning?vPlanning():canSeePresences?vPresences():vPlanning()}`;
 }
 
+function presenceDisplayName(p){
+  if(p.nom_invite) return p.nom_invite;
+  const a=D.adherents.find(x=>x.id===p.adherent_id);
+  return a?`${a.prenom} ${a.nom}`:'—';
+}
+function filteredPresencesList(){
+  return [...D.presences].filter(p=>{
+    const matchesFrom=!UI.presFilters.from || (p.date_seance||'')>=UI.presFilters.from;
+    const matchesTo=!UI.presFilters.to || (p.date_seance||'')<=UI.presFilters.to;
+    const matchesCreneau=!UI.presFilters.creneau || (p.creneau||'')===UI.presFilters.creneau;
+    const matchesStatut=!UI.presFilters.statut || (UI.presFilters.statut==='present'?!!p.present:!p.present);
+    const q=(UI.presFilters.q||'').toLowerCase();
+    const matchesSearch=!q || presenceDisplayName(p).toLowerCase().includes(q);
+    return matchesFrom&&matchesTo&&matchesCreneau&&matchesStatut&&matchesSearch;
+  }).sort((a,b)=>(b.date_seance||'').localeCompare(a.date_seance||''));
+}
 function vPresences(){
   const canWrite=hasPerm('perm_presences','write');
-  const rows=[...D.presences].sort((a,b)=>(b.date_seance||'').localeCompare(a.date_seance||''));
-  const adhName=(id)=>{const a=D.adherents.find(x=>x.id===id);return a?`${a.prenom} ${a.nom}`:'—';};
+  const filtered=filteredPresencesList();
+  const creneaux=[...new Set(D.presences.map(p=>p.creneau).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  const presentCount=filtered.filter(p=>p.present).length;
+  const guestCount=filtered.filter(p=>p.nom_invite).length;
+  const periodLabel=UI.presFilters.from||UI.presFilters.to?` du ${UI.presFilters.from?fd(UI.presFilters.from):'…'} au ${UI.presFilters.to?fd(UI.presFilters.to):'…'}`:'';
   return`<div class="view-head">
   <div><div class="eyebrow">Suivi de l'activité</div><h2>Présences</h2>
-  <p>Pointage par séance — utile pour l'assiduité et pour justifier l'activité réelle du club.</p></div>
+  <p>Pointage par séance — adhérent·e·s et invité·e·s non adhérent·e·s (essai, CSE ponctuel...) — utile pour l'assiduité et pour justifier l'activité réelle du club.</p></div>
   ${canWrite?`<button class="btn primary" onclick="openModal('presence')">+ Pointer une présence</button>`:''}
   </div>
+  <div class="g4" style="margin-bottom:14px">
+  <div class="sc"><div class="v vr">${filtered.length}</div><div class="l">Pointages${periodLabel?' (période)':''}</div></div>
+  <div class="sc"><div class="v vg">${presentCount}</div><div class="l">Présents</div></div>
+  <div class="sc"><div class="v">${filtered.length-presentCount}</div><div class="l">Absences</div></div>
+  <div class="sc"><div class="v vgo">${guestCount}</div><div class="l">Dont invité·e·s</div></div>
+  </div>
+  <div class="toolbar">
+  <input style="flex:1;min-width:160px" placeholder="Rechercher un nom..." value="${esc(UI.presFilters.q||'')}" oninput="UI.presFilters.q=this.value;render()">
+  <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--txt2)">Du <input type="date" style="width:auto" value="${UI.presFilters.from||''}" onchange="UI.presFilters.from=this.value;render()"></label>
+  <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--txt2)">Au <input type="date" style="width:auto" value="${UI.presFilters.to||''}" onchange="UI.presFilters.to=this.value;render()"></label>
+  <select style="width:auto;min-width:170px" onchange="UI.presFilters.creneau=this.value;render()">
+  <option value="" ${!UI.presFilters.creneau?'selected':''}>Tous les créneaux</option>
+  ${creneaux.map(c=>`<option value="${esc(c)}" ${UI.presFilters.creneau===c?'selected':''}>${esc(c)}</option>`).join('')}
+  </select>
+  <select style="width:auto;min-width:170px" onchange="UI.presFilters.statut=this.value;render()">
+  <option value="" ${!UI.presFilters.statut?'selected':''}>Présents + absences</option>
+  <option value="present" ${UI.presFilters.statut==='present'?'selected':''}>Présents uniquement</option>
+  <option value="absent" ${UI.presFilters.statut==='absent'?'selected':''}>Absences uniquement</option>
+  </select>
+  <button class="btn" onclick="exportPresencesCSV()" title="Exporte la liste ci-dessous : période et filtres actifs (date, créneau, présent/absent, recherche)">⬇ Export CSV</button>
+  <button class="btn" onclick="UI.presFilters={from:'',to:'',creneau:'',statut:'',q:''};render()">Réinitialiser</button>
+  </div>
   <div class="wrap"><table>
-  <thead><tr><th>Date</th><th>Adhérent</th><th>Créneau</th><th>Présence</th><th>Notes</th><th></th></tr></thead>
-  <tbody>${rows.map(p=>`<tr>
+  <thead><tr><th>Date</th><th>Nom</th><th>Créneau</th><th>Présence</th><th>Notes</th><th></th></tr></thead>
+  <tbody>${filtered.map(p=>`<tr>
     <td>${fd(p.date_seance)}</td>
-    <td><strong style="font-weight:500">${esc(adhName(p.adherent_id))}</strong></td>
+    <td><strong style="font-weight:500">${esc(presenceDisplayName(p))}</strong>${p.nom_invite?` <span class="badge bgray" style="margin-left:4px" title="Personne non adhérente">Invité·e</span>`:''}</td>
     <td>${esc(p.creneau||'—')}</td>
     <td><span class="badge ${p.present?'bok':'bno'}">${p.present?'Présent':'Absence'}</span></td>
     <td style="font-size:11px;color:var(--txt2)">${esc(p.notes||'')}</td>
@@ -5218,7 +5264,7 @@ function vPresences(){
     <button class="btn sm danger" style="margin-left:4px" onclick="delPresence('${p.id}')">✕</button>`:''}
     </td>
     </tr>`).join('')}
-    ${rows.length===0?`<tr><td colspan="6" class="empty">Aucune présence enregistrée</td></tr>`:''}
+    ${filtered.length===0?`<tr><td colspan="6" class="empty">Aucune présence enregistrée pour cette sélection</td></tr>`:''}
     </tbody></table></div>`;
 }
 
@@ -7071,7 +7117,7 @@ function vBackup(){
   <div class="card">
   <p style="font-weight:500;margin-bottom:8px">📊 Exports CSV</p>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
-  <button class="btn sm" onclick="exportCSV()">Adhérents</button>
+  <button class="btn sm" onclick="exportCSV()" title="${UI.adhFilters.type||UI.adhFilters.statut||UI.search.adherents?'Un filtre adhérents est actif (onglet Adhérents) : l\u2019export ne contiendra que la sélection filtrée':'Exporte tous les adhérents (aucun filtre actif)'}">Adhérents${UI.adhFilters.type?` (${UI.adhFilters.type})`:''}</button>
   <button class="btn sm" onclick="exportAchatsCSV()">Achats</button>
   <button class="btn sm" onclick="exportJournalCSV()">Journal</button>
   <button class="btn sm" onclick="exportGLCSV()">Grand livre</button>
@@ -7304,10 +7350,17 @@ function renderModal(){
     </div>`;
 
   }else if(UI.modal==='presence'){
-    const p=UI.editObj||{adherent_id:D.adherents[0]?.id||'',date_seance:td(),creneau:'',present:true,notes:''};
+    const p=UI.editObj||{adherent_id:D.adherents[0]?.id||'',nom_invite:'',date_seance:td(),creneau:'',present:true,notes:''};
+    const isInvite=!!p.nom_invite;
     html=`<div class="modal" style="max-width:420px"><h2>✅ ${UI.editObj?'Modifier la présence':'Pointer une présence'}</h2>
     <div style="display:flex;flex-direction:column;gap:10px">
-    <div class="fg"><label>Adhérent</label><select id="p-adh">${D.adherents.map(a=>`<option value="${a.id}" ${p.adherent_id===a.id?'selected':''}>${esc(a.prenom)} ${esc(a.nom)}</option>`).join('')}</select></div>
+    <div class="fg"><label>Type</label>
+    <div style="display:flex;gap:14px;font-size:13px">
+    <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="radio" name="p-type" value="adherent" ${!isInvite?'checked':''} onchange="onPresenceTypeChange('adherent')" style="width:auto">Adhérent·e</label>
+    <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="radio" name="p-type" value="invite" ${isInvite?'checked':''} onchange="onPresenceTypeChange('invite')" style="width:auto">Invité·e (non adhérent·e)</label>
+    </div></div>
+    <div class="fg" id="p-adh-wrap" style="${isInvite?'display:none':''}"><label>Adhérent</label><select id="p-adh">${D.adherents.map(a=>`<option value="${a.id}" ${p.adherent_id===a.id?'selected':''}>${esc(a.prenom)} ${esc(a.nom)}</option>`).join('')}</select></div>
+    <div class="fg" id="p-inv-wrap" style="${isInvite?'':'display:none'}"><label>Nom de l'invité·e</label><input id="p-inv" value="${esc(p.nom_invite||'')}" placeholder="Prénom Nom (essai, CSE, visiteur...)"></div>
     <div class="fg"><label>Date de la séance</label><input id="p-date" type="date" value="${p.date_seance||td()}"></div>
     <div class="fg"><label>Créneau</label><input id="p-cre" value="${esc(p.creneau||'')}" placeholder="Cours adultes 20h"></div>
     <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer"><input type="checkbox" id="p-pres" ${p.present!==false?'checked':''} style="width:auto;accent-color:var(--red)"> Présent (décocher pour une absence justifiée)</label>
@@ -8334,12 +8387,27 @@ async function saveCpt(){
   closeModal();render();
 }
 
+function onPresenceTypeChange(v){
+  const adhWrap=document.getElementById('p-adh-wrap');
+  const invWrap=document.getElementById('p-inv-wrap');
+  if(!adhWrap||!invWrap)return;
+  adhWrap.style.display=v==='invite'?'none':'';
+  invWrap.style.display=v==='invite'?'':'none';
+}
 async function savePresence(){
-  const adherent_id=document.getElementById('p-adh').value;
+  const isInvite=document.querySelector('input[name="p-type"]:checked')?.value==='invite';
   const date_seance=document.getElementById('p-date').value;
-  if(!adherent_id||!date_seance)return alert('Adhérent et date obligatoires.');
+  if(!date_seance)return alert('Date obligatoire.');
+  let adherent_id=null,nom_invite=null;
+  if(isInvite){
+    nom_invite=document.getElementById('p-inv').value.trim();
+    if(!nom_invite)return alert('Nom de l\u2019invité·e obligatoire.');
+  }else{
+    adherent_id=document.getElementById('p-adh').value;
+    if(!adherent_id)return alert('Adhérent obligatoire.');
+  }
   const payload={
-    adherent_id, date_seance,
+    adherent_id, nom_invite, date_seance,
     creneau:document.getElementById('p-cre').value.trim()||null,
     present:document.getElementById('p-pres').checked?1:0,
     notes:document.getElementById('p-notes').value.trim()||null,
@@ -8351,7 +8419,7 @@ async function savePresence(){
     Object.assign(D.presences.find(p=>p.id===UI.editObj.id),payload);
   }else{
     const {data,error}=await SB.from('presences').insert({...payload,id:crypto.randomUUID(),created_at:new Date().toISOString()}).select().single();
-    if(error)return alert('Erreur : '+(error.message.includes('UNIQUE')?'Cet·te adhérent·e est déjà pointé·e sur ce créneau à cette date.':error.message));
+    if(error)return alert('Erreur : '+(error.message.includes('UNIQUE')?'Cette personne est déjà pointée sur ce créneau à cette date.':error.message));
     D.presences.push(data);
   }
   closeModal();render();
@@ -9644,29 +9712,35 @@ async function doImportEcr(){
 // ═══════════════════════════════════════════════════
 function dl(c,n,m){const b=new Blob([c],{type:m});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=n;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)}
 function exportCSV(){
+  // Exporte les adhérents actuellement filtrés (recherche, type, statut, saison, dossier) — mêmes filtres que la vue
+  const filtered=filteredAdherentsList();
+  if(!filtered.length){notify('warn','Aucun adhérent dans la sélection courante.','Export CSV');return;}
   const rows=[['Nom','Prénom','Couleur ceinture','N° licence','Type adhésion','Certif.','Droit image','Pass Région','Montant Pass','Règlement','Cotisation','Paiement','Statut','Saison','Fin adhésion','Adresse','CP','Ville','Urgence nom','Urgence tél']];
-  D.adherents.forEach(a=>rows.push([csvSafe(a.nom),csvSafe(a.prenom),csvSafe(a.couleur_ceinture||''),csvSafe(a.numero_licence||''),a.discipline||'Club',a.certificat?'Oui':'Non',a.droit_image?'Oui':'Non',a.pass_region?'Oui':'Non',(+a.montant_pass_region||0).toFixed(2),a.reglement?'Oui':'Non',(+a.cotisation).toFixed(2),a.paiement,a.statut,seasonFromDate(a.date_fin_adhesion||a.date_inscription)||'',a.date_fin_adhesion||'',csvSafe(a.adresse||''),csvSafe(a.code_postal||''),csvSafe(a.ville||''),csvSafe(a.urgence_nom||''),csvSafe(a.urgence_telephone||'')]));
-  dl('\uFEFF'+rows.map(r=>r.join(';')).join('\n'),`adherents_${td()}.csv`,'text/csv;charset=utf-8');
+  filtered.forEach(a=>rows.push([csvSafe(a.nom),csvSafe(a.prenom),csvSafe(a.couleur_ceinture||''),csvSafe(a.numero_licence||''),a.discipline||'Club',a.certificat?'Oui':'Non',a.droit_image?'Oui':'Non',a.pass_region?'Oui':'Non',(+a.montant_pass_region||0).toFixed(2),a.reglement?'Oui':'Non',(+a.cotisation).toFixed(2),a.paiement,a.statut,seasonFromDate(a.date_fin_adhesion||a.date_inscription)||'',a.date_fin_adhesion||'',csvSafe(a.adresse||''),csvSafe(a.code_postal||''),csvSafe(a.ville||''),csvSafe(a.urgence_nom||''),csvSafe(a.urgence_telephone||'')]));
+  const typeSuffix=UI.adhFilters.type?'_'+UI.adhFilters.type.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,''):'';
+  dl('\uFEFF'+rows.map(r=>r.join(';')).join('\n'),`adherents${typeSuffix}_${td()}.csv`,'text/csv;charset=utf-8');
+  notify('success',`${filtered.length} adhérent(s) exporté(s)${UI.adhFilters.type?` (type : ${UI.adhFilters.type})`:''}.`,'Export CSV');
 }
 
 function exportAdhEmailsCSV(){
   // Exporte les emails des adhérents actuellement filtrés (même filtre que la vue)
-  const season=currentSeasonLabel();
-  const filtered=D.adherents.filter(a=>{
-    const txt=(a.nom+' '+a.prenom+' '+(a.ville||'')).toLowerCase();
-    const matchesSearch=txt.includes((UI.search.adherents||'').toLowerCase());
-    const matchesStatut=!UI.adhFilters.statut || a.statut===UI.adhFilters.statut;
-    const matchesType=!UI.adhFilters.type || (a.discipline||'Club')===UI.adhFilters.type;
-    const adhSeason=seasonFromDate(a.date_fin_adhesion||a.date_inscription);
-    const matchesSeason=UI.adhFilters.season==='all' || !UI.adhFilters.season || adhSeason===season;
-    const matchesSpecial=adherentMatchesSpecialFilter(a,UI.adhFilters.special);
-    return matchesSearch&&matchesStatut&&matchesType&&matchesSeason&&matchesSpecial&&a.email;
-  });
+  const filtered=filteredAdherentsList().filter(a=>a.email);
   if(!filtered.length){notify('warn','Aucun adhérent avec email dans la sélection courante.','Export emails');return;}
   const rows=[['Nom','Prénom','Email','Statut','Type adhésion']];
   filtered.forEach(a=>rows.push([csvSafe(a.nom),csvSafe(a.prenom),csvSafe(a.email||''),a.statut,a.discipline||'Club']));
   dl('\uFEFF'+rows.map(r=>r.join(';')).join('\n'),`emails_adherents_${td()}.csv`,'text/csv;charset=utf-8');
   notify('success',`${filtered.length} email(s) exporté(s).`,'Export emails');
+}
+
+function exportPresencesCSV(){
+  // Exporte les présences actuellement filtrées (période, créneau, statut, recherche — même filtre que la vue)
+  const filtered=filteredPresencesList();
+  if(!filtered.length){notify('warn','Aucune présence dans la sélection courante.','Export CSV');return;}
+  const rows=[['Date','Nom','Type','Créneau','Présence','Notes']];
+  filtered.forEach(p=>rows.push([p.date_seance||'',csvSafe(presenceDisplayName(p)),p.nom_invite?'Invité·e':'Adhérent·e',csvSafe(p.creneau||''),p.present?'Présent':'Absence',csvSafe(p.notes||'')]));
+  const periodSuffix=UI.presFilters.from||UI.presFilters.to?`_${UI.presFilters.from||'debut'}_${UI.presFilters.to||'fin'}`:'';
+  dl('\uFEFF'+rows.map(r=>r.join(';')).join('\n'),`presences${periodSuffix}_${td()}.csv`,'text/csv;charset=utf-8');
+  notify('success',`${filtered.length} présence(s) exportée(s).`,'Export CSV');
 }
 function exportAchatsCSV(){
   const rows=[['Date','Fournisseur','Désignation','Catégorie','Montant','Mode paiement','Référence','Statut','Pièce']];
