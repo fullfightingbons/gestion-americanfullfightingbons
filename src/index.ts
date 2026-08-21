@@ -2666,7 +2666,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
       const currentRow = await resolveCurrentAdherentRow(member, env);
 
-      const [me, diplomesResult, annuaireResult, cotisationsResult, feedbackResult] = await Promise.all([
+      const [me, diplomesResult, annuaireResult, cotisationsResult, feedbackResult, presencesResult] = await Promise.all([
         memberProfilePayload(member, env, currentRow),
         env.DB.prepare(
           `SELECT d.id, d.titre, d.ceinture, d.date_emission, d.saison, d.delivre_par,
@@ -2718,6 +2718,26 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
            WHERE fr.adherent_id = ? AND fr.repondu = 0 AND fc.statut = 'active'
            ORDER BY fc.created_at DESC LIMIT 1`
         ).bind(currentRow?.id || member.adherent_id).all(),
+        // Pointages de présence (cf. migration 0025/0032), même logique de
+        // jointure par email que diplomesResult/cotisationsResult ci-dessus
+        // plutôt que par adherent_id : un adhérent réinscrit chaque saison
+        // obtient une nouvelle ligne `adherents`, alors que les pointages
+        // successifs référencent chacun la ligne active au moment de la
+        // séance — filtrer par member.adherent_id manquerait les séances
+        // pointées sur une saison différente de celle en cours. Le JOIN
+        // (et non un LEFT JOIN) exclut naturellement les pointages
+        // d'invité·e·s (adherent_id NULL, nom_invite renseigné), qui ne
+        // concernent pas ce compte. Pas de LIMIT : l'historique d'un
+        // adhérent reste d'une taille raisonnable (quelques centaines de
+        // lignes au plus après plusieurs saisons), le front regroupe et
+        // tronque l'affichage lui-même.
+        env.DB.prepare(
+          `SELECT p.date_seance, p.creneau, p.present, p.notes
+           FROM presences p
+           JOIN adherents a ON a.id = p.adherent_id
+           WHERE LOWER(TRIM(a.email)) = LOWER(TRIM(?))
+           ORDER BY p.date_seance DESC, p.creneau`
+        ).bind((member.isGuardianView ? member.adherent_email : member.email) || '').all(),
       ]);
 
       return json({
@@ -2727,6 +2747,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
           annuaire: annuaireResult.results || [],
           cotisations: cotisationsResult.results || [],
           feedback: feedbackResult.results?.[0] || null,
+          presences: presencesResult.results || [],
         },
         error: null,
       });
@@ -2744,6 +2765,26 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
          FROM adherents a LEFT JOIN exercices e ON e.id = a.exercice_id
          WHERE LOWER(TRIM(a.email)) = LOWER(TRIM(?))
          ORDER BY a.date_inscription DESC`
+      ).bind((member.isGuardianView ? member.adherent_email : member.email) || '').all();
+      return json({ data: results || [], error: null });
+    }
+
+    // GET /api/member/presences — même requête que presencesResult du
+    // dashboard ci-dessus, exposée seule pour un rafraîchissement ciblé
+    // (ex. après une nouvelle séance pointée par le bureau) sans recharger
+    // tout le tableau de bord. Cf. le commentaire de /api/member/dashboard
+    // pour la logique de jointure par email et l'exclusion naturelle des
+    // pointages d'invité·e·s.
+    if (method === 'GET' && path === '/api/member/presences') {
+      const member = await getCurrentMemberFromBearer(request, env);
+      if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+
+      const { results } = await env.DB.prepare(
+        `SELECT p.date_seance, p.creneau, p.present, p.notes
+         FROM presences p
+         JOIN adherents a ON a.id = p.adherent_id
+         WHERE LOWER(TRIM(a.email)) = LOWER(TRIM(?))
+         ORDER BY p.date_seance DESC, p.creneau`
       ).bind((member.isGuardianView ? member.adherent_email : member.email) || '').all();
       return json({ data: results || [], error: null });
     }
