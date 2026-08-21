@@ -3152,6 +3152,77 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       });
     }
 
+    // GET /api/member/documents/attestation-presence?debut=YYYY-MM-DD&fin=YYYY-MM-DD
+    // — attestation de présence PDF générée à la volée à partir des
+    // pointages de la table `presences` (même principe que l'attestation de
+    // cotisation ci-dessus : aucun fichier stocké, tout est reconstruit
+    // depuis les données déjà en base). `debut`/`fin` sont optionnels et
+    // laissés au choix de l'appelant (le front espace-membre y passe les
+    // bornes de la saison sportive en cours, cf. seasonRangeFr côté front) ;
+    // sans eux, l'attestation couvre tout l'historique du membre. Rejette
+    // silencieusement (ignore) un paramètre malformé plutôt que de renvoyer
+    // une erreur : mieux vaut une attestation sur tout l'historique qu'une
+    // page d'erreur pour un lien mal construit.
+    // Même jointure par email que /api/member/presences (cf. son
+    // commentaire) : couvre tout l'historique multi-saisons de l'adhérent,
+    // et exclut naturellement les pointages d'invité·e·s.
+    if (method === 'GET' && path === '/api/member/documents/attestation-presence') {
+      const member = await getCurrentMemberFromBearer(request, env);
+      if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+
+      const isIsoDate = (s: string | null) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
+      const debutParam = url.searchParams.get('debut');
+      const finParam = url.searchParams.get('fin');
+      const debut = isIsoDate(debutParam) ? debutParam : null;
+      const fin = isIsoDate(finParam) ? finParam : null;
+
+      const emailToMatch = (member.isGuardianView ? member.adherent_email : member.email) || '';
+      const { results } = await env.DB.prepare(
+        `SELECT p.date_seance
+         FROM presences p
+         JOIN adherents a ON a.id = p.adherent_id
+         WHERE LOWER(TRIM(a.email)) = LOWER(TRIM(?)) AND p.present = 1
+           AND (? IS NULL OR p.date_seance >= ?)
+           AND (? IS NULL OR p.date_seance <= ?)
+         ORDER BY p.date_seance ASC`
+      ).bind(emailToMatch, debut, debut, fin, fin).all<{ date_seance: string }>();
+
+      const seances = results || [];
+      if (!seances.length) {
+        return err("Aucune séance de présence enregistrée pour la période demandée", 404);
+      }
+
+      const nomComplet = `${member.prenom || ''} ${member.nom || ''}`.trim() || 'Adhérent·e';
+      const numeroAdherent = String(member.adherent_id || member.id || '').slice(0, 8).toUpperCase();
+      const aujourdhui = new Date().toLocaleDateString('fr-FR');
+      const premiereDate = new Date(seances[0].date_seance).toLocaleDateString('fr-FR');
+      const derniereDate = new Date(seances[seances.length - 1].date_seance).toLocaleDateString('fr-FR');
+      const nb = seances.length;
+      const periodeLabel = (debut && fin) ? ` sur la periode du ${new Date(debut).toLocaleDateString('fr-FR')} au ${new Date(fin).toLocaleDateString('fr-FR')}` : '';
+
+      const pdfBytes = buildDocumentPdfBytes({
+        type: 'attestation_presence',
+        numero: `PRE-${new Date().getFullYear()}-${numeroAdherent}`,
+        dateLabel: `Emis le ${aujourdhui}`,
+        dateCourte: aujourdhui,
+        destinataire: { nom: nomComplet, lignes: [`Adherent n°${numeroAdherent}`] },
+        paragraphs: [
+          `Je soussigne Teddy, secretaire de l'association American Full Fighting Bons en Chablais (loi 1901, RNA W744007210, SIREN 924 704 612), atteste que ${nomComplet} est membre licencie de notre club et a participe a ${nb} seance${nb > 1 ? 's' : ''} d'entrainement${periodeLabel}.`,
+          `Premiere seance pointee le ${premiereDate}, derniere en date le ${derniereDate}.`,
+          'Cette attestation est delivree pour servir et valoir ce que de droit.',
+        ],
+        signataire: 'Teddy — Secretaire AFFBC',
+      });
+
+      return new Response(pdfBytes, {
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': 'inline; filename="attestation-presence.pdf"',
+          'Cache-Control': 'private, no-store',
+        },
+      });
+    }
+
     // GET /api/member/documents/recu-cotisation — reçu de cotisation PDF
     // généré à la volée depuis les données déjà en base (même principe que
     // l'attestation ci-dessus). Remplace l'ancien flux 100% client

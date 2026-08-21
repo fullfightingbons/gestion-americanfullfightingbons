@@ -41,7 +41,7 @@ function eur(n: number | null | undefined): string {
 
 export interface DocumentParty { nom: string; lignes: string[] }
 export interface DocumentLigne { designation: string; qte?: number; pu?: number; total: number }
-export type DocumentType = 'facture' | 'don' | 'cotisation' | 'attestation';
+export type DocumentType = 'facture' | 'don' | 'cotisation' | 'attestation' | 'attestation_presence';
 
 export interface DocumentInput {
   type: DocumentType;
@@ -283,6 +283,10 @@ export function buildDocumentPdfBytes(doc: DocumentInput): Uint8Array {
     don: 'Recu de don',
     cotisation: 'Recu de cotisation',
     attestation: 'Attestation de cotisation',
+    // Meme gabarit paragraphes+signature que 'attestation' (cf. le if
+    // ci-dessous qui teste les deux types ensemble) : seul le titre d'en-tete
+    // change, le contenu (paragraphs) differencie deja les deux documents.
+    attestation_presence: 'Attestation de presence',
   };
 
   drawHeader(p, { title: titres[doc.type] || 'Document', numero: doc.numero, dateLabel: doc.dateLabel });
@@ -294,7 +298,7 @@ export function buildDocumentPdfBytes(doc: DocumentInput): Uint8Array {
   let y = drawPartiesBlock(p, { emetteur, destinataire: doc.destinataire });
   y = drawObjet(p, doc.objet, y);
 
-  if (doc.type === 'attestation') {
+  if (doc.type === 'attestation' || doc.type === 'attestation_presence') {
     y = drawParagraphs(p, doc.paragraphs || [], y + 4);
     y += 10;
     p.setFont('F3', 10);
