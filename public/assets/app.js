@@ -128,6 +128,7 @@ const PLAN = [
 '6281 - Cotisations fédérales et licences',
 '6580 - Charges diverses de gestion courante',
 '651 - Redevances droits d auteur SACEM',
+'652 - Redevances SPRE',
 '706 - Prestations de services',
 '7060 - Prestations de services',
 '7061 - Cours et stages',
@@ -4526,6 +4527,9 @@ function vJournal(){
   ${canWrite?`<button class="btn" onclick="openEcritureType('facture_telecom')" title="Écriture type paiement facture télécom (téléphone, internet, mobile)">⚡ Facture Télécom</button>`:''}
   ${canWrite?`<button class="btn" onclick="openEcritureType('frais_bancaires')" title="Écriture type frais bancaires prélevés par la banque">⚡ Frais bancaires</button>`:''}
   ${canWrite?`<button class="btn" onclick="openEcritureType('remboursement_frais_bancaires')" title="Écriture type remboursement de frais bancaires par la banque">⚡ Remboursement frais bancaires</button>`:''}
+  ${canWrite?`<button class="btn" onclick="openEcritureType('sacem')" title="Écriture type paiement redevance SACEM (droits d'auteur)">⚡ SACEM</button>`:''}
+  ${canWrite?`<button class="btn" onclick="openEcritureType('spre')" title="Écriture type paiement redevance SPRE (rémunération équitable)">⚡ SPRE</button>`:''}
+  ${canWrite?`<button class="btn" onclick="openEcritureType('assurance')" title="Écriture type paiement prime d'assurance">⚡ Assurance</button>`:''}
   <button class="btn" onclick="openEquilibreAssistant()">Assistant déséquilibres${issues.length?` (${issues.length})`:''}</button>
   ${canWrite&&issues.length?`<button class="btn gold" onclick="regulariserEquilibreExo()">Équilibrer l'exercice</button>`:''}
   </div>
@@ -4720,7 +4724,8 @@ function calcBilan(){
   const posteHonoraires=sumJournal(/^6226/, 'debit')-sumJournal(/^6226/, 'credit');
   const posteCotisFederales=sumJournal(/^628/, 'debit')-sumJournal(/^628/, 'credit');
   const posteSacem=sumJournal(/^651/, 'debit')-sumJournal(/^651/, 'credit');
-  const posteNommeesCharges=posteAchatsSport+posteAchatsTextile+posteAchatsFournitures+posteNourriture+posteDeplacements+posteLocations+posteAssurances+posteCommunication+posteTelephone+posteBancaire+posteHonoraires+posteCotisFederales+posteSacem;
+  const posteSpre=sumJournal(/^652/, 'debit')-sumJournal(/^652/, 'credit');
+  const posteNommeesCharges=posteAchatsSport+posteAchatsTextile+posteAchatsFournitures+posteNourriture+posteDeplacements+posteLocations+posteAssurances+posteCommunication+posteTelephone+posteBancaire+posteHonoraires+posteCotisFederales+posteSacem+posteSpre;
   const posteAutresCharges=+(charges-posteNommeesCharges).toFixed(2);
   const chargesPostes=[
     {label:'Achats matériel et équipement sportif',value:posteAchatsSport},
@@ -4736,6 +4741,7 @@ function calcBilan(){
     {label:'Honoraires',value:posteHonoraires},
     {label:'Cotisations et licences fédérales',value:posteCotisFederales},
     {label:'Droits d’auteur (SACEM)',value:posteSacem},
+    {label:'Droits voisins (SPRE)',value:posteSpre},
     {label:'Autres charges',value:posteAutresCharges},
   ].map(r=>({...r,value:+r.value.toFixed(2)})).filter(r=>r.value!==0).sort((a,b)=>b.value-a.value);
 
@@ -7779,6 +7785,30 @@ const ECRITURE_TYPES={
       // net nul sur 6270 si la banque rembourse l'intégralité des frais.
       {compte:'512 - Banque',libelle:'Remboursement frais bancaires',sens:'debit'},
       {compte:'6270 - Frais bancaires',libelle:'Remboursement frais bancaires',sens:'credit'},
+    ]
+  },
+  sacem:{
+    label:'Redevance SACEM',
+    montant:0,
+    lignes:[
+      {compte:'651 - Redevances droits d auteur SACEM',libelle:'Redevance SACEM',sens:'debit'},
+      {compte:'512 - Banque',libelle:'Redevance SACEM',sens:'credit'},
+    ]
+  },
+  spre:{
+    label:'Redevance SPRE',
+    montant:0,
+    lignes:[
+      {compte:'652 - Redevances SPRE',libelle:'Redevance SPRE',sens:'debit'},
+      {compte:'512 - Banque',libelle:'Redevance SPRE',sens:'credit'},
+    ]
+  },
+  assurance:{
+    label:'Prime assurance',
+    montant:0,
+    lignes:[
+      {compte:'616 - Primes assurances',libelle:'Prime assurance',sens:'debit'},
+      {compte:'512 - Banque',libelle:'Prime assurance',sens:'credit'},
     ]
   }
 };
