@@ -4530,6 +4530,16 @@ function vJournal(){
   ${canWrite?`<button class="btn" onclick="openEcritureType('sacem')" title="Écriture type paiement redevance SACEM (droits d'auteur)">⚡ SACEM</button>`:''}
   ${canWrite?`<button class="btn" onclick="openEcritureType('spre')" title="Écriture type paiement redevance SPRE (rémunération équitable)">⚡ SPRE</button>`:''}
   ${canWrite?`<button class="btn" onclick="openEcritureType('assurance')" title="Écriture type paiement prime d'assurance">⚡ Assurance</button>`:''}
+  ${canWrite?`<button class="btn" onclick="openEcritureType('achat_materiel_sportif')" title="Écriture type achat de matériel sportif (6051)">⚡ Matériel sportif</button>`:''}
+  ${canWrite?`<button class="btn" onclick="openEcritureType('achat_textile')" title="Écriture type achat de textile / tenues (6052)">⚡ Textile / tenues</button>`:''}
+  ${canWrite?`<button class="btn" onclick="openEcritureType('location')" title="Écriture type location (salle, matériel loué...) (6132)">⚡ Location</button>`:''}
+  ${canWrite?`<button class="btn" onclick="openEcritureType('deplacement')" title="Écriture type déplacement / voyage pour compétition ou stage (6251, alimente le même poste que 6241)">⚡ Déplacement</button>`:''}
+  ${canWrite?`<button class="btn" onclick="openEcritureType('repas_reception')" title="Écriture type repas / réception (6257)">⚡ Repas / réception</button>`:''}
+  ${canWrite?`<button class="btn" onclick="openEcritureType('communication')" title="Écriture type communication / publicité (623)">⚡ Communication</button>`:''}
+  ${canWrite?`<button class="btn" onclick="openEcritureType('honoraires')" title="Écriture type honoraires (expert-comptable, commissaire aux comptes...) (6226)">⚡ Honoraires</button>`:''}
+  ${canWrite?`<button class="btn" onclick="openEcritureType('encaissement_stage')" title="Écriture type encaissement d'un stage/cours ponctuel (7061)">⚡ Stage / cours</button>`:''}
+  ${canWrite?`<button class="btn" onclick="openEcritureType('vente_equipement')" title="Écriture type vente de vêtements / équipements (707)">⚡ Vente équipement</button>`:''}
+  ${canWrite?`<button class="btn" onclick="openEcritureType('don')" title="Écriture type don reçu, distinct des subventions (754)">⚡ Don</button>`:''}
   <button class="btn" onclick="openEquilibreAssistant()">Assistant déséquilibres${issues.length?` (${issues.length})`:''}</button>
   ${canWrite&&issues.length?`<button class="btn gold" onclick="regulariserEquilibreExo()">Équilibrer l'exercice</button>`:''}
   </div>
@@ -7809,6 +7819,93 @@ const ECRITURE_TYPES={
     lignes:[
       {compte:'616 - Primes assurances',libelle:'Prime assurance',sens:'debit'},
       {compte:'512 - Banque',libelle:'Prime assurance',sens:'credit'},
+    ]
+  },
+  achat_materiel_sportif:{
+    label:'Achat matériel sportif',
+    montant:0,
+    lignes:[
+      {compte:'6051 - Achats de matériels et équipements sportifs',libelle:'Achat matériel sportif',sens:'debit'},
+      {compte:'512 - Banque',libelle:'Achat matériel sportif',sens:'credit'},
+    ]
+  },
+  achat_textile:{
+    label:'Achat textile / tenues',
+    montant:0,
+    lignes:[
+      {compte:'6052 - Achats de textile et tenues',libelle:'Achat textile / tenues',sens:'debit'},
+      {compte:'512 - Banque',libelle:'Achat textile / tenues',sens:'credit'},
+    ]
+  },
+  location:{
+    label:'Location',
+    montant:0,
+    lignes:[
+      {compte:'6132 - Locations immobilières',libelle:'Location (salle, matériel...)',sens:'debit'},
+      {compte:'512 - Banque',libelle:'Location (salle, matériel...)',sens:'credit'},
+    ]
+  },
+  deplacement:{
+    label:'Déplacement / voyage',
+    montant:0,
+    lignes:[
+      // 6251 (Voyages et déplacements) plutôt que 6241 (Transports sur achats) :
+      // les deux alimentent le même poste "Déplacements et voyages" (regex
+      // /^(6241|6251|625 )/ dans le tableau de bord), mais 6251 correspond
+      // mieux aux déplacements individuels pour compétitions/stages. Basculer
+      // sur 6241 directement dans le formulaire si transport collectif/de biens.
+      {compte:'6251 - Voyages et déplacements',libelle:'Déplacement compétition/stage',sens:'debit'},
+      {compte:'512 - Banque',libelle:'Déplacement compétition/stage',sens:'credit'},
+    ]
+  },
+  repas_reception:{
+    label:'Repas / réception',
+    montant:0,
+    lignes:[
+      {compte:'6257 - Réceptions repas',libelle:'Repas / réception',sens:'debit'},
+      {compte:'512 - Banque',libelle:'Repas / réception',sens:'credit'},
+    ]
+  },
+  communication:{
+    label:'Communication / publicité',
+    montant:0,
+    lignes:[
+      {compte:'623 - Publicité publications',libelle:'Communication / publicité',sens:'debit'},
+      {compte:'512 - Banque',libelle:'Communication / publicité',sens:'credit'},
+    ]
+  },
+  honoraires:{
+    label:'Honoraires',
+    montant:0,
+    lignes:[
+      {compte:'6226 - Honoraires',libelle:'Honoraires (expert-comptable, CAC...)',sens:'debit'},
+      {compte:'512 - Banque',libelle:'Honoraires (expert-comptable, CAC...)',sens:'credit'},
+    ]
+  },
+  encaissement_stage:{
+    label:'Encaissement stage / cours',
+    montant:0,
+    lignes:[
+      {compte:'512 - Banque',libelle:'Encaissement stage / cours',sens:'debit'},
+      {compte:'7061 - Cours et stages',libelle:'Encaissement stage / cours',sens:'credit'},
+    ]
+  },
+  vente_equipement:{
+    label:'Vente vêtements / équipements',
+    montant:0,
+    lignes:[
+      {compte:'512 - Banque',libelle:'Vente vêtements / équipements',sens:'debit'},
+      {compte:'707 - Ventes vêtements et équipements',libelle:'Vente vêtements / équipements',sens:'credit'},
+    ]
+  },
+  don:{
+    label:'Don',
+    montant:0,
+    lignes:[
+      // Distinct de 741 (Subventions, bouton "⚡ Subvention" existant) : 754 est
+      // pour un don manuel (particulier, entreprise hors subvention publique).
+      {compte:'512 - Banque',libelle:'Don reçu',sens:'debit'},
+      {compte:'754 - Dons manuels',libelle:'Don reçu',sens:'credit'},
     ]
   }
 };
