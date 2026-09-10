@@ -4540,6 +4540,7 @@ function vJournal(){
   ${canWrite?`<button class="btn" onclick="openEcritureType('encaissement_stage')" title="Écriture type encaissement d'un stage/cours ponctuel (7061)">⚡ Stage / cours</button>`:''}
   ${canWrite?`<button class="btn" onclick="openEcritureType('vente_equipement')" title="Écriture type vente de vêtements / équipements (707)">⚡ Vente équipement</button>`:''}
   ${canWrite?`<button class="btn" onclick="openEcritureType('don')" title="Écriture type don reçu, distinct des subventions (754)">⚡ Don</button>`:''}
+  ${canWrite?`<button class="btn" onclick="openEcritureType('remboursement_adherent')" title="Écriture type remboursement à un adhérent — pré-rempli pour le trop-perçu kit/tenue (707), à ajuster selon ce qui est remboursé">⚡ Remboursement adhérent</button>`:''}
   <button class="btn" onclick="openEquilibreAssistant()">Assistant déséquilibres${issues.length?` (${issues.length})`:''}</button>
   ${canWrite&&issues.length?`<button class="btn gold" onclick="regulariserEquilibreExo()">Équilibrer l'exercice</button>`:''}
   </div>
@@ -6596,7 +6597,16 @@ function vTarifs(){
     {key:'cseThales',      label:'Tarif CSE Thalès',            desc:'Sur justificatif'},
     {key:'bureau',         label:'Tarif Membres du Bureau',     desc:'Renouvellement reconnu uniquement'},
     {key:'passport',       label:'Passeport sportif',           desc:'Optionnel'},
-    {key:'newMemberKit',   label:'Kit nouvelle inscription',    desc:'Première adhésion uniquement'},
+    // Retiré le 10/09/2026 : ce supplément forfaitaire "Kit nouvelle
+    // inscription" s'ajoutait au total du formulaire web EN PLUS du
+    // t-shirt + pantalon individuels (déjà obligatoires pour toute nouvelle
+    // adhésion) — un nouvel adhérent payait donc sa tenue deux fois. Le prix
+    // de la tenue est maintenant intégralement porté par les tarifs
+    // T-shirt club / Pantalon club ci-dessous. Le champ n'est plus affiché
+    // ici pour éviter de laisser croire qu'il a encore un effet ; la valeur
+    // éventuellement déjà enregistrée dans club_info.inscription_pricing
+    // reste en base mais n'est plus lue par le calcul du formulaire
+    // d'inscription (cf. inscription/src/routes/_lib/helpers.js).
     {key:'tshirt',         label:'T-shirt club',                desc:'Par pièce'},
     {key:'pantalon',       label:'Pantalon club',               desc:'Par pièce'},
     {key:'passRegionMale', label:'Remise Pass Région garçon',   desc:'Déduit de la cotisation'},
@@ -6697,7 +6707,7 @@ async function saveHoraires(){
 
 async function saveTarifs(){
   if(!requireWritePerm('perm_administration')) return;
-  const keys = ['base','family','pro','cseThales','bureau','passport','newMemberKit','tshirt','pantalon','passRegionMale','passRegionFemale'];
+  const keys = ['base','family','pro','cseThales','bureau','passport','tshirt','pantalon','passRegionMale','passRegionFemale'];
   const pricing = {};
   for(const key of keys){
     const v = parseFloat(document.getElementById('tp-'+key)?.value);
@@ -7906,6 +7916,26 @@ const ECRITURE_TYPES={
       // pour un don manuel (particulier, entreprise hors subvention publique).
       {compte:'512 - Banque',libelle:'Don reçu',sens:'debit'},
       {compte:'754 - Dons manuels',libelle:'Don reçu',sens:'credit'},
+    ]
+  },
+  remboursement_adherent:{
+    label:'Remboursement adhérent',
+    montant:0,
+    lignes:[
+      // Extourne le compte de produit d'origine (même logique que
+      // "remboursement_frais_bancaires" plus haut) plutôt que de créer une
+      // charge : un remboursement annule un encaissement déjà comptabilisé,
+      // ce n'est pas une nouvelle dépense. Pré-rempli sur 707 car l'usage
+      // actuel est la campagne de remboursement du double comptage
+      // kit/tenue (cf. correctif du 10/09/2026 côté inscription — chaque
+      // nouvel adhérent avait payé sa tenue deux fois). À changer AVANT
+      // d'enregistrer si le remboursement concerne autre chose : 7561 pour
+      // une cotisation, 7562 pour un passeport sportif, 741/754 pour une
+      // subvention/don, etc. Pensez à effectuer le virement/remboursement
+      // réel côté HelloAsso (ou virement bancaire) en plus de cette écriture
+      // — elle ne déclenche aucun paiement, elle ne fait que l'enregistrer.
+      {compte:'707 - Ventes vêtements et équipements',libelle:'Remboursement adhérent — trop-perçu kit/tenue',sens:'debit'},
+      {compte:'512 - Banque',libelle:'Remboursement adhérent — trop-perçu kit/tenue',sens:'credit'},
     ]
   }
 };
