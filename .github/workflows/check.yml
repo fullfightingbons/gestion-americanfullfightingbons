@@ -40,9 +40,6 @@ jobs:
         run: npm ci
       - name: Build (minification frontend)
         run: npm run build
-      - name: Inject D1 database_id
-        run: |
-          sed -i 's|<D1_DATABASE_ID>|${{ secrets.CLOUDFLARE_D1_DATABASE_ID }}|g' wrangler.json
       - name: Apply D1 migrations (remote)
         run: npx wrangler d1 migrations apply DB --remote
         env:
