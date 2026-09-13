@@ -214,6 +214,29 @@ describe("hasStoragePermission", () => {
     const admin = { role: "admin" } as any;
     expect(hasStoragePermission(admin, "un-bucket-qui-n-existe-pas", "x", "read", defaultRolePerms)).toBe(false);
   });
+
+  // Régression du 13/09/2026 : les pièces jointes du formulaire public
+  // d'inscription (photo d'identité, certificat médical, justificatifs
+  // Pass Région / tarif réduit-CSE), stockées sous "public-inscriptions/",
+  // exigeaient perm_administration au lieu de perm_adherents — un compte
+  // secrétaire/trésorier/entraîneur gérant déjà la fiche adhérent ne
+  // pouvait ouvrir aucun de ces fichiers (403 silencieux côté frontend).
+  it("chemin public-inscriptions/ (bucket fullfighting-pdf) → perm_adherents, pas perm_administration", () => {
+    const secretaire = { role: "secretaire" } as any;
+    const rolePerms = {
+      ...defaultRolePerms,
+      secretaire: { perm_adherents: "write", perm_administration: "none", perm_diplomes: "write" },
+    };
+    expect(hasStoragePermission(secretaire, "fullfighting-pdf", "public-inscriptions/abc/certificat-medical.pdf", "read", rolePerms)).toBe(true);
+    // Toujours refusé pour un rôle sans perm_adherents du tout.
+    const membre = { role: "membre" } as any;
+    expect(hasStoragePermission(membre, "fullfighting-pdf", "public-inscriptions/abc/certificat-medical.pdf", "read", rolePerms)).toBe(false);
+  });
+
+  it("chemin public-inscriptions/ (bucket storage, photo d'identité) → perm_adherents", () => {
+    const entraineur = { role: "entraineur" } as any;
+    expect(hasStoragePermission(entraineur, "storage", "public-inscriptions/abc/photo-identite.jpg", "read", defaultRolePerms)).toBe(true);
+  });
 });
 
 describe("isPublicStorageObject", () => {

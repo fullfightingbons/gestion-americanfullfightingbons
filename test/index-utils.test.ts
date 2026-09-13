@@ -19,6 +19,7 @@ import {
   budgetEcart,
   budgetMontantRealise,
   DB_DEFAULT_ROLE_PERMS,
+  DB_TABLE_PERMISSIONS,
   dbHasPermission,
   dbNormalizeValue,
   dbQuoteIdentifier,
@@ -223,5 +224,28 @@ describe("budgetMontantRealise / budgetEcart — comparatif budget/réalisé (/a
   it("produit dépassant l'objectif (6000€ encaissés / 5000€ prévus) : écart positif (vert)", () => {
     const realise = budgetMontantRealise("756000", 0, 6000);
     expect(budgetEcart("756000", realise, 5000)).toBeCloseTo(1000, 2);
+  });
+});
+
+// Régression du 13/09/2026 : inscriptions_publiques (dossier_json +
+// documents_json d'une inscription en ligne) exigeait perm_administration
+// en lecture, alors que secrétaire/trésorier/entraîneur gèrent déjà les
+// adhérents avec perm_adherents — la fiche adhérent semblait alors ne
+// jamais avoir de justificatif. L'écriture reste réservée à
+// perm_administration : aucun flux du frontend gestion n'écrit sur cette
+// table (créée uniquement par le site public "inscription").
+describe("DB_TABLE_PERMISSIONS.inscriptions_publiques", () => {
+  it("lecture via perm_adherents, écriture toujours via perm_administration", () => {
+    expect(DB_TABLE_PERMISSIONS.inscriptions_publiques).toEqual({
+      read: "perm_adherents",
+      write: "perm_administration",
+    });
+  });
+
+  it("un rôle secrétaire (perm_adherents write, perm_administration none) peut lire, pas écrire", () => {
+    const rolePerms = { secretaire: { perm_adherents: "write", perm_administration: "none" } };
+    const user = { role: "secretaire" };
+    expect(dbHasPermission(user, DB_TABLE_PERMISSIONS.inscriptions_publiques.read, "read", rolePerms)).toBe(true);
+    expect(dbHasPermission(user, DB_TABLE_PERMISSIONS.inscriptions_publiques.write, "write", rolePerms)).toBe(false);
   });
 });

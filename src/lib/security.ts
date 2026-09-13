@@ -288,6 +288,18 @@ function hasStoragePermission(
   defaultRolePerms: PermissionMatrix,
 ): boolean {
   const normalized = String(keyOrPrefix || "").replace(/^\/+/, "");
+  // Pièces déposées via le formulaire public d'inscription (photo
+  // d'identité, certificat médical, justificatif Pass Région / tarif
+  // réduit-CSE) : uploadRequiredFile (inscription/src/routes/api/public/
+  // inscription.js) les écrit sous la clé "public-inscriptions/<id>/...",
+  // dans le bucket "fullfighting-pdf" ou "storage" selon la config R2.
+  // Rattachées à un adhérent au même titre que son PDF de notation
+  // (adherents/ ci-dessous) : mêmes droits (perm_adherents), pas
+  // perm_administration — sinon un compte secrétaire/trésorier/entraîneur
+  // ne peut ouvrir aucun justificatif alors qu'il gère déjà la fiche.
+  if (normalized.startsWith("public-inscriptions/")) {
+    return hasPermission(user, "perm_adherents", mode, defaultRolePerms);
+  }
   if (bucketName === "fullfighting-pdf") {
     if (normalized.startsWith("achats/")) return hasPermission(user, "perm_achats", mode, defaultRolePerms);
     if (normalized.startsWith("adherents/")) return hasPermission(user, "perm_adherents", mode, defaultRolePerms);

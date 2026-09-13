@@ -396,7 +396,7 @@ const DB_PRIMARY_KEYS: Record<string, string> = {
   budget_previsionnel: 'id', planning_encadrants: 'id',
 };
 
-const DB_TABLE_PERMISSIONS: Record<string, { read: string; write: string }> = {
+export const DB_TABLE_PERMISSIONS: Record<string, { read: string; write: string }> = {
   adherents: { read: 'perm_adherents', write: 'perm_adherents' },
   achats: { read: 'perm_achats', write: 'perm_achats' },
   audit_logs: { read: 'perm_administration', write: 'perm_administration' },
@@ -408,7 +408,18 @@ const DB_TABLE_PERMISSIONS: Record<string, { read: string; write: string }> = {
   feedback_campaigns: { read: 'perm_feedback', write: 'perm_feedback' },
   feedback_recipients: { read: 'perm_feedback', write: 'perm_feedback' },
   feedback_responses: { read: 'perm_feedback', write: 'perm_feedback' },
-  inscriptions_publiques: { read: 'perm_administration', write: 'perm_administration' },
+  // Lecture ouverte à perm_adherents (pas seulement perm_administration) :
+  // cette table porte le dossier_json + documents_json (photo d'identité,
+  // certificat médical, justificatif tarif réduit/Pass Région) affichés
+  // dans la fiche adhérent (bloc "Documents & justificatifs",
+  // getAdherentDocuments côté app.js). Avant ce correctif, un compte
+  // secrétaire/trésorier/entraîneur (perm_administration: 'none' par
+  // défaut) recevait un 403 silencieux sur ce SELECT : la fiche semblait
+  // ne plus avoir aucun justificatif alors qu'ils existent bien en base.
+  // L'écriture reste réservée à perm_administration (aucun flux du
+  // frontend gestion n'écrit sur cette table : les inscriptions sont
+  // créées uniquement par le site public "inscription").
+  inscriptions_publiques: { read: 'perm_adherents', write: 'perm_administration' },
   deletion_requests: { read: 'perm_administration', write: 'perm_administration' },
   journal_comptable: { read: 'perm_comptabilite', write: 'perm_comptabilite' },
   transactions: { read: 'perm_banque', write: 'perm_banque' },
