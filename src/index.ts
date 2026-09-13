@@ -2069,11 +2069,17 @@ async function anonymizeAdherentData(compteId: string, email: string, env: Env):
 // un appel serveur-à-serveur depuis le worker boutique, cf. finalizePaidOrder
 // dans boutique/src/worker.js).
 //
-// Idempotence : la commande boutique est identifiée par son id (source_id,
-// source_type='boutique_order'). Les écritures du journal sont upsertées par
-// "piece" (déterministe à partir de l'id de commande) donc un retry après
-// échec réseau ne crée jamais de doublon. La facture est retrouvée via une
-// marque insérée dans `notes` (pas de colonne dédiée dans factures).
+// Idempotence (migration 0033) : la commande boutique est identifiée par
+// (source_type='boutique_order', source_id=orderId), sur `factures` comme sur
+// `journal_comptable` (pour ce dernier, combiné à `piece`, déterministe à
+// partir de l'id de commande). Deux contraintes UNIQUE partielles portent
+// cette idempotence au niveau de la base elle-même : un retry après échec
+// réseau (cron de rattrapage côté boutique) OU un double déclenchement quasi
+// simultané de /api/checkout/callback (webhook HelloAsso + retour navigateur)
+// ne peuvent plus créer de doublon, même en cas de vraie concurrence — les
+// deux fonctions ci-dessous font un seul INSERT ... ON CONFLICT DO UPDATE
+// atomique, plus de SELECT séparé suivi d'un INSERT/UPDATE (c'est cette
+// fenêtre entre les deux qui permettait la course, cf. audit du 16 août).
 
 async function findActiveExercise(db: D1Database): Promise<Record<string, any> | null> {
   const active = await db
@@ -2092,17 +2098,21 @@ async function nextFactureNumero(db: D1Database, exerciceId: string | null): Pro
 }
 
 async function upsertJournalEntryByPiece(db: D1Database, entry: Record<string, any>): Promise<string> {
-  const existing = await db.prepare(`SELECT id FROM journal_comptable WHERE piece = ? LIMIT 1`).bind(entry.piece).first<Record<string, any>>();
+  // Upsert atomique : s'appuie sur idx_journal_source_piece_dedup (migration
+  // 0033), UNIQUE partiel sur (source_type, source_id, piece) restreint aux
+  // lignes auto-synchronisées — n'affecte jamais la saisie manuelle
+  // (source_type/source_id toujours NULL côté app.js), qui reste libre de
+  // réutiliser une même référence de pièce sur plusieurs écritures.
   const columns = Object.keys(entry);
-  if (existing?.id) {
-    const assignments = columns.map((c) => `"${c}" = ?`).join(', ');
-    await db.prepare(`UPDATE journal_comptable SET ${assignments} WHERE id = ?`).bind(...columns.map((c) => entry[c]), existing.id).run();
-    return String(existing.id);
-  }
-  await db.prepare(
-    `INSERT INTO journal_comptable (${columns.map((c) => `"${c}"`).join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`
-  ).bind(...columns.map((c) => entry[c])).run();
-  return String(entry.id);
+  const updateCols = columns.filter((c) => c !== 'id' && c !== 'created_at');
+  const row = await db.prepare(
+    `INSERT INTO journal_comptable (${columns.map((c) => `"${c}"`).join(', ')})
+     VALUES (${columns.map(() => '?').join(', ')})
+     ON CONFLICT(source_type, source_id, piece) WHERE source_type IS NOT NULL AND source_id IS NOT NULL
+     DO UPDATE SET ${updateCols.map((c) => `"${c}" = excluded."${c}"`).join(', ')}
+     RETURNING id`
+  ).bind(...columns.map((c) => entry[c])).first<Record<string, any>>();
+  return String(row?.id ?? entry.id);
 }
 
 interface BoutiqueSaleItem { name: string; quantity: number; unitPrice: number }
@@ -2116,13 +2126,15 @@ interface BoutiqueSalePayload {
   items: BoutiqueSaleItem[];
 }
 
-// Crée (ou retrouve, si déjà synchronisée) la facture correspondant à une
-// commande boutique payée.
+// Crée (ou retrouve/touche, si déjà synchronisée) la facture correspondant à
+// une commande boutique payée. Upsert atomique sur (source_type, source_id) —
+// cf. idx_factures_source_dedup, migration 0033 — au lieu de l'ancien
+// SELECT ... WHERE notes LIKE '%marqueur%' (pas d'index possible dessus, et
+// surtout pas atomique : deux appels concurrents pouvaient tous les deux
+// passer le SELECT avant qu'aucun INSERT n'ait atterri, d'où les doublons
+// trouvés le 16 août). Le marqueur reste dans `notes` pour la lisibilité en
+// consultation manuelle, mais n'est plus utilisé pour la recherche.
 async function upsertBoutiqueSaleFacture(db: D1Database, payload: BoutiqueSalePayload, exercise: Record<string, any> | null): Promise<{ id: string; created: boolean }> {
-  const marker = `[boutique_order:${payload.orderId}]`;
-  const existing = await db.prepare(`SELECT id FROM factures WHERE notes LIKE ? LIMIT 1`).bind(`%${marker}%`).first<Record<string, any>>();
-  if (existing?.id) return { id: String(existing.id), created: false };
-
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
   const numero = await nextFactureNumero(db, exercise?.id || null);
@@ -2139,17 +2151,23 @@ async function upsertBoutiqueSaleFacture(db: D1Database, payload: BoutiqueSalePa
     objet: 'Vente boutique en ligne',
     lignes: JSON.stringify(lignes),
     statut: 'Payée',
-    notes: `Vente générée automatiquement depuis la boutique en ligne. Paiement HelloAsso validé. ${marker} Email client : ${payload.customerEmail || ''}`,
+    notes: `Vente générée automatiquement depuis la boutique en ligne. Paiement HelloAsso validé. [boutique_order:${payload.orderId}] Email client : ${payload.customerEmail || ''}`,
+    source_type: 'boutique_order',
+    source_id: String(payload.orderId),
     exercice_id: exercise?.id || null,
     created_at: now,
     updated_at: now,
   };
   const columns = Object.keys(row);
-  await db.prepare(
-    `INSERT INTO factures (${columns.map((c) => `"${c}"`).join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`
-  ).bind(...columns.map((c) => (row as Record<string, any>)[c])).run();
+  const result = await db.prepare(
+    `INSERT INTO factures (${columns.map((c) => `"${c}"`).join(', ')})
+     VALUES (${columns.map(() => '?').join(', ')})
+     ON CONFLICT(source_type, source_id) WHERE source_type IS NOT NULL AND source_id IS NOT NULL
+     DO UPDATE SET updated_at = excluded.updated_at
+     RETURNING id, created_at`
+  ).bind(...columns.map((c) => (row as Record<string, any>)[c])).first<Record<string, any>>();
 
-  return { id, created: true };
+  return { id: String(result?.id ?? id), created: result?.created_at === now };
 }
 
 // Écritures de reconnaissance du chiffre d'affaires (411 débit / 707 crédit),
