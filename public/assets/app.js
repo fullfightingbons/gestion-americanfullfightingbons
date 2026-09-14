@@ -237,6 +237,7 @@ const UI = {
   bankTxDateTo:'',
   pdfTarget:null,
   guardianInfo:null,
+  blacklistHistorique:null,
   rgpdRequests:null,
   autoBackups:null,
   automationStatus:null,
@@ -1917,6 +1918,7 @@ function adherentMatchesSpecialFilter(adherent, special){
   if(special==='expired') return adhStatus(adherent)==='expire';
   if(special==='uptodate') return adhStatus(adherent)==='valid' || adhStatus(adherent)==='soon';
   if(special==='soon') return adhStatus(adherent)==='soon';
+  if(special==='blackliste') return Number(adherent.blackliste)===1;
   return true;
 }
 
@@ -2657,6 +2659,7 @@ function vAdh(){
   <option value="expired" ${UI.adhFilters.special==='expired'?'selected':''}>Expirés</option>
   <option value="uptodate" ${UI.adhFilters.special==='uptodate'?'selected':''}>À jour</option>
   <option value="soon" ${UI.adhFilters.special==='soon'?'selected':''}>Échéance proche</option>
+  <option value="blackliste" ${UI.adhFilters.special==='blackliste'?'selected':''}>🚫 Blacklistés</option>
   </select>
   ${canWrite?`<button class="btn primary" onclick="openModal('adh')">+ Nouvel adhérent</button>`:''}
   ${canWrite?`<button class="btn gold" onclick="openDiplomeForAdherent()">🎓 Nouveau diplôme</button>`:''}
@@ -2676,7 +2679,7 @@ function vAdh(){
     const docs=getAdherentDocuments(a.id);
     return `<tr class="${adhStatus(a)==='expire'?'adh-expire':adhStatus(a)==='soon'?'adh-soon':'adh-valid'}">
     ${canWrite?`<td><input type="checkbox" style="width:auto" ${UI.adhSelected[a.id]?'checked':''} onchange="toggleAdhSelect('${a.id}')"></td>`:''}
-    <td><strong style="font-weight:500">${esc(a.nom)} ${esc(a.prenom)}</strong>${a.ville?`<br><span style="font-size:10px;color:var(--txt2)">${esc(a.ville)}</span>`:''}</td>
+    <td><strong style="font-weight:500">${esc(a.nom)} ${esc(a.prenom)}</strong>${Number(a.blackliste)===1?` <span class="badge bno" title="${esc(a.blackliste_motif||'')}">🚫 Blacklisté</span>`:''}${a.ville?`<br><span style="font-size:10px;color:var(--txt2)">${esc(a.ville)}</span>`:''}</td>
     <td><span class="badge bgray">${a.discipline||'Club'}</span></td>
     <td>${esc(a.couleur_ceinture)||'—'}</td>
     <td>${bdg(a.certificat)}</td><td>${bdg(a.droit_image)}</td>
@@ -7257,6 +7260,46 @@ function renderGuardianSection(a){
   </div>`;
 }
 
+// Section "Blacklistage" du modal fiche adhérent : statut courant (posé/levé
+// par /api/adherents/:id/blacklist, réservé perm_administration — cf.
+// commentaire serveur), et historique dépliable (chaque blocage/levée,
+// motif, auteur, date — cf. migration 0034). Le bouton d'action n'apparaît
+// que pour un compte Administration ; un compte perm_adherents simple voit
+// le statut (utile pour savoir "à qui il a affaire") mais ne peut pas le
+// changer.
+function renderBlacklistSection(a){
+  if(!a.id) return `<p style="font-size:12px;color:var(--txt2)">Enregistrez d'abord l'adhérent pour pouvoir le blacklister.</p>`;
+  const canAdmin=hasPerm('perm_administration','write');
+  const hist=UI.blacklistHistorique;
+  const histHtml = !hist ? `<p style="font-size:12px;color:var(--txt2);margin-top:6px">Chargement de l'historique…</p>`
+    : hist.error ? `<p style="font-size:12px;color:var(--red,#b3261e);margin-top:6px">${esc(hist.error)}</p>`
+    : !hist.length ? ''
+    : `<details style="margin-top:8px">
+       <summary style="font-size:12px;color:var(--txt2);cursor:pointer">Historique (${hist.length})</summary>
+       <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+       ${hist.map(h=>`<div style="font-size:12px;color:var(--txt2)">
+         <strong>${h.action==='blackliste'?'🚫 Blacklisté':'✓ Levé'}</strong> le ${fd(h.created_at)}${h.decide_par?` par ${esc(h.decide_par)}`:''}${h.motif?` — ${esc(h.motif)}`:''}
+         </div>`).join('')}
+       </div></details>`;
+  if(Number(a.blackliste)===1){
+    return `<div>
+    <p style="font-size:13px;font-weight:600;color:var(--red-dark)">🚫 Blacklisté${a.blackliste_depuis?` depuis le ${fd(a.blackliste_depuis)}`:''}</p>
+    ${a.blackliste_motif?`<p style="font-size:12px;color:var(--red-dark);margin-top:4px">Motif : ${esc(a.blackliste_motif)}</p>`:''}
+    ${canAdmin
+      ?`<button type="button" class="btn sm" style="margin-top:8px" onclick="liftBlacklistAdherent('${a.id}')">Lever le blacklistage</button>`
+      :`<p style="font-size:11px;color:var(--txt2);margin-top:8px">Seul un compte Administration peut lever un blacklistage.</p>`}
+    ${histHtml}
+    </div>`;
+  }
+  return `<div>
+  <p style="font-size:12px;color:var(--txt2)">Aucun blacklistage en cours.</p>
+  ${canAdmin
+    ?`<button type="button" class="btn sm danger" style="margin-top:6px" onclick="blacklistAdherent('${a.id}')">Blacklister cet adhérent</button>`
+    :`<p style="font-size:11px;color:var(--txt2);margin-top:6px">Réservé à un compte Administration.</p>`}
+  ${histHtml}
+  </div>`;
+}
+
 function renderModal(){
   document.querySelector('.modal-bg')?.remove();
   if(!UI.modal) return;
@@ -7303,6 +7346,10 @@ function renderModal(){
     <div class="fg"><label>Date d'inscription</label><input id="f-di2" type="date" value="${a.date_inscription||td()}" onchange="if(!document.getElementById('f-fin').value)document.getElementById('f-fin').value=defaultAdhesionEnd(this.value)"></div>
     <div class="fg"><label>Date fin d'adhésion</label><input id="f-fin" type="date" value="${a.date_fin_adhesion||defaultAdhesionEnd(a.date_inscription||td())}"></div>
     <div class="fg"><label>Statut</label><select id="f-sta">${ADH_STATUTS.map(s=>`<option ${a.statut===s?'selected':''}>${s}</option>`).join('')}</select></div>
+    <div class="fg full" style="background:${Number(a.blackliste)===1?'var(--red-l)':'var(--bg2)'};padding:10px;border-radius:var(--r)">
+    <p style="font-size:12px;font-weight:500;margin-bottom:8px;color:${Number(a.blackliste)===1?'var(--red-dark)':'inherit'}">Blacklistage</p>
+    ${renderBlacklistSection(a)}
+    </div>
     <div class="fg full" style="background:var(--bg2);padding:10px;border-radius:var(--r)">
     <p style="font-size:12px;font-weight:500;margin-bottom:8px">Personne à prévenir en cas d'urgence</p>
     <div class="g3">
@@ -7968,7 +8015,7 @@ function openEcritureType(type){
 function openModal(t,id){
   const permMap={adh:'perm_adherents',compte:'perm_banque',ecr:'perm_comptabilite',achat:'perm_achats',user:'perm_administration',exo:'perm_comptabilite',exo_close:'perm_comptabilite',feedback_campaign:'perm_feedback',feedback_invite:'perm_feedback',presence:'perm_presences',materiel:'perm_materiel',materiel_emprunt:'perm_materiel',materiel_mouvement:'perm_materiel',planning:'perm_planning',budget_ligne:'perm_comptabilite'};
   if(permMap[t] && !requireWritePerm(permMap[t])) return;
-  UI.modal=t;UI.editObj=null;UI.guardianInfo=null;
+  UI.modal=t;UI.editObj=null;UI.guardianInfo=null;UI.blacklistHistorique=null;
   if(id){
     if(t==='adh')   UI.editObj=D.adherents.find(a=>a.id===id);
     if(t==='achat') UI.editObj=D.achats.find(a=>a.id===id);
@@ -7981,7 +8028,7 @@ function openModal(t,id){
     if(t==='planning') UI.editObj=D.planning.find(p=>p.id===id);
     if(t==='materiel_emprunt' || t==='materiel_mouvement') UI.materielTargetId=id;
   }
-  if(t==='adh' && id) loadGuardianInfo(id);
+  if(t==='adh' && id){ loadGuardianInfo(id); loadBlacklistHistorique(id); }
   renderModal();
 }
 
@@ -7993,6 +8040,18 @@ async function loadGuardianInfo(adherentId){
   const res=await apiRequest(`/adherents/${adherentId}/guardian-suggestions`);
   if(UI.modal==='adh' && UI.editObj?.id===adherentId){
     UI.guardianInfo=res.error?{error:res.error.message||'Chargement impossible.'}:res.data;
+    renderModal();
+  }
+}
+
+// Historique des blocages/levées de blacklist (cf. migration 0034 + routes
+// POST/DELETE /api/adherents/:id/blacklist côté serveur). Chargé à part,
+// même logique que loadGuardianInfo ci-dessus : spécifique à la fiche
+// ouverte, pas nécessaire pour la liste.
+async function loadBlacklistHistorique(adherentId){
+  const res=await SB.from('adherents_blacklist_historique').select('*').eq('adherent_id',adherentId).order('created_at',{ascending:false});
+  if(UI.modal==='adh' && UI.editObj?.id===adherentId){
+    UI.blacklistHistorique=res.error?{error:res.error.message||'Chargement impossible.'}:(res.data||[]);
     renderModal();
   }
 }
@@ -8168,6 +8227,43 @@ async function unlinkGuardian(adherentId){
   notify('success','Lien familial retiré.','Tutelle');
   loadGuardianInfo(adherentId);
 }
+
+// Blacklistage (radiation prononcée par le bureau, ou refus d'adhésion) —
+// bloque toute nouvelle tentative d'inscription en ligne pour la même
+// identité (cf. inscription/src/routes/api/public/inscription.js,
+// checkBlacklist). Réservé perm_administration côté serveur ; le bouton
+// n'est de toute façon affiché que si hasPerm('perm_administration','write')
+// (cf. renderBlacklistSection), mais le serveur revérifie systématiquement.
+async function blacklistAdherent(id){
+  const motif=prompt("Motif du blacklistage (obligatoire — décision du bureau : radiation, refus d'adhésion...) :");
+  if(motif===null) return;
+  if(!motif.trim()) return alert('Le motif est obligatoire.');
+  if(!confirm(`Confirmer le blacklistage de cet adhérent ?\n\nMotif : ${motif.trim()}\n\nToute nouvelle tentative d'inscription en ligne sous cette identité sera bloquée. Cette décision reste modifiable (« Lever le blacklistage ») à tout moment.`)) return;
+  const res=await apiRequest(`/adherents/${id}/blacklist`,{method:'POST',body:JSON.stringify({motif:motif.trim()})});
+  if(res.error) return alert('Blacklistage impossible : '+res.error.message);
+  notify('success','Adhérent blacklisté.','Adhérents');
+  const adh=D.adherents.find(x=>x.id===id);
+  if(adh){ adh.blackliste=1; adh.blackliste_motif=res.data?.blackliste_motif||motif.trim(); adh.blackliste_depuis=res.data?.blackliste_depuis||new Date().toISOString(); }
+  if(UI.editObj?.id===id) UI.editObj={...adh};
+  loadBlacklistHistorique(id);
+  render();
+  renderModal();
+}
+
+async function liftBlacklistAdherent(id){
+  if(!confirm("Lever le blacklistage de cet adhérent ? Il pourra à nouveau s'inscrire en ligne.")) return;
+  const motif=prompt('Motif de la levée (optionnel) :')||'';
+  const res=await apiRequest(`/adherents/${id}/blacklist`,{method:'DELETE',body:JSON.stringify({motif:motif.trim()})});
+  if(res.error) return alert('Impossible de lever le blacklistage : '+res.error.message);
+  notify('success','Blacklistage levé.','Adhérents');
+  const adh=D.adherents.find(x=>x.id===id);
+  if(adh){ adh.blackliste=0; adh.blackliste_motif=null; adh.blackliste_depuis=null; }
+  if(UI.editObj?.id===id) UI.editObj={...adh};
+  loadBlacklistHistorique(id);
+  render();
+  renderModal();
+}
+
 function openPasswordModal(){
   if(!UI.currentUser?.id) return;
   UI.modal='pwd';

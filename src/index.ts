@@ -374,7 +374,7 @@ export type PermissionMatrix = Record<string, Record<string, string>>;
 const DB_TABLES = new Set([
   'adherents', 'achats', 'audit_logs', 'club_info', 'comptes_bancaires',
   'diplomes', 'exercices', 'factures', 'feedback_campaigns', 'feedback_recipients', 'feedback_responses',
-  'inscriptions_publiques', 'deletion_requests',
+  'inscriptions_publiques', 'deletion_requests', 'adherents_blacklist_historique',
   'journal_comptable', 'transactions', 'utilisateurs',
   'presences', 'materiel', 'materiel_emprunts', 'materiel_mouvements', 'budget_previsionnel', 'planning_encadrants',
 ]);
@@ -391,7 +391,7 @@ const DB_PRIMARY_KEYS: Record<string, string> = {
   comptes_bancaires: 'id', diplomes: 'id', exercices: 'id', factures: 'id',
   feedback_campaigns: 'id', feedback_recipients: 'id', feedback_responses: 'id',
   inscriptions_publiques: 'id', journal_comptable: 'id', transactions: 'id',
-  utilisateurs: 'id', deletion_requests: 'id',
+  utilisateurs: 'id', deletion_requests: 'id', adherents_blacklist_historique: 'id',
   presences: 'id', materiel: 'id', materiel_emprunts: 'id', materiel_mouvements: 'id',
   budget_previsionnel: 'id', planning_encadrants: 'id',
 };
@@ -421,6 +421,12 @@ export const DB_TABLE_PERMISSIONS: Record<string, { read: string; write: string 
   // créées uniquement par le site public "inscription").
   inscriptions_publiques: { read: 'perm_adherents', write: 'perm_administration' },
   deletion_requests: { read: 'perm_administration', write: 'perm_administration' },
+  // Historique des blocages/levées de blacklist (cf. migration 0034).
+  // Lecture perm_adherents (visible dans la fiche adhérent, au même titre
+  // que le reste) ; écriture perm_administration — en pratique jamais via
+  // le PATCH générique : les lignes sont insérées uniquement par
+  // /api/adherents/:id/blacklist (POST/DELETE) ci-dessous.
+  adherents_blacklist_historique: { read: 'perm_adherents', write: 'perm_administration' },
   journal_comptable: { read: 'perm_comptabilite', write: 'perm_comptabilite' },
   transactions: { read: 'perm_banque', write: 'perm_banque' },
   utilisateurs: { read: 'perm_administration', write: 'perm_administration' },
@@ -3761,6 +3767,92 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       }));
 
       return json({ data: { ok: true, guardianCompteId }, error: null });
+    }
+
+    // POST/DELETE /api/adherents/:id/blacklist — pose ou lève un blacklistage
+    // (radiation prononcée par le bureau, ou refus d'adhésion). Bloque toute
+    // nouvelle tentative d'inscription en ligne pour la même identité (cf.
+    // inscription/src/routes/api/public/inscription.js, checkBlacklist —
+    // même base D1 partagée entre les deux workers).
+    //
+    // Volontairement réservé à perm_administration, pas perm_adherents :
+    // c'est une décision du bureau, pas de la gestion courante des fiches —
+    // même logique que /api/deletion-requests/:id/execute plus bas, qui
+    // réserve aussi ses actions les plus sensibles à un niveau d'habilitation
+    // plus restreint. Le statut et l'historique restent en revanche lisibles
+    // par quiconque a perm_adherents en lecture (cf. DB_TABLE_PERMISSIONS
+    // ci-dessus), pour qu'un encadrant sache à qui il a affaire.
+    //
+    // Volontairement RELEVABLE : DELETE repose blackliste à 0 sans jamais
+    // supprimer l'historique — le bureau peut revenir sur sa décision, la
+    // trace de chaque étape (motif, auteur, date) reste consultable.
+    const blacklistMatch = path.match(/^\/api\/adherents\/([^/]+)\/blacklist$/);
+    if (method === 'POST' && blacklistMatch) {
+      const user = await getCurrentUserFromBearer(request, env);
+      if (!user) return err('Unauthorized', 401);
+      const rolePerms = await getRolePerms(env);
+      if (!dbHasPermission(user, 'perm_administration', 'write', rolePerms)) return err('Permission refusée', 403);
+
+      const adherentId = blacklistMatch[1];
+      const body = await request.json<{ motif?: string }>().catch(() => ({} as { motif?: string }));
+      const motif = String(body?.motif || '').trim();
+      if (!motif) return err('Le motif est obligatoire pour blacklister un adhérent', 400);
+
+      const adherent = await env.DB.prepare(`SELECT id, blackliste FROM adherents WHERE id = ?`).bind(adherentId).first<any>();
+      if (!adherent) return err('Adhérent introuvable', 404);
+      if (Number(adherent.blackliste) === 1) return err('Cet adhérent est déjà blacklisté', 400);
+
+      const now = new Date().toISOString();
+      await env.DB.prepare(
+        `UPDATE adherents SET blackliste = 1, blackliste_motif = ?, blackliste_depuis = ? WHERE id = ?`
+      ).bind(motif, now, adherentId).run();
+
+      const decidePar = `${user.prenom || ''} ${user.nom || ''}`.trim() || user.email || 'Administrateur';
+      await env.DB.prepare(
+        `INSERT INTO adherents_blacklist_historique (id, adherent_id, action, motif, decide_par, created_at)
+         VALUES (?, ?, 'blackliste', ?, ?, ?)`
+      ).bind(crypto.randomUUID(), adherentId, motif, decidePar, now).run();
+
+      ctx.waitUntil(writeAuditLog(env, {
+        userId: user.id, action: 'adherent_blacklist',
+        entityType: 'adherents', entityId: adherentId,
+        details: { motif }, ip: request.headers.get('CF-Connecting-IP'),
+      }));
+
+      return json({ data: { ok: true, blackliste: true, blackliste_depuis: now, blackliste_motif: motif }, error: null });
+    }
+    if (method === 'DELETE' && blacklistMatch) {
+      const user = await getCurrentUserFromBearer(request, env);
+      if (!user) return err('Unauthorized', 401);
+      const rolePerms = await getRolePerms(env);
+      if (!dbHasPermission(user, 'perm_administration', 'write', rolePerms)) return err('Permission refusée', 403);
+
+      const adherentId = blacklistMatch[1];
+      const body = await request.json<{ motif?: string }>().catch(() => ({} as { motif?: string }));
+      const motif = String(body?.motif || '').trim() || null;
+
+      const adherent = await env.DB.prepare(`SELECT id, blackliste FROM adherents WHERE id = ?`).bind(adherentId).first<any>();
+      if (!adherent) return err('Adhérent introuvable', 404);
+      if (Number(adherent.blackliste) !== 1) return err("Cet adhérent n'est pas blacklisté", 400);
+
+      await env.DB.prepare(
+        `UPDATE adherents SET blackliste = 0, blackliste_motif = NULL, blackliste_depuis = NULL WHERE id = ?`
+      ).bind(adherentId).run();
+
+      const decidePar = `${user.prenom || ''} ${user.nom || ''}`.trim() || user.email || 'Administrateur';
+      const now = new Date().toISOString();
+      await env.DB.prepare(
+        `INSERT INTO adherents_blacklist_historique (id, adherent_id, action, motif, decide_par, created_at)
+         VALUES (?, ?, 'leve', ?, ?, ?)`
+      ).bind(crypto.randomUUID(), adherentId, motif, decidePar, now).run();
+
+      ctx.waitUntil(writeAuditLog(env, {
+        userId: user.id, action: 'adherent_blacklist_lift',
+        entityType: 'adherents', entityId: adherentId,
+        details: { motif }, ip: request.headers.get('CF-Connecting-IP'),
+      }));
+
+      return json({ data: { ok: true, blackliste: false }, error: null });
     }
 
     // POST /api/deletion-requests/:id/execute — exécute l'anonymisation
