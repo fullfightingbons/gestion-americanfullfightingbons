@@ -4,6 +4,35 @@ Ajoutées sur la base du projet existant, sans rien retirer. `tsc --noEmit`,
 les 31 tests existants (`vitest run`) et `wrangler deploy --dry-run` sont
 propres après ajout.
 
+## Correctif comptable — 17/09/2026 : intégration exhaustive des écritures
+
+Symptôme : les remboursements saisis avec les boutons rapides
+(⚡ Remboursement adhérent, ⚡ Remboursement frais bancaires) n'apparaissaient
+pas à l'écran Résultat et n'étaient pas déduits de ses totaux. Le Résultat
+affichait +6953.35 € là où le Bilan affichait +6521.00 € pour le même journal.
+
+- `vResultat()` ne retenait que `credit > 0` en classe 7 et `debit > 0` en
+  classe 6 : toute écriture d'extourne (remboursement, avoir, annulation)
+  était ignorée à l'affichage **et** dans les totaux. Recalcul en net par
+  ligne, affichage des extournes avec un repère « ↩ extourne », et garde-fou
+  qui affiche un bandeau si le total du Résultat diverge de celui du Bilan.
+- Bilan : les lignes d'actif/passif étaient une liste figée de 6 + 7 regex,
+  chacune tronquée par `Math.max(0, …)`. Conséquences : tout compte hors de
+  cette liste (518, 44x, 3x, 46x…) était invisible sans alerte, un découvert
+  bancaire s'affichait à 0.00 €, et un déficit était ajouté au passif au lieu
+  d'en être déduit. Remplacé par `BILAN_POSTES` + `bilanRows()` : tous les
+  comptes de classes 1 à 5 présents au journal sont classés, deux postes
+  fourre-tout signalent les comptes non reconnus et les écritures sans numéro
+  de compte.
+- Le contrôle « actif - passif » se calculait par une formule différente de
+  l'affichage (classes 46/47/48 comptées des deux côtés) : il annonçait
+  0.00 € sur un bilan déséquilibré et -300 € sur un bilan équilibré. Il porte
+  désormais sur les lignes réellement affichées.
+- Bloc « Contrôle » du bilan enrichi : comptes non reconnus et écritures
+  sans exercice rattaché (invisibles partout car `jnlExo()` filtre sur
+  `exercice_id`), avec renvoi vers le Journal.
+- 10 tests de non-régression ajoutés dans `test/gl-accounting.test.ts`.
+
 ## Correctifs complémentaires — 16/08/2026
 
 - `gestion/public/assets/app.js` : correction du renouvellement groupé des

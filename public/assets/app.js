@@ -4663,6 +4663,93 @@ function totalClasse(prefixes,side){
   .reduce((s,j)=>s+(+(side==='credit'?j.credit:j.debit)||0),0);
 }
 
+// ── Postes du bilan (classes 1 à 5) ────────────────────────────────────────
+// Liste ORDONNÉE (premier motif gagnant) terminée par deux fourre-tout : tout
+// compte présent au journal tombe forcément dans un poste, donc plus aucune
+// écriture ne peut disparaître silencieusement du bilan.
+//
+// Avant le 17/09/2026, les lignes du bilan étaient une liste FIGÉE de 6 regex
+// à l'actif et 7 au passif, avec deux conséquences invisibles pour le
+// trésorier :
+//   1. tout compte hors de cette liste (518, 44x TVA, 3x stocks, 46x…) était
+//      absent du bilan sans le moindre message ;
+//   2. chaque ligne passait par Math.max(0,…), donc un solde créditeur
+//      anormal (découvert bancaire) ou un résultat déficitaire sortait un
+//      bilan faux — et le contrôle « actif - passif », calculé par une
+//      formule DIFFÉRENTE de l'affichage, pouvait très bien afficher 0.00 €.
+// `pin` force l'affichage d'une ligne à 0.00 € pour conserver la présentation
+// institutionnelle du document même quand le poste est vide.
+const BILAN_POSTES=[
+  {test:/^1[01345]/, pin:'passif', actif:'1010/1020/1060 - Fonds associatifs (solde débiteur)', passif:'1010/1020/1060 - Fonds associatifs et réserves'},
+  {test:/^12/,                     actif:'1290 - Report à nouveau débiteur',                    passif:'1200 - Report à nouveau créditeur'},
+  {test:/^16/,       pin:'passif', actif:'1640 - Emprunts (avance consentie)',                  passif:'1640 - Emprunts'},
+  {test:/^1/,                      actif:'1000 - Autres fonds propres (débiteur)',              passif:'1000 - Autres fonds propres'},
+  {test:/^2/,        pin:'actif',  actif:'2150/2180 - Immobilisations',                         passif:'2800 - Amortissements (solde créditeur)'},
+  {test:/^3/,                      actif:'3000 - Stocks',                                       passif:'3900 - Dépréciations de stocks'},
+  {test:/^40/,       pin:'passif', actif:'4090 - Avances versées aux fournisseurs',             passif:'4010 - Fournisseurs'},
+  {test:/^41/,       pin:'actif',  actif:'4110 - Créances adhérents et clients',                passif:'4190 - Avances reçues des adhérents'},
+  {test:/^42/,                     actif:'4250 - Avances au personnel',                         passif:'4210 - Personnel - rémunérations dues'},
+  {test:/^43/,       pin:'passif', actif:'4380 - Organismes sociaux débiteurs',                 passif:'4310 - Dettes sociales'},
+  {test:/^44/,                     actif:'4450 - État et collectivités - créances',             passif:'4450 - État et collectivités - dettes'},
+  {test:/^45/,                     actif:'4550 - Comptes courants débiteurs',                   passif:'4550 - Comptes courants créditeurs'},
+  {test:/^46/,                     actif:'4670 - Débiteurs divers',                             passif:'4680 - Créditeurs divers'},
+  {test:/^47/,       pin:'both',   actif:'4710 - Comptes d attente débiteurs',                  passif:'4710 - Comptes d attente créditeurs'},
+  {test:/^48[16]/,   pin:'actif',  actif:'4810 - Charges constatées d avance',                  passif:'4810 - Charges constatées d avance (solde créditeur)'},
+  {test:/^487/,      pin:'passif', actif:'4870 - Produits constatés d avance (solde débiteur)', passif:'4870 - Produits constatés d avance'},
+  {test:/^48/,                     actif:'4800 - Comptes de régularisation - actif',            passif:'4800 - Comptes de régularisation - passif'},
+  {test:/^49/,                     actif:'4900 - Dépréciations de créances',                    passif:'4900 - Dépréciations de créances'},
+  {test:/^512/,      pin:'actif',  actif:'5120 - Banque',                                       passif:'5120 - Banque (découvert)'},
+  {test:/^53/,       pin:'actif',  actif:'5300 - Caisse',                                       passif:'5300 - Caisse (solde créditeur anormal)'},
+  {test:/^58/,                     actif:'5800 - Virements internes',                           passif:'5800 - Virements internes'},
+  {test:/^5/,                      actif:'5100 - Autres comptes financiers',                    passif:'5100 - Autres comptes financiers'},
+  {test:/^\d/,       alerte:true,  actif:'⚠ Comptes non reconnus - à reclasser',                passif:'⚠ Comptes non reconnus - à reclasser'},
+  {test:/^/,         alerte:true,  actif:'⚠ Écritures sans numéro de compte',                   passif:'⚠ Écritures sans numéro de compte'},
+];
+
+function bilanPosteIndex(compte){
+  const code=compteCode(compte);
+  const idx=BILAN_POSTES.findIndex(p=>p.test.test(code));
+  return idx<0?BILAN_POSTES.length-1:idx;
+}
+
+/**
+ * Lignes d'actif et de passif construites à partir de TOUS les comptes de
+ * classes 1 à 5 présents au journal de l'exercice, chacun placé du côté de
+ * son solde net (débiteur → actif, créditeur → passif). Les classes 6 et 7
+ * ne figurent pas au bilan : elles sont résumées par la ligne de résultat.
+ *
+ * Invariant garanti par construction (journal équilibré) :
+ *   somme des soldes classes 1-5 = résultat  ⇒  total actif = total passif,
+ * la ligne de résultat étant ajoutée au passif AVEC son signe (un déficit
+ * diminue le passif au lieu de l'augmenter, contrairement à l'ancien
+ * Math.abs() qui gonflait le passif du double du déficit).
+ */
+function bilanRows(resultat){
+  const nets=new Map();
+  jnlExo().forEach(j=>{
+    const code=compteCode(j.compte);
+    if(/^[67]/.test(code)) return;
+    const idx=bilanPosteIndex(j.compte);
+    nets.set(idx,(nets.get(idx)||0)+(+j.debit||0)-(+j.credit||0));
+  });
+  const actifRows=[],passifRows=[];
+  BILAN_POSTES.forEach((poste,idx)=>{
+    const val=+((nets.get(idx)||0).toFixed(2));
+    if(val>0.004) actifRows.push({label:poste.actif,value:val,alerte:!!poste.alerte});
+    else if(val<-0.004) passifRows.push({label:poste.passif,value:-val,alerte:!!poste.alerte});
+    else{
+      if(poste.pin==='actif'||poste.pin==='both') actifRows.push({label:poste.actif,value:0});
+      if(poste.pin==='passif'||poste.pin==='both') passifRows.push({label:poste.passif,value:0});
+    }
+  });
+  const res=+(+resultat||0).toFixed(2);
+  passifRows.push({label:`${res>=0?'1200':'1290'} - Résultat de l exercice`,value:res,signed:res});
+  const totalActif=+actifRows.reduce((s,r)=>s+r.value,0).toFixed(2);
+  const totalPassif=+passifRows.reduce((s,r)=>s+r.value,0).toFixed(2);
+  const alertes=[...actifRows,...passifRows].filter(r=>r.alerte);
+  return{actifRows,passifRows,totalActif,totalPassif,alertes};
+}
+
 function journalDiagnostics(){
   const jnl=jnlExo();
   const totalDebit=jnl.reduce((s,j)=>s+(+j.debit||0),0);
@@ -4677,26 +4764,24 @@ function journalDiagnostics(){
   const resultat=+(produits-charges).toFixed(2);
   const capitauxPropres=totalClasse(['10','12'],'credit')-totalClasse(['10','12'],'debit');
   const dettes=totalClasse(['16','40','42','43','44','45','46','47','48'],'credit')-totalClasse(['16','40','42','43','44','45','46','47','48'],'debit');
-  const actifs=totalClasse(['20','21','23','26','27','28','29','37','38','39','41','46','47','48','50','51','52','53','54','55','58'],'debit')-totalClasse(['20','21','23','26','27','28','29','37','38','39','41','46','47','48','50','51','52','53','54','55','58'],'credit');
-  const ecartBilan=+(actifs-(Math.max(0,capitauxPropres)+Math.max(0,dettes)+Math.abs(resultat))).toFixed(2);
-  return{totalDebit,totalCredit,ecartJournal,produits,charges,resultat,actifs,capitauxPropres,dettes,ecartBilan};
+  // L'écart de bilan se mesure sur les lignes RÉELLEMENT affichées : un
+  // contrôle calculé par une autre formule que l'affichage ne contrôle rien
+  // (il annonçait 0.00 € sur un bilan visiblement déséquilibré, et -300 € sur
+  // un bilan parfaitement équilibré — constaté le 17/09/2026).
+  const {totalActif,totalPassif,alertes}=bilanRows(resultat);
+  const ecartBilan=+(totalActif-totalPassif).toFixed(2);
+  return{totalDebit,totalCredit,ecartJournal,produits,charges,resultat,actifs:totalActif,capitauxPropres,dettes,ecartBilan,comptesNonReconnus:alertes.length};
 }
 
 function calcBilan(){
   const diag=journalDiagnostics();
-  const banques=Math.max(0,compteSolde(/^512/));
-  const caisse=Math.max(0,compteSolde(/^530/));
-  const creancesAdherents=Math.max(0,compteSolde(/^411/));
-  const immobilisations=Math.max(0,compteSolde(/^2/));
-  const chargesAvance=Math.max(0,compteSolde(/^481/));
-  const autresActifs=Math.max(0,compteSolde(/^47/));
-
-  const fournisseurs=Math.max(0,-compteSolde(/^401/));
-  const dettesSociales=Math.max(0,-compteSolde(/^43/));
-  const comptesAttentePassif=Math.max(0,-compteSolde(/^47/));
-  const produitsConstates=Math.max(0,-compteSolde(/^487/));
-  const emprunts=Math.max(0,-compteSolde(/^164/));
-  const fondsAssociatifs=Math.max(0,sumJournal(/^(10|12)/, 'credit')-sumJournal(/^(10|12)/, 'debit'));
+  // Soldes de référence conservés pour les indicateurs (trésorerie, créances)
+  // affichés ailleurs — SIGNÉS, sans Math.max(0,…) : un découvert bancaire
+  // doit rester visible en négatif au lieu d'être affiché à 0.00 €.
+  const banques=compteSolde(/^512/);
+  const caisse=compteSolde(/^530/);
+  const creancesAdherents=compteSolde(/^411/);
+  const immobilisations=compteSolde(/^2/);
 
   const cotisations=sumJournal(/^75[36]/, 'credit')-sumJournal(/^75[36]/, 'debit');
   const subventions=(sumJournal(/^74/, 'credit')-sumJournal(/^74/, 'debit'))+(sumJournal(/^751/, 'credit')-sumJournal(/^751/, 'debit'));
@@ -4759,30 +4844,19 @@ function calcBilan(){
     {label:'Autres charges',value:posteAutresCharges},
   ].map(r=>({...r,value:+r.value.toFixed(2)})).filter(r=>r.value!==0).sort((a,b)=>b.value-a.value);
 
-  const actifRows=[
-    {label:'2150/2180 - Immobilisations',value:immobilisations},
-    {label:'4110 - Créances adhérents et clients',value:creancesAdherents},
-    {label:'4710 - Comptes d attente débiteurs',value:Math.max(0,autresActifs)},
-    {label:'4810 - Charges constatées d avance',value:chargesAvance},
-    {label:'5120 - Banque',value:banques},
-    {label:'5300 - Caisse',value:caisse},
-  ];
-  const passifRows=[
-    {label:'1010/1020/1060 - Fonds associatifs et réserves',value:fondsAssociatifs},
-    {label:'1640 - Emprunts',value:emprunts},
-    {label:'4010 - Fournisseurs',value:fournisseurs},
-    {label:'4310 - Dettes sociales',value:dettesSociales},
-    {label:'4710 - Comptes d attente créditeurs',value:comptesAttentePassif},
-    {label:'4870 - Produits constatés d avance',value:produitsConstates},
-    {label:`${resultat>=0?'1200':'1290'} - Résultat de l exercice`,value:Math.abs(resultat),signed:resultat},
-  ];
-  const totalActif=actifRows.reduce((s,r)=>s+Math.max(0,r.value),0);
-  const totalPassif=passifRows.reduce((s,r)=>s+Math.max(0,r.value),0);
-  return{actifRows,passifRows,totalActif,totalPassif,banques,caisse,creancesAdherents,immobilisations,cotisations,subventions,produitsPostes,chargesPostes,charges,produits,resultat,ecartJournal:diag.ecartJournal,ecartBilan:diag.ecartBilan};
+  // Lignes d'actif/passif : construites à partir de TOUS les comptes présents
+  // au journal (cf. bilanRows/BILAN_POSTES) et non plus d'une liste figée de
+  // regex, pour qu'aucune écriture ne puisse manquer au bilan.
+  const {actifRows,passifRows,totalActif,totalPassif,alertes}=bilanRows(resultat);
+  // Écritures saisies sans exercice : invisibles partout (Journal, Grand
+  // livre, Bilan, Résultat) parce que jnlExo() filtre sur exercice_id. C'est
+  // l'autre façon de « perdre » une écriture, indépendante du calcul lui-même.
+  const orphelines=orphanJournalDiagnostics();
+  return{actifRows,passifRows,totalActif,totalPassif,banques,caisse,creancesAdherents,immobilisations,cotisations,subventions,produitsPostes,chargesPostes,charges,produits,resultat,ecartJournal:diag.ecartJournal,ecartBilan:diag.ecartBilan,alertesBilan:alertes,orphelines};
 }
 
 function vBilan(){
-  const {actifRows,passifRows,totalActif,totalPassif,cotisations,subventions,produitsPostes,chargesPostes,charges,produits,resultat,ecartJournal,ecartBilan}=calcBilan();
+  const {actifRows,passifRows,totalActif,totalPassif,cotisations,subventions,produitsPostes,chargesPostes,charges,produits,resultat,ecartJournal,ecartBilan,alertesBilan,orphelines}=calcBilan();
   const exL=D.currentExo?.libelle||'Exercice actif';
   const dateEdition=new Date().toLocaleDateString('fr-FR');
   return`<div class="bilan-shell">
@@ -4824,7 +4898,7 @@ function vBilan(){
   <span class="badge bgray">Total ${totalActif.toFixed(2)} €</span>
   </div>
   <table class="bilan-table"><tbody>
-  ${actifRows.map(r=>`<tr><td class="label">${r.label}</td><td class="amount">${Math.max(0,r.value).toFixed(2)} €</td></tr>`).join('')}
+  ${actifRows.map(r=>`<tr><td class="label" style="${r.alerte?'color:var(--red)':''}">${r.label}</td><td class="amount" style="${r.alerte?'color:var(--red)':''}">${r.value.toFixed(2)} €</td></tr>`).join('')}
   <tr class="total"><td class="label">Total actif</td><td class="amount">${totalActif.toFixed(2)} €</td></tr>
   </tbody></table>
   </section>
@@ -4834,7 +4908,7 @@ function vBilan(){
   <span class="badge bgray">Total ${totalPassif.toFixed(2)} €</span>
   </div>
   <table class="bilan-table"><tbody>
-  ${passifRows.map(r=>`<tr class="${typeof r.signed==='number'?'is-result':''}"><td class="label" style="${typeof r.signed==='number'?`color:${r.signed>=0?'#1e7e34':'var(--red)'}`:''}">${r.label}</td><td class="amount" style="${typeof r.signed==='number'?`color:${r.signed>=0?'#1e7e34':'var(--red)'}`:''}">${(r.value||0).toFixed(2)} €</td></tr>`).join('')}
+  ${passifRows.map(r=>{const col=typeof r.signed==='number'?(r.signed>=0?'#1e7e34':'var(--red)'):(r.alerte?'var(--red)':'');return`<tr class="${typeof r.signed==='number'?'is-result':''}"><td class="label" style="${col?`color:${col}`:''}">${r.label}</td><td class="amount" style="${col?`color:${col}`:''}">${(r.value||0).toFixed(2)} €</td></tr>`;}).join('')}
   <tr class="total"><td class="label">Total passif</td><td class="amount">${totalPassif.toFixed(2)} €</td></tr>
   </tbody></table>
   </section>
@@ -4870,6 +4944,9 @@ function vBilan(){
   <h4>Contrôle</h4>
   <div class="bilan-kv ${ecartJournal===0?'ok':'alert'}"><span>Journal débit - crédit</span><strong>${ecartJournal.toFixed(2)} €</strong></div>
   <div class="bilan-kv ${ecartBilan===0?'ok':'alert'}"><span>Actif - passif</span><strong>${ecartBilan.toFixed(2)} €</strong></div>
+  <div class="bilan-kv ${alertesBilan.length===0?'ok':'alert'}"><span>Comptes non reconnus</span><strong>${alertesBilan.length}</strong></div>
+  <div class="bilan-kv ${orphelines.rows.length===0?'ok':'alert'}"><span>Écritures sans exercice (hors bilan)</span><strong>${orphelines.rows.length}${orphelines.rows.length?` · ${orphelines.totalDebit.toFixed(2)} €`:''}</strong></div>
+  ${orphelines.withinCurrent.length?`<div style="margin-top:8px;font-size:11px;color:var(--red);line-height:1.6">${orphelines.withinCurrent.length} écriture(s) datée(s) dans cet exercice mais sans exercice rattaché : elles ne sont ni au bilan ni au résultat. Rattachez-les depuis l'onglet Journal.</div>`:''}
   </div>
   </div>
   <div class="bilan-footer">
@@ -4953,7 +5030,7 @@ function printBilan(){
   </div>
   <div class="grid">
   <div class="panel"><div class="panel-h"><h2>Actif</h2><p>Immobilisations, créances et disponibilités.</p></div><table>
-  ${actifRows.map(r=>`<tr><td>${r.label}</td><td>${Math.max(0,r.value).toFixed(2)} €</td></tr>`).join('')}
+  ${actifRows.map(r=>`<tr><td>${r.label}</td><td>${r.value.toFixed(2)} €</td></tr>`).join('')}
   <tr class="tot"><td>Total actif</td><td>${totalActif.toFixed(2)} €</td></tr>
   </table></div>
   <div class="panel"><div class="panel-h"><h2>Passif</h2><p>Fonds associatifs, dettes et résultat.</p></div><table>
@@ -4999,19 +5076,50 @@ function printBilan(){
 
 function vResultat(){
   const jnl=jnlExo();
-  const prod=jnl.filter(j=>+j.credit>0&&j.compte&&j.compte.match(/^7/));
-  const charg=jnl.filter(j=>+j.debit>0&&j.compte&&j.compte.match(/^6/));
-  const tP=prod.reduce((s,j)=>s+(+j.credit),0),tC=charg.reduce((s,j)=>s+(+j.debit),0);
-  return`<div class="g2">
+  const diag=journalDiagnostics();
+  const orphelines=orphanJournalDiagnostics();
+  // Montant NET de la ligne dans son poste : une écriture inverse
+  // (remboursement d'un adhérent au débit du 707, remboursement de frais
+  // bancaires au crédit du 6270) fait partie du résultat au même titre que
+  // l'encaissement d'origine, en diminution du poste.
+  //
+  // L'ancien filtre — `+j.credit>0` côté produits, `+j.debit>0` côté charges —
+  // jetait purement et simplement ces lignes : elles n'étaient ni listées ni
+  // déduites, alors que le Bilan (calcul net depuis le 13/08/2026) les
+  // déduisait. D'où deux résultats différents affichés pour les mêmes
+  // écritures : +6953.35 € au Résultat contre +6521.00 € au Bilan sur
+  // l'exercice 2026-2027 (constaté le 17/09/2026).
+  const net=(j,sens)=>+((sens==='produit'?(+j.credit||0)-(+j.debit||0):(+j.debit||0)-(+j.credit||0)).toFixed(2));
+  const lignes=(re,sens)=>jnl.filter(j=>j.compte&&re.test(j.compte)&&((+j.debit||0)!==0||(+j.credit||0)!==0))
+  .map(j=>({...j,_net:net(j,sens)}));
+  const prod=lignes(/^7/,'produit'),charg=lignes(/^6/,'charge');
+  const tP=+prod.reduce((s,j)=>s+j._net,0).toFixed(2),tC=+charg.reduce((s,j)=>s+j._net,0).toFixed(2);
+  // Garde-fou : ce total DOIT être celui du Bilan, qui utilise un autre chemin
+  // de calcul (totalClasse). Toute divergence est un bug d'intégration, pas
+  // une question de présentation — on l'affiche au lieu de la laisser passer.
+  const ecartP=+(tP-diag.produits).toFixed(2),ecartC=+(tC-diag.charges).toFixed(2);
+  const nbExtournes=[...prod,...charg].filter(j=>j._net<0).length;
+  const ligne=(j,couleurPositive)=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:.5px solid var(--brd);font-size:12.5px">
+  <span>${esc(j.libelle||'')}${j._net<0?' <span style="font-size:10px;color:var(--txt2)">↩ extourne</span>':''}</span>
+  <span style="white-space:nowrap;color:${j._net<0?'var(--txt2)':couleurPositive}">${j._net<0?'−':''}${Math.abs(j._net).toFixed(2)} €</span>
+  </div>`;
+  return`${ecartP!==0||ecartC!==0?`<div class="alert" style="margin-bottom:12px;padding:10px 12px;border-radius:var(--r);background:#fdecea;color:#b33627;font-size:12px">
+  ⚠ Écart entre le détail affiché et le calcul du bilan : ${ecartP.toFixed(2)} € de produits, ${ecartC.toFixed(2)} € de charges. Des écritures ne sont pas intégrées — vérifiez le Journal.
+  </div>`:''}
+  ${orphelines.withinCurrent.length?`<div style="margin-bottom:12px;padding:10px 12px;border-radius:var(--r);background:#fff6e5;color:#8a5a00;font-size:12px">
+  ⚠ ${orphelines.withinCurrent.length} écriture(s) datée(s) dans cet exercice mais sans exercice rattaché : elles ne sont comptées ni ici ni au bilan. Rattachez-les depuis l'onglet Journal.
+  </div>`:''}
+  <div class="g2">
   <div><p class="stit">Produits (classe 7)</p>
-  ${prod.map(j=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:.5px solid var(--brd);font-size:12.5px"><span>${esc(j.libelle)}</span><span style="color:#1e7e34">${(+j.credit).toFixed(2)} €</span></div>`).join('')}
+  ${prod.map(j=>ligne(j,'#1e7e34')).join('')}
   <div style="display:flex;justify-content:space-between;padding:7px 0;font-weight:500"><span>Total</span><span style="color:#1e7e34">${tP.toFixed(2)} €</span></div>
   </div>
   <div><p class="stit">Charges (classe 6)</p>
-  ${charg.map(j=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:.5px solid var(--brd);font-size:12.5px"><span>${esc(j.libelle)}</span><span style="color:var(--red)">${(+j.debit).toFixed(2)} €</span></div>`).join('')}
+  ${charg.map(j=>ligne(j,'var(--red)')).join('')}
   <div style="display:flex;justify-content:space-between;padding:7px 0;font-weight:500"><span>Total</span><span style="color:var(--red)">${tC.toFixed(2)} €</span></div>
   </div>
   </div>
+  ${nbExtournes?`<div style="margin-top:10px;font-size:11px;color:var(--txt2)">${nbExtournes} ligne(s) en extourne (remboursement, avoir, annulation) : comptées en diminution du poste concerné, comme au bilan.</div>`:''}
   <div style="margin-top:14px;padding:14px;background:var(--bg2);border-radius:var(--r);display:flex;justify-content:space-between;align-items:center">
   <strong style="font-weight:500">Résultat de l'exercice</strong>
   <strong style="font-size:20px;font-weight:500;color:${tP-tC>=0?'#1e7e34':'var(--red)'}">${tP-tC>=0?'+':''}${(tP-tC).toFixed(2)} €</strong>

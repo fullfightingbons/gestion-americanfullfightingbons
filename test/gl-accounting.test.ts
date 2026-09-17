@@ -299,3 +299,153 @@ describe("Automatisations — alerte d'échec", () => {
     expect(workerSource).toContain("await notifyAutomationFailure(env");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Intégration exhaustive des écritures au Résultat et au Bilan (17/09/2026).
+//
+// Symptôme signalé : les remboursements saisis avec les boutons rapides
+// (⚡ Remboursement adhérent, ⚡ Remboursement frais bancaires) n'apparaissaient
+// pas à l'écran Résultat et n'étaient pas déduits de ses totaux, alors que le
+// Bilan, lui, les déduisait — deux résultats différents affichés pour le même
+// journal (+6953.35 € contre +6521.00 €).
+//
+// Deux causes distinctes, testées séparément ci-dessous :
+//   1. vResultat() ne regardait qu'un seul sens par classe de compte ;
+//   2. le Bilan affichait une liste FIGÉE de postes, tronquée par Math.max(0,…).
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Cotisation 250 + vente kit 40, puis remboursement du kit (40) et un aller-
+// retour de frais bancaires (7.65). Net attendu : produits 250, charges 0.
+const JOURNAL_REMBOURSEMENTS_FIXTURE = `
+  D.journal = [
+    {compte:'7561 - Cotisations membres actifs', debit:0, credit:250, date_op:'2026-09-01', exercice_id:'ex1', piece:'ADH-1', libelle:'Cotisation DUPONT'},
+    {compte:'512 - Banque', debit:250, credit:0, date_op:'2026-09-01', exercice_id:'ex1', piece:'ADH-1', libelle:'Contrepartie - Cotisation'},
+    {compte:'707 - Ventes vêtements et équipements', debit:0, credit:40, date_op:'2026-09-02', exercice_id:'ex1', piece:'VTE-1', libelle:'Vente kit DUPONT'},
+    {compte:'512 - Banque', debit:40, credit:0, date_op:'2026-09-02', exercice_id:'ex1', piece:'VTE-1', libelle:'Contrepartie - Vente kit'},
+    {compte:'707 - Ventes vêtements et équipements', debit:40, credit:0, date_op:'2026-09-17', exercice_id:'ex1', piece:'MAN-1-L1', libelle:'Remboursement adhérent - DUPONT'},
+    {compte:'512 - Banque', debit:0, credit:40, date_op:'2026-09-17', exercice_id:'ex1', piece:'MAN-1-L2', libelle:'Contrepartie - Remboursement adhérent'},
+    {compte:'6270 - Frais bancaires', debit:7.65, credit:0, date_op:'2026-09-05', exercice_id:'ex1', piece:'BNK-1', libelle:'Frais bancaires'},
+    {compte:'512 - Banque', debit:0, credit:7.65, date_op:'2026-09-05', exercice_id:'ex1', piece:'BNK-1', libelle:'Contrepartie - Frais bancaires'},
+    {compte:'6270 - Frais bancaires', debit:0, credit:7.65, date_op:'2026-09-06', exercice_id:'ex1', piece:'BNK-2', libelle:'Remboursement frais bancaires'},
+    {compte:'512 - Banque', debit:7.65, credit:0, date_op:'2026-09-06', exercice_id:'ex1', piece:'BNK-2', libelle:'Contrepartie - Remboursement frais bancaires'},
+  ];
+  D.currentExo = {id:'ex1', libelle:'2026-2027'};
+`;
+
+describe("vResultat() — les écritures d'extourne comptent dans le résultat", () => {
+  it("un remboursement adhérent (débit 707) est listé ET déduit du total produits", () => {
+    const result = loadAppAndRun(`
+      ${JOURNAL_REMBOURSEMENTS_FIXTURE}
+      capture({ html: vResultat(), diag: journalDiagnostics() });
+    `);
+    // La ligne de remboursement doit être VISIBLE (elle était absente avant).
+    expect(result.html).toContain("Remboursement adhérent");
+    expect(result.html).toContain("↩ extourne");
+    // Total produits net : 250 + 40 - 40 = 250, pas 290.
+    expect(result.html).toContain("250.00");
+    expect(result.html).not.toContain("290.00");
+    expect(result.diag.produits).toBeCloseTo(250, 2);
+  });
+
+  it("le total affiché par le Résultat est identique à celui du Bilan (aucune divergence possible)", () => {
+    const result = loadAppAndRun(`
+      ${JOURNAL_REMBOURSEMENTS_FIXTURE}
+      const b = calcBilan();
+      const html = vResultat();
+      const totaux = [...html.matchAll(/<span>Total<\\/span><span style="color:([^"]+)">([-\\d.]+) €/g)].map(m => m[2]);
+      capture({ produitsAffiches: totaux[0], chargesAffichees: totaux[1], bilan: {produits: b.produits, charges: b.charges, resultat: b.resultat} });
+    `);
+    expect(Number(result.produitsAffiches)).toBeCloseTo(result.bilan.produits, 2);
+    expect(Number(result.chargesAffichees)).toBeCloseTo(result.bilan.charges, 2);
+    expect(result.bilan.resultat).toBeCloseTo(250, 2);
+  });
+
+  it("aucun bandeau d'écart quand Résultat et Bilan concordent", () => {
+    const html = loadAppAndRun(`
+      ${JOURNAL_REMBOURSEMENTS_FIXTURE}
+      capture(vResultat());
+    `);
+    expect(html).not.toContain("Écart entre le détail affiché");
+  });
+});
+
+describe("calcBilan() — aucun compte ne peut disparaître du bilan", () => {
+  const bilan = (journal: string) =>
+    loadAppAndRun(`
+      D.journal = ${journal};
+      D.currentExo = {id:'ex1', date_debut:'2026-09-01', date_fin:'2027-08-31'};
+      capture(calcBilan());
+    `);
+
+  it("un compte hors des postes historiques (518) apparaît quand même à l'actif", () => {
+    const b = bilan(`[
+      {compte:'518 - Intérêts courus', debit:100, credit:0, date_op:'2026-09-01', exercice_id:'ex1'},
+      {compte:'512 - Banque', debit:0, credit:100, date_op:'2026-09-01', exercice_id:'ex1'}
+    ]`);
+    // Avant : actif ET passif à 0.00 €, les 100 € s'évaporaient sans alerte.
+    expect(b.totalActif).toBeCloseTo(100, 2);
+    expect(b.totalPassif).toBeCloseTo(100, 2);
+    expect(b.ecartBilan).toBe(0);
+  });
+
+  it("une dette fiscale (44x) est présentée au passif au lieu d'être ignorée", () => {
+    const b = bilan(`[
+      {compte:'512 - Banque', debit:120, credit:0, date_op:'2026-09-01', exercice_id:'ex1'},
+      {compte:'4457 - TVA collectée', debit:0, credit:120, date_op:'2026-09-01', exercice_id:'ex1'}
+    ]`);
+    expect(b.passifRows.some((r: any) => /État/.test(r.label) && Math.abs(r.value - 120) < 0.01)).toBe(true);
+    expect(b.ecartBilan).toBe(0);
+  });
+
+  it("un résultat déficitaire vient en diminution du passif (et non en augmentation)", () => {
+    const b = bilan(`[
+      {compte:'512 - Banque', debit:200, credit:0, date_op:'2026-09-01', exercice_id:'ex1'},
+      {compte:'7561 - Cotisations', debit:0, credit:200, date_op:'2026-09-01', exercice_id:'ex1'},
+      {compte:'6061 - Fournitures', debit:500, credit:0, date_op:'2026-09-02', exercice_id:'ex1'},
+      {compte:'512 - Banque', debit:0, credit:500, date_op:'2026-09-02', exercice_id:'ex1'}
+    ]`);
+    expect(b.resultat).toBeCloseTo(-300, 2);
+    const ligneResultat = b.passifRows.find((r: any) => typeof r.signed === "number");
+    expect(ligneResultat.value).toBeCloseTo(-300, 2); // et non +300 via Math.abs()
+    expect(b.ecartBilan).toBe(0);
+  });
+
+  it("un découvert bancaire est présenté au passif au lieu d'être affiché à 0.00 €", () => {
+    const b = bilan(`[
+      {compte:'6061 - Fournitures', debit:500, credit:0, date_op:'2026-09-01', exercice_id:'ex1'},
+      {compte:'512 - Banque', debit:0, credit:500, date_op:'2026-09-01', exercice_id:'ex1'}
+    ]`);
+    expect(b.passifRows.some((r: any) => /découvert/i.test(r.label) && Math.abs(r.value - 500) < 0.01)).toBe(true);
+    expect(b.ecartBilan).toBe(0);
+  });
+
+  it("un compte inconnu du plan est signalé au lieu d'être perdu", () => {
+    const b = bilan(`[
+      {compte:'9999 - Compte exotique', debit:60, credit:0, date_op:'2026-09-01', exercice_id:'ex1'},
+      {compte:'512 - Banque', debit:0, credit:60, date_op:'2026-09-01', exercice_id:'ex1'}
+    ]`);
+    expect(b.alertesBilan.length).toBeGreaterThan(0);
+    expect(b.totalActif).toBeCloseTo(60, 2);
+    expect(b.ecartBilan).toBe(0);
+  });
+
+  it("le contrôle « actif - passif » mesure les lignes réellement affichées", () => {
+    const b = bilan(`[
+      {compte:'512 - Banque', debit:300, credit:0, date_op:'2026-09-01', exercice_id:'ex1'},
+      {compte:'4870 - Produits constatés d avance', debit:0, credit:300, date_op:'2026-09-01', exercice_id:'ex1'}
+    ]`);
+    // Ce cas sortait -300.00 € au contrôle sur un bilan pourtant équilibré.
+    expect(b.totalActif).toBeCloseTo(b.totalPassif, 2);
+    expect(b.ecartBilan).toBe(0);
+  });
+
+  it("les écritures sans exercice sont comptées et signalées (elles sont hors bilan)", () => {
+    const b = bilan(`[
+      {compte:'512 - Banque', debit:100, credit:0, date_op:'2026-09-03', exercice_id:null},
+      {compte:'7561 - Cotisation', debit:0, credit:100, date_op:'2026-09-03', exercice_id:null}
+    ]`);
+    expect(b.orphelines.rows.length).toBe(2);
+    expect(b.orphelines.withinCurrent.length).toBe(2);
+    expect(b.totalActif).toBeCloseTo(0, 2);
+  });
+});
