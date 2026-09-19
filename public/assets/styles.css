@@ -41,6 +41,14 @@ body{font-family:var(--font-body);background:
 .login-box p{font-size:13px;color:var(--muted);margin-bottom:24px}
 .login-err{background:var(--red-l);color:var(--red-dark);font-size:12px;padding:8px 12px;border-radius:var(--r);margin-bottom:12px;display:none}
 .login-hint{font-size:11px;color:var(--muted);margin-top:14px;padding-top:14px;border-top:1px solid var(--brd)}
+/* Bouton afficher/masquer sur le champ mot de passe de connexion (plus utile
+   sur clavier tactile, où une faute de frappe se voit moins) : n'affecte que
+   ce champ, aucune autre règle existante n'est modifiée. */
+.pwd-wrap{position:relative}
+.pwd-wrap input{padding-right:40px}
+.pwd-toggle{position:absolute;top:50%;right:2px;transform:translateY(-50%);background:transparent;border:none;cursor:pointer;font-size:15px;line-height:1;padding:8px;color:var(--muted);border-radius:8px}
+.pwd-toggle:hover{color:var(--ink);background:rgba(15,23,32,.06)}
+.pwd-toggle:focus-visible{outline:2px solid var(--red);outline-offset:1px}
 /* HEADER */
 .hdr{background:
   radial-gradient(circle at top right,rgba(214,172,84,.18),transparent 24%),
@@ -294,6 +302,10 @@ tr:hover td{background:#fbf6ef}
   .bilan-stamp{min-width:0;text-align:left}
   .dipl-grid{grid-template-columns:1fr}
 }
+/* Bouton "Plus" des onglets : masqué par défaut (desktop), affiché
+   uniquement sous 700px (voir bloc media ci-dessous). Ne change rien à la
+   barre d'onglets desktop, qui garde tous les onglets côte à côte. */
+.tab-toggle-more{display:none}
 @media(max-width:700px){
   .notice-stack{top:auto;bottom:12px;left:12px;right:12px;max-width:none}
   .g2,.g3,.g4{grid-template-columns:1fr}
@@ -317,6 +329,15 @@ tr:hover td{background:#fbf6ef}
   .tab-btn{padding:12px 16px;font-size:13.5px;min-height:44px}
   .stab{padding:10px 14px;font-size:13px;min-height:40px}
   .dash-priority-actions .btn,.modal-act .btn{flex:1 1 auto}
+  /* Regroupement des onglets secondaires sous "Plus" (voir renderTabs()
+     dans app.js) : sur mobile, seuls Pilotage/Adhérents/Présences & Planning
+     restent visibles d'emblée, le reste se déplie au tap. L'onglet
+     secondaire actif reste toujours visible même replié, pour garder le
+     repère de navigation. */
+  .tabs-wrap .tab-btn.tab-secondary{display:none}
+  .tabs-wrap .tab-btn.tab-secondary.active{display:inline-block}
+  .tab-toggle-more{display:inline-block}
+  .tabs-wrap.tabs-expanded .tab-btn.tab-secondary{display:inline-block}
 }
 @media(max-width:480px){
   .login-box{padding:28px 22px}

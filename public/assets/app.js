@@ -67,6 +67,11 @@ const ALL_TABS = [
 {id:'feedback',     icon:'💬',label:'Feedback',      perm:'perm_feedback'},
 {id:'administration',icon:'⚙️',label:'Administration',perm:'perm_administration'},
 ];
+// Onglets gardés visibles en priorité sur petit écran (mobile) ; les autres
+// passent derrière le bouton "Plus" — n'affecte que l'affichage sous 700px
+// (voir styles.css), la liste desktop et la logique de navigation (showTab)
+// restent identiques dans tous les cas.
+const TAB_PRIMARY_MOBILE = new Set(['dashboard','adherents','suivi']);
 const PERM_META = [
   ['perm_adherents','👥 Adhérents'],
 ['perm_presences','✅ Présences'],
@@ -1368,6 +1373,18 @@ function setLoginError(message){
   err.textContent=message || 'Email ou mot de passe incorrect';
   err.style.display='block';
 }
+// Afficher/masquer le mot de passe de connexion (utile sur clavier tactile,
+// où une faute de frappe est plus fréquente et moins visible qu'au clavier
+// physique). N'affecte que ce champ.
+function toggleLoginPwd(){
+  const inp=document.getElementById('l-pwd');
+  const btn=document.getElementById('l-pwd-toggle');
+  if(!inp||!btn) return;
+  const show=inp.type==='password';
+  inp.type=show?'text':'password';
+  btn.textContent=show?'🙈':'👁';
+  btn.setAttribute('aria-label',show?'Masquer le mot de passe':'Afficher le mot de passe');
+}
 
 async function doLogin(){
   const email=document.getElementById('l-email').value.trim().toLowerCase();
@@ -1517,8 +1534,29 @@ function renderTabs(){
     if(t.perms) return t.perms.some(p=>hasPerm(p));
     return !t.perm || hasPerm(t.perm);
   });
-  document.getElementById('tabs-bar').innerHTML=vis.map(t=>`<button class="tab-btn ${UI.tab===t.id?'active':''}" onclick="showTab('${t.id}')">${t.icon} ${t.label}</button>`).join('');
+  const btns=vis.map(t=>{
+    const secondary=!TAB_PRIMARY_MOBILE.has(t.id);
+    return `<button class="tab-btn ${secondary?'tab-secondary':''} ${UI.tab===t.id?'active':''}" onclick="showTab('${t.id}')">${t.icon} ${t.label}</button>`;
+  }).join('');
+  // Bouton "Plus" : uniquement visible sous 700px (styles.css) quand au
+  // moins un onglet secondaire est présent dans la liste filtrée par
+  // permissions. Sur desktop, aucun impact — tous les onglets restent
+  // affichés côte à côte comme avant.
+  const hasSecondary=vis.some(t=>!TAB_PRIMARY_MOBILE.has(t.id));
+  const moreBtn=hasSecondary?`<button class="tab-btn tab-toggle-more" onclick="toggleTabsMore()" aria-expanded="false">⋯ Plus</button>`:'';
+  document.getElementById('tabs-bar').innerHTML=btns+moreBtn;
   if(!vis.find(t=>t.id===UI.tab)&&vis.length>0) UI.tab=vis[0].id;
+}
+// Déplie/replie les onglets secondaires sur mobile (bouton "Plus"). La classe
+// est posée sur #tabs-bar lui-même, qui n'est jamais recréé (seul son
+// innerHTML change dans renderTabs), donc l'état ouvert/fermé survit à un
+// changement d'onglet tant que l'utilisateur ne replie pas manuellement.
+function toggleTabsMore(){
+  const wrap=document.getElementById('tabs-bar');
+  if(!wrap) return;
+  const open=wrap.classList.toggle('tabs-expanded');
+  const btn=wrap.querySelector('.tab-toggle-more');
+  if(btn) btn.setAttribute('aria-expanded',open?'true':'false');
 }
 function needsLoadedTab(tab){
   return ['dashboard','adherents','diplomes','banque','comptabilite','achat','facture','administration','feedback','suivi','materiel'].includes(tab);
@@ -7748,8 +7786,8 @@ function renderModal(){
     <div class="g2">
     <div class="fg"><label>Prénom</label><input id="u-pre" value="${u.prenom}"></div>
     <div class="fg"><label>Nom</label><input id="u-nom" value="${u.nom}"></div>
-    <div class="fg full"><label>Email (identifiant de connexion)</label><input id="u-eml" type="email" value="${u.email||''}"></div>
-    <div class="fg full"><label>Mot de passe${UI.editObj?' (vide = inchangé)':''}</label><input id="u-pwd" type="password" placeholder="••••••••"></div>
+    <div class="fg full"><label>Email (identifiant de connexion)</label><input id="u-eml" type="email" autocomplete="off" value="${u.email||''}"></div>
+    <div class="fg full"><label>Mot de passe${UI.editObj?' (vide = inchangé)':''}</label><input id="u-pwd" type="password" autocomplete="new-password" placeholder="••••••••"></div>
     <div class="fg"><label>Rôle</label><select id="u-rol">${Object.entries(ROLES).map(([k,v])=>`<option value="${k}" ${u.role===k?'selected':''}>${v}</option>`).join('')}</select></div>
     <div class="fg"><label>Statut</label><select id="u-act"><option value="1" ${u.actif?'selected':''}>Actif</option><option value="0" ${!u.actif?'selected':''}>Inactif</option></select></div>
     </div>
@@ -7759,9 +7797,9 @@ function renderModal(){
   }else if(UI.modal==='pwd'){
     html=`<div class="modal" style="max-width:440px"><h2>🔐 Modifier mon mot de passe</h2>
     <div style="display:flex;flex-direction:column;gap:12px">
-    <div class="fg"><label>Mot de passe actuel</label><input id="pwd-cur" type="password" placeholder="••••••••"></div>
-    <div class="fg"><label>Nouveau mot de passe</label><input id="pwd-new" type="password" placeholder="Au moins 6 caractères"></div>
-    <div class="fg"><label>Confirmation</label><input id="pwd-cfm" type="password" placeholder="Répétez le nouveau mot de passe"></div>
+    <div class="fg"><label>Mot de passe actuel</label><input id="pwd-cur" type="password" autocomplete="current-password" placeholder="••••••••"></div>
+    <div class="fg"><label>Nouveau mot de passe</label><input id="pwd-new" type="password" autocomplete="new-password" placeholder="Au moins 6 caractères"></div>
+    <div class="fg"><label>Confirmation</label><input id="pwd-cfm" type="password" autocomplete="new-password" placeholder="Répétez le nouveau mot de passe"></div>
     </div>
     <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="saveOwnPassword()">Enregistrer</button></div>
     </div>`;

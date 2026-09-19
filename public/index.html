@@ -48,8 +48,13 @@
     <h1 id="login-club-nom">AMERICAN FULL FIGHTING<br>BONS EN CHABLAIS</h1>
     <p>Connectez-vous pour accéder à la gestion centralisée du club</p>
     <div class="login-err" id="login-err">Email ou mot de passe incorrect</div>
-    <div class="fg" style="text-align:left"><label>Email</label><input id="l-email" type="email" placeholder="Votre adresse email" onkeydown="if(event.key==='Enter')doLogin()"></div>
-    <div class="fg" style="margin:12px 0;text-align:left"><label>Mot de passe</label><input id="l-pwd" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"></div>
+    <div class="fg" style="text-align:left"><label>Email</label><input id="l-email" type="email" autocomplete="username" placeholder="Votre adresse email" onkeydown="if(event.key==='Enter')doLogin()"></div>
+    <div class="fg" style="margin:12px 0;text-align:left"><label>Mot de passe</label>
+      <div class="pwd-wrap">
+        <input id="l-pwd" type="password" autocomplete="current-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+        <button type="button" class="pwd-toggle" id="l-pwd-toggle" tabindex="-1" onclick="toggleLoginPwd()" aria-label="Afficher le mot de passe">👁</button>
+      </div>
+    </div>
     <button class="btn primary" style="width:100%;padding:10px" onclick="doLogin()">Se connecter</button>
     <p class="login-hint">Utilisez votre compte administrateur du club.</p>
   </div>
@@ -95,6 +100,6 @@
 <input type="file" id="imp-ecr-file"  accept=".csv,.txt"       style="display:none" onchange="onImpEcrFile(event)">
 <input type="file" id="backup-json-input" accept=".json,application/json" style="display:none" onchange="onBackupJSONFile(event)">
 
-<script src="/assets/app.js?v=20260917a" defer></script>
+<script src="/assets/app.js?v=20260919a" defer></script>
 </body>
 </html>
