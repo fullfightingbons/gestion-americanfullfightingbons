@@ -23,19 +23,43 @@ function rgb255(c: RGB): [number, number, number] {
 function rg(c: RGB): string { const [r, g, b] = rgb255(c); return `${r} ${g} ${b} rg`; }
 function RG(c: RGB): string { const [r, g, b] = rgb255(c); return `${r} ${g} ${b} RG`; }
 
+// La police du document est déclarée en /WinAnsiEncoding (cf. buildPdfDocument) :
+// les lettres accentuées du français (Latin-1, U+00A0–U+00FF) et l'euro sont
+// donc affichables telles quelles, à condition d'écrire l'octet WinAnsi
+// correspondant. strToBytes() écrit un octet par caractère (charCode & 0xFF),
+// ce qui est exact pour tout le Latin-1 ; seuls €, Œ et œ n'ont pas le même
+// point de code en WinAnsi (0x80, 0x8C, 0x9C) : ils sont remplacés ici par le
+// caractère de contrôle C1 portant cet octet. Ce remplacement est idempotent
+// (safe(safe(x)) === safe(x)) : textWrapped() puis text() repassent chacun le
+// texte dans safe().
+//
+// Avant cette correction, safe() supprimait TOUS les accents (« Mickaël » →
+// « Mickael », « Reçu » → « Recu ») et remplaçait € par une espace : les
+// montants sortaient sans devise sur tous les PDF du back-office.
+const WINANSI_BYTE: Record<string, string> = {
+  '\u20AC': '\u0080', // €
+  '\u0152': '\u008C', // Œ
+  '\u0153': '\u009C', // œ
+};
+
 export function safe(v: unknown): string {
-  return String(v ?? '')
+  const src = String(v ?? '')
     .replace(/[\u2013\u2014]/g, '-')
     .replace(/[\u2018\u2019\u02BC]/g, "'")
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    // \u00B0 (°) est conservé : même code point en Latin-1/WinAnsi, donc un
-    // octet unique — strToBytes ci-dessous l'encode correctement. Le strip
-    // ASCII générique ne doit pas l'emporter (cf. bug "N " au lieu de "N°"
-    // sur tous les numéros de document).
-    .replace(/[^\x20-\x7E\u00B0]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+    .normalize('NFC');
+  let out = '';
+  for (const ch of src) {
+    const cp = ch.codePointAt(0) as number;
+    if ((cp >= 0x20 && cp <= 0x7E) || (cp >= 0xA0 && cp <= 0xFF)) out += ch; // ASCII + Latin-1 (= WinAnsi)
+    else if (WINANSI_BYTE[ch]) out += WINANSI_BYTE[ch];
+    else if (cp === 0x80 || cp === 0x8C || cp === 0x9C) out += ch; // déjà converti (idempotence)
+    else {
+      // Hors WinAnsi : on garde la lettre de base si elle existe (ő → o), sinon une espace.
+      const base = ch.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      out += /^[\x20-\x7E]+$/.test(base) ? base : ' ';
+    }
+  }
+  return out.replace(/\s+/g, ' ').trim();
 }
 
 function esc(v: unknown): string {
@@ -144,6 +168,7 @@ const HELV_WIDTHS: Record<string, number> = {
   'k': 500, 'l': 222, 'm': 833, 'n': 556, 'o': 556, 'p': 556, 'q': 556, 'r': 333, 's': 500, 't': 278,
   'u': 556, 'v': 500, 'w': 722, 'x': 500, 'y': 500, 'z': 500,
   '{': 334, '|': 260, '}': 334, '~': 584, '°': 400,
+  '\u0080': 556, '\u008C': 1000, '\u009C': 944,
 };
 const HELV_BOLD_WIDTHS: Record<string, number> = {
   ' ': 278, '!': 333, '"': 474, '#': 556, '$': 556, '%': 889, '&': 722, "'": 238,
@@ -158,6 +183,7 @@ const HELV_BOLD_WIDTHS: Record<string, number> = {
   'k': 556, 'l': 278, 'm': 889, 'n': 611, 'o': 611, 'p': 611, 'q': 611, 'r': 389, 's': 556, 't': 333,
   'u': 611, 'v': 556, 'w': 778, 'x': 556, 'y': 556, 'z': 500,
   '{': 389, '|': 280, '}': 389, '~': 584, '°': 400,
+  '\u0080': 556, '\u008C': 1000, '\u009C': 944,
 };
 
 // F2 = Helvetica-Bold ; tout le reste (F1 Helvetica, F3 Times-Italic sans
@@ -166,7 +192,8 @@ const HELV_BOLD_WIDTHS: Record<string, number> = {
 export function measureTextWidth(str: string, fontName: string, fontSize: number): number {
   const table = fontName === 'F2' ? HELV_BOLD_WIDTHS : HELV_WIDTHS;
   let units = 0;
-  for (const ch of str) units += table[ch] ?? 556;
+  // Lettre accentuée (é, ç, Ê…) : même chasse que sa lettre de base.
+  for (const ch of str) units += table[ch] ?? table[ch.normalize('NFD').charAt(0)] ?? 556;
   return (units / 1000) * fontSize;
 }
 
@@ -299,7 +326,17 @@ export function addJpegImage(builder: PdfBuilder, jpegBytes: Uint8Array): ImageD
   return builder.addImage(jpegBytes, { filter: 'DCTDecode', colorSpace, bpc: 8, width: info.width, height: info.height });
 }
 
-export function buildPdfDocument(contentStreams: string[], images: ImageEntry[] = []): Uint8Array {
+export interface PdfMetadata { title?: string; author?: string }
+
+// Chaîne texte PDF en UTF-16BE (BOM + code units) : valable pour tout caractère,
+// sans dépendre de PDFDocEncoding (qui diffère de WinAnsi pour € par exemple).
+function pdfTextString(text: string): string {
+  let hex = 'FEFF';
+  for (let i = 0; i < text.length; i++) hex += text.charCodeAt(i).toString(16).padStart(4, '0').toUpperCase();
+  return `<${hex}>`;
+}
+
+export function buildPdfDocument(contentStreams: string[], images: ImageEntry[] = [], meta?: PdfMetadata): Uint8Array {
   const pageCount = contentStreams.length;
   const pageObjStart = 3;
   const streamObjStart = pageObjStart + pageCount;
@@ -308,7 +345,10 @@ export function buildPdfDocument(contentStreams: string[], images: ImageEntry[] 
   const font3ObjNum = font2ObjNum + 1;
   const imageObjStart = font3ObjNum + 1;
   const imageObjNums = images.map((_, i) => imageObjStart + i);
-  const lastObjNum = imageObjStart + images.length - 1;
+  const lastImageObjNum = imageObjStart + images.length - 1;
+  const hasMeta = !!(meta && (meta.title || meta.author));
+  const infoObjNum = hasMeta ? lastImageObjNum + 1 : 0;
+  const lastObjNum = infoObjNum || lastImageObjNum;
 
   const objChunks: Uint8Array[][] = new Array(lastObjNum);
 
@@ -355,6 +395,15 @@ export function buildPdfDocument(contentStreams: string[], images: ImageEntry[] 
     objChunks[objNum - 1] = [header, img.bytes, strToBytes(`\nendstream\nendobj\n`)];
   });
 
+  if (infoObjNum && meta) {
+    const fields = [
+      meta.title ? `/Title ${pdfTextString(meta.title)}` : '',
+      meta.author ? `/Author ${pdfTextString(meta.author)}` : '',
+      '/Producer (AFFBC gestion)',
+    ].filter(Boolean).join(' ');
+    objChunks[infoObjNum - 1] = [strToBytes(`${infoObjNum} 0 obj\n<< ${fields} >>\nendobj\n`)];
+  }
+
   const header = strToBytes('%PDF-1.4\n');
   const offsets: number[] = [];
   const allChunks: Uint8Array[] = [header];
@@ -367,7 +416,7 @@ export function buildPdfDocument(contentStreams: string[], images: ImageEntry[] 
   const n = lastObjNum + 1;
   let xrefStr = `xref\n0 ${n}\n0000000000 65535 f \n`;
   for (const off of offsets) xrefStr += `${String(off).padStart(10, '0')} 00000 n \n`;
-  xrefStr += `trailer\n<< /Size ${n} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  xrefStr += `trailer\n<< /Size ${n} /Root 1 0 R${infoObjNum ? ` /Info ${infoObjNum} 0 R` : ''} >>\nstartxref\n${xrefOffset}\n%%EOF`;
   allChunks.push(strToBytes(xrefStr));
 
   return concatBytes(allChunks);

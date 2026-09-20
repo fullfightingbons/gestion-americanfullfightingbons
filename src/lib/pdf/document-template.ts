@@ -60,6 +60,8 @@ export interface DocumentInput {
   tvaLabel?: string;
   mentionTva?: string;
   footerNote?: string;
+  /** Titre des métadonnées PDF (onglet du navigateur, propriétés du document). */
+  pdfTitle?: string;
 }
 
 const HEADER_H = 41;
@@ -281,7 +283,7 @@ export function buildDocumentPdfBytes(doc: DocumentInput): Uint8Array {
   const titres: Record<DocumentType, string> = {
     facture: 'Facture',
     don: 'Recu de don',
-    cotisation: 'Recu de cotisation',
+    cotisation: 'Reçu de cotisation',
     attestation: 'Attestation de cotisation',
     // Meme gabarit paragraphes+signature que 'attestation' (cf. le if
     // ci-dessous qui teste les deux types ensemble) : seul le titre d'en-tete
@@ -316,5 +318,8 @@ export function buildDocumentPdfBytes(doc: DocumentInput): Uint8Array {
 
   drawFooter(p, { mentionTva: doc.mentionTva, note: doc.footerNote });
 
-  return buildPdfDocument(p.getStreams(), p.images);
+  return buildPdfDocument(p.getStreams(), p.images, {
+    title: doc.pdfTitle || `${titres[doc.type] || 'Document'} ${doc.numero}`,
+    author: CLUB_NOM,
+  });
 }

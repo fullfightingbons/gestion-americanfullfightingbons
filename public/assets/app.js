@@ -1162,9 +1162,7 @@ async function fetchStorageFileAsBase64(url){
 
 function getAdherentPublicRegistration(adherentId){
   if(!adherentId) return null;
-  const matches=(D.publicRegistrations||[]).filter(r=>r.adherent_id===adherentId);
-  if(!matches.length) return null;
-  return matches.sort((a,b)=>(b.updated_at||b.created_at||'').localeCompare(a.updated_at||a.created_at||''))[0]||null;
+  return registrationIndex().get(adherentId)||null;
 }
 
 function getRegistrationDocuments(registration){
@@ -1201,6 +1199,379 @@ function getRegistrationDocuments(registration){
 
 function getAdherentDocuments(adherentId){
   return getRegistrationDocuments(getAdherentPublicRegistration(adherentId));
+}
+
+// ═══════════════════════════════════════════════════
+// DOSSIER D'ADHÉSION — réponses d'inscription, justificatifs et alertes
+// ═══════════════════════════════════════════════════
+// Le tableau Adhérents ne se limite plus aux cases ✓/✗ de la fiche : il croise
+//  (1) les indicateurs de la ligne `adherents` (droit_image, certificat, reglement…),
+//  (2) le dossier d'inscription en ligne (inscriptions_publiques.dossier_json /
+//      documents_json) quand il existe POUR LA SAISON de l'adhérent,
+//  (3) l'âge, quand la date de naissance est connue.
+//
+// Ce que la case « certificat » confondait, et que l'on distingue maintenant :
+//  - certificat NON REQUIS  : adulte, questionnaire de santé sans « oui » ;
+//  - certificat OBLIGATOIRE : mineur, OU au moins un « oui » au questionnaire de santé
+//                             (règle du club, miroir de validatePayload() dans le worker
+//                             « inscription ») ;
+//  - exigence INCONNUE      : fiche saisie à la main ou importée, sans questionnaire.
+//
+// Le droit à l'image est un CHOIX de l'adhérent (accordé / refusé), pas une pièce à
+// fournir : un refus n'est JAMAIS un dossier incomplet. Il déclenche en revanche une
+// alerte, pour que personne ne publie de photo ou de vidéo de cette personne.
+//
+// Un dossier d'inscription d'une saison passée n'est pas retenu pour la saison en
+// cours : au renouvellement, le bureau remet volontairement « Certificat » et
+// « Règlement » à zéro (cf. renewAdh) et ce « à revalider » ne doit pas être masqué
+// par les réponses de l'an dernier.
+//
+// Confidentialité : les infobulles et pastilles du tableau n'indiquent que « mineur »
+// ou le NOMBRE de réponses « oui » ; le détail question par question (donnée de santé)
+// n'apparaît que dans la fiche de l'adhérent.
+
+const QS_SPORT_QUESTIONS=[
+  {key:'familyCardiacDeath',label:"Un membre de ta famille est-il décédé subitement d'une cause cardiaque avant 50 ans ?"},
+  {key:'chestPain',label:"As-tu ressenti une douleur dans la poitrine à l'effort ?"},
+  {key:'wheezing',label:"As-tu eu des sifflements ou difficultés à respirer pendant l'effort ?"},
+  {key:'fainting',label:"As-tu perdu connaissance ou t'es-tu évanoui(e) ?"},
+  {key:'sportStop',label:"Un médecin t'a-t-il déjà conseillé d'arrêter le sport ?"},
+  {key:'longTermTreatment',label:"Prends-tu un traitement médical de longue durée ?"},
+  {key:'bonePain',label:"As-tu des douleurs articulaires ou osseuses en dehors des traumatismes ?"},
+  {key:'practiceInterrupted',label:"As-tu dû interrompre un entraînement pour raison médicale au cours des 12 derniers mois ?"},
+  {key:'medicalAdviceNeeded',label:"As-tu besoin d'un avis médical ou d'une surveillance particulière pour pratiquer un sport ?"},
+];
+
+// D1 renvoie des 0/1 ; l'interface peut aussi garder des booléens après une saisie locale.
+function flagOn(v){ return v===true||v===1||v==='1'||String(v??'').toLowerCase()==='true'; }
+function flagOff(v){ return v===false||v===0||v==='0'||String(v??'').toLowerCase()==='false'; }
+
+// true/false, ou null si la date de naissance est absente ou illisible.
+function isMinorOn(naissance,ref){
+  const iso=toISODate(naissance||'');
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+  const birth=new Date(iso+'T00:00:00');
+  if(Number.isNaN(birth.getTime())) return null;
+  const now=ref instanceof Date?ref:new Date();
+  let age=now.getFullYear()-birth.getFullYear();
+  if(now.getMonth()<birth.getMonth()||(now.getMonth()===birth.getMonth()&&now.getDate()<birth.getDate())) age--;
+  return age<18;
+}
+
+// ── Inscription en ligne rattachée à un adhérent ────────────────────────────
+// Index adherent_id → inscription la plus récente, reconstruit uniquement quand la
+// liste change : le tableau interroge ce lien pour chaque ligne à chaque rendu.
+let REG_INDEX={src:null,len:-1,map:new Map()};
+function registrationIndex(){
+  const list=D.publicRegistrations||[];
+  if(REG_INDEX.src!==list||REG_INDEX.len!==list.length){
+    const map=new Map();
+    for(const r of list){
+      if(!r||!r.adherent_id) continue;
+      const cur=map.get(r.adherent_id);
+      if(!cur||(r.updated_at||r.created_at||'').localeCompare(cur.updated_at||cur.created_at||'')>0) map.set(r.adherent_id,r);
+    }
+    REG_INDEX={src:list,len:list.length,map};
+  }
+  return REG_INDEX.map;
+}
+
+// dossier_json est une colonne TEXT : renvoyée en chaîne JSON brute par l'API générique.
+const REG_DOSSIER_CACHE=new WeakMap();
+function parseRegistrationDossier(reg){
+  if(!reg) return null;
+  if(REG_DOSSIER_CACHE.has(reg)) return REG_DOSSIER_CACHE.get(reg);
+  let dossier=null;
+  const raw=reg.dossier_json;
+  if(raw&&typeof raw==='object') dossier=raw;
+  else if(typeof raw==='string'&&raw.trim()){
+    try{ const o=JSON.parse(raw); if(o&&typeof o==='object') dossier=o; }catch(e){ dossier=null; }
+  }
+  REG_DOSSIER_CACHE.set(reg,dossier);
+  return dossier;
+}
+
+function registrationSeason(reg){ return seasonFromDate(reg?.submitted_at||reg?.created_at||''); }
+
+// { reg, current, dossier } — `current` : l'inscription est de la saison de la fiche.
+function adherentRegistration(a){
+  const reg=a?.id?getAdherentPublicRegistration(a.id):null;
+  if(!reg) return {reg:null,current:false,dossier:null};
+  const adhSeason=seasonFromDate(a.date_fin_adhesion||a.date_inscription);
+  return {reg,current:!!adhSeason&&adhSeason===registrationSeason(reg),dossier:parseRegistrationDossier(reg)};
+}
+
+// Ce que dit UNE inscription sur l'obligation de certificat.
+function registrationCertificateRequirement(reg,dossier){
+  const qs=dossier?.health?.qsSport||null;
+  const qsYes=qs?QS_SPORT_QUESTIONS.filter(q=>qs[q.key]==='yes'):[];
+  const mineur=(reg&&reg.mineur!=null&&reg.mineur!=='')?Number(reg.mineur)===1:null;
+  const flag=dossier?.computedTotals?.certificateRequired;
+  const required=dossier?((typeof flag==='boolean')?flag:(mineur===true||qsYes.length>0)):null;
+  return {qs,qsYes,mineur,required};
+}
+
+// ── Certificat médical ──────────────────────────────────────────────────────
+const CERT_STATES={
+  non_requis:{label:'Non requis',tone:'gray',resolved:true},
+  fourni:{label:'✓ Fourni',tone:'ok',resolved:true},
+  a_valider:{label:'⚠ À valider',tone:'warn',resolved:false},
+  manquant:{label:'✗ Manquant',tone:'no',resolved:false},
+  a_fournir:{label:'✗ À fournir',tone:'no',resolved:false},
+};
+
+function adherentCertificatInfo(a){
+  const {reg,current,dossier}=adherentRegistration(a);
+  const useReg=!!(reg&&current);
+  let mineur=null,required=null,source='aucune',qsYes=[],qsAnswered=false;
+  if(useReg){
+    const r=registrationCertificateRequirement(reg,dossier);
+    qsYes=r.qsYes; qsAnswered=!!r.qs;
+    mineur=(r.mineur!==null)?r.mineur:isMinorOn(a?.naissance);
+    if(dossier){ required=r.required; source='inscription'; }
+  }else{
+    mineur=isMinorOn(a?.naissance);
+  }
+  if(required===null&&mineur===true){ required=true; source='age'; }
+  const hasDocument=useReg&&getRegistrationDocuments(reg).some(d=>d.key==='medicalCertificate');
+
+  let state;
+  if(required===false) state='non_requis';
+  else if(flagOn(a?.certificat)) state='fourni';
+  else if(required===true) state=hasDocument?'a_valider':'manquant';
+  else state='a_fournir';
+
+  const reasonCodes=[],reasons=[];
+  if(required===true){
+    if(mineur===true){ reasonCodes.push('mineur'); reasons.push('Adhérent mineur'); }
+    if(qsYes.length){ reasonCodes.push('qs'); reasons.push(qsYes.length===1?'1 réponse « oui » au questionnaire de santé':`${qsYes.length} réponses « oui » au questionnaire de santé`); }
+    if(!reasons.length){ reasonCodes.push('inscription'); reasons.push('exigé lors de l’inscription'); }
+  }
+  const why=reasons.join(' · ');
+  const tips={
+    non_requis:'Certificat non exigé pour ce dossier (adulte, questionnaire de santé sans réponse « oui »).',
+    fourni:required===true?`Certificat obligatoire (${why}) : fourni et validé.`:'Certificat coché comme fourni.',
+    a_valider:`Certificat obligatoire (${why}) : pièce reçue à l’inscription, à vérifier puis à cocher dans la fiche.`,
+    manquant:`Certificat obligatoire (${why}) : aucune pièce reçue, à réclamer à l’adhérent.`,
+    a_fournir:'Certificat non coché. Pas de questionnaire d’inscription en ligne pour cette saison : impossible de savoir s’il est exigé.',
+  };
+  const meta=CERT_STATES[state];
+  return {state,required,mineur,reasons,reasonCodes,qsYes,qsAnswered,hasDocument,source,resolved:meta.resolved,label:meta.label,tone:meta.tone,tip:tips[state]};
+}
+
+// ── Droit à l'image ─────────────────────────────────────────────────────────
+function adherentDroitImageInfo(a){
+  const v=a?.droit_image;
+  const state=flagOn(v)?'accorde':flagOff(v)?'refuse':'inconnu';
+  const {reg,dossier}=adherentRegistration(a);
+  let choix=null;
+  const c=dossier?.consents?.imageRights;
+  if(c==='yes'||c==='no') choix=c;
+  else if(reg&&reg.droit_image!=null) choix=Number(reg.droit_image)===1?'yes':'no';
+  const regDate=reg?fd(reg.submitted_at||reg.created_at):'';
+  let tip;
+  if(state==='refuse'){
+    tip=choix==='no'
+      ?`Refus exprimé à l’inscription en ligne du ${regDate} : ne publier aucune photo ni vidéo de cette personne.`
+      :'Aucune autorisation de droit à l’image enregistrée : ne publier aucune photo ni vidéo de cette personne.';
+    if(choix==='yes') tip+=' (La fiche a été modifiée depuis l’inscription, où le droit avait été accordé.)';
+  }else if(state==='accorde'){
+    tip='Droit à l’image accordé.'+(choix==='no'?' (Refusé à l’inscription en ligne, puis modifié sur la fiche.)':'');
+  }else tip='Droit à l’image non renseigné.';
+  return {state,choixInscription:choix,tip};
+}
+
+// ── Synthèse d'un dossier ───────────────────────────────────────────────────
+function adherentInactive(a){ return a?.statut==='Inactif'||a?.statut==='Adhésion annulée'; }
+
+function adherentDossierStatus(a){
+  const cert=adherentCertificatInfo(a);
+  const image=adherentDroitImageInfo(a);
+  const reglementOk=flagOn(a?.reglement);
+  const inactive=adherentInactive(a);
+  // « Incomplet » = une pièce ou une validation manque. Le droit à l'image n'en fait
+  // volontairement pas partie : refuser n'est pas oublier.
+  const missing=[];
+  if(!cert.resolved) missing.push(cert.state==='a_valider'?'Certificat médical à valider':'Certificat médical');
+  if(!reglementOk) missing.push('Règlement intérieur');
+  // Pas d'alarme « certificat » pour une adhésion annulée ou inactive.
+  const needsCertAction=cert.required===true&&!cert.resolved&&!inactive;
+  const alerts=[];
+  if(image.state==='refuse') alerts.push({code:'droit_image_refuse',level:'warn',icon:'📷',label:'Droit à l’image refusé',detail:image.tip});
+  if(cert.required===true&&!inactive){
+    const word=cert.state==='fourni'?'fourni':cert.state==='a_valider'?'à valider':'manquant';
+    alerts.push({code:'certificat_obligatoire',level:cert.state==='fourni'?'ok':cert.state==='a_valider'?'warn':'danger',icon:'🩺',label:`Certificat obligatoire · ${word}`,detail:cert.tip});
+  }
+  return {cert,image,reglementOk,passRegion:flagOn(a?.pass_region),missing,incomplete:missing.length>0,needsCertAction,alerts};
+}
+
+function adherentAlertCounts(list){
+  const n={certTraiter:0,certRequis:0,imageRefuse:0,incomplete:0};
+  for(const a of (list||[])){
+    const st=adherentDossierStatus(a);
+    if(st.needsCertAction) n.certTraiter++;
+    if(st.cert.required===true&&!adherentInactive(a)) n.certRequis++;
+    if(st.image.state==='refuse') n.imageRefuse++;
+    if(st.incomplete) n.incomplete++;
+  }
+  return n;
+}
+
+function setAdhSpecialFilter(mode){
+  UI.adhFilters.special=(UI.adhFilters.special===mode)?'':mode;
+  UI.paging.adherents=1;
+  render();
+}
+
+// Comme focusAdherentsIssue, mais reste sur la saison en cours (les compteurs du
+// tableau de bord portent sur la saison en cours).
+async function focusAdherentsAlert(mode=''){
+  UI.search.adherents='';
+  UI.adhFilters={...UI.adhFilters,special:mode,season:'current'};
+  UI.paging.adherents=1;
+  await showTab('adherents');
+  render();
+}
+
+// Colonnes ajoutées à la fin de l'export CSV (les colonnes existantes restent
+// inchangées pour qu'un ré-import de l'export continue de fonctionner).
+function adherentCsvDossierColumns(a){
+  const st=adherentDossierStatus(a);
+  const image=st.image.state==='accorde'?'Accordé':st.image.state==='refuse'?'Refusé':'Non renseigné';
+  const required=st.cert.required===true?'Oui':st.cert.required===false?'Non':'Inconnu';
+  const motif=st.cert.reasonCodes.map(c=>c==='mineur'?'Mineur':c==='qs'?'Questionnaire de santé positif':'Exigé à l’inscription').join(' + ');
+  return [image,required,st.cert.label.replace(/^[✓✗⚠]\s*/,''),motif,st.incomplete?'Non':'Oui'];
+}
+
+// ── Rendu : cellules du tableau, pastilles d'alerte ─────────────────────────
+function badgeToneClass(t){ return t==='ok'?'bok':t==='warn'?'bwarn':t==='no'?'bno':'bgray'; }
+
+function certifCellHtml(st){
+  const c=st.cert;
+  return `<span class="badge adh-state ${badgeToneClass(c.tone)}" title="${esc(c.tip)}">${esc(c.label)}</span>`;
+}
+function droitImageCellHtml(st){
+  const i=st.image;
+  if(i.state==='accorde') return `<span class="badge adh-state bok" title="${esc(i.tip)}">✓</span>`;
+  if(i.state==='refuse') return `<span class="badge adh-state bwarn" title="${esc(i.tip)}">✗ Refusé</span>`;
+  return `<span class="badge adh-state bgray" title="${esc(i.tip)}">?</span>`;
+}
+function passRegionCellHtml(a){
+  if(!flagOn(a.pass_region)) return `<span style="color:var(--muted)" title="Pass Région non utilisé">—</span>`;
+  return `<span class="badge bok" title="Pass Région utilisé">✓</span>${+a.montant_pass_region>0?` <span style="font-size:11px;color:var(--gold-d)">+${(+a.montant_pass_region).toFixed(0)}€</span>`:''}`;
+}
+function adherentFlagsHtml(st){
+  if(!st.alerts.length) return '';
+  return `<div class="adh-flags">${st.alerts.map(al=>`<span class="adh-flag ${al.level}" title="${esc(al.detail)}">${al.icon} ${esc(al.label)}</span>`).join('')}</div>`;
+}
+
+// ── Rendu : bloc « Dossier d'inscription » de la fiche adhérent ─────────────
+function renderAdherentDossierPanel(a){
+  const st=adherentDossierStatus(a);
+  const {reg,current,dossier}=adherentRegistration(a);
+  const cert=st.cert,image=st.image;
+  const regDate=reg?fd(reg.submitted_at||reg.created_at):'';
+  const regSeason=reg?registrationSeason(reg):'';
+  const adhSeason=seasonFromDate(a.date_fin_adhesion||a.date_inscription);
+
+  let source;
+  if(!reg) source='Aucune inscription en ligne rattachée à cette fiche (fiche saisie ou importée à la main) : le questionnaire de santé n’est pas disponible et le certificat n’est suivi que par la case « Certificat médical ».';
+  else if(current) source=`Inscription en ligne du ${esc(regDate)} (saison ${esc(regSeason)}).`;
+  else source=`Dernière inscription en ligne : ${esc(regDate)} (saison ${esc(regSeason)}), antérieure à la saison de cette fiche (${esc(adhSeason||'—')}). Ses réponses sont affichées à titre d’historique et ne servent pas aux alertes.`;
+
+  const consents=dossier?.consents||{};
+  const legal=dossier?.legalRepresentative||{};
+  const hasLegal=!!(legal.lastName||legal.firstName);
+  const practice=dossier?.practice||{};
+  const signer=hasLegal?consents.legalConsentSignatureName:consents.applicantSignatureName;
+  const signature=signer?` Signé « ${esc(signer)} »${consents.signedAt?` le ${esc(fd(consents.signedAt))}`:''}.`:'';
+
+  const imgBadge=image.state==='accorde'?`<span class="badge bok">✓ Accordé</span>`:image.state==='refuse'?`<span class="badge bwarn">✗ Refusé</span>`:`<span class="badge bgray">? Non renseigné</span>`;
+  const certNote=cert.required===true?`Obligatoire — ${esc(cert.reasons.join(' · '))}`:cert.required===false?'Non exigé pour ce dossier':'Exigence inconnue (pas de questionnaire en ligne)';
+  const pr=flagOn(a.pass_region);
+  const prNote=pr?[
+    `Montant ${(+a.montant_pass_region||0).toFixed(2)} €`,
+    practice.passRegionCode?`code ${esc(practice.passRegionCode)}`:'',
+    practice.passRegionDossierNumber?`dossier n° ${esc(practice.passRegionDossierNumber)}`:'',
+  ].filter(Boolean).join(' · '):'';
+
+  const rows=[
+    `<div class="dossier-row"><span class="k">Certificat médical</span><span><span class="badge ${badgeToneClass(cert.tone)}">${esc(cert.label)}</span></span><small>${certNote}</small></div>`,
+    `<div class="dossier-row"><span class="k">Droit à l’image</span><span>${imgBadge}</span><small>${esc(image.tip)}${signature}</small></div>`,
+    `<div class="dossier-row"><span class="k">Règlement intérieur</span><span><span class="badge ${st.reglementOk?'bok':'bno'}">${st.reglementOk?'✓ Accepté':'✗ À valider'}</span></span><small>${consents.rulesAccepted?'Accepté à l’inscription en ligne.':''}</small></div>`,
+    `<div class="dossier-row"><span class="k">Pass Région</span><span><span class="badge ${pr?'bok':'bgray'}">${pr?'✓ Utilisé':'Non utilisé'}</span></span><small>${prNote}</small></div>`,
+    hasLegal?`<div class="dossier-row"><span class="k">Représentant légal</span><span></span><small>${esc(`${legal.firstName||''} ${legal.lastName||''}`.trim())}${legal.role?` (${esc(legal.role)})`:''}${legal.city?`, ${esc(legal.city)}`:''}${legal.signedAt?` — autorisation du ${esc(fd(legal.signedAt))}`:''}</small></div>`:'',
+  ].join('');
+
+  const qs=dossier?.health?.qsSport||null;
+  const qsYesCount=qs?QS_SPORT_QUESTIONS.filter(q=>qs[q.key]==='yes').length:0;
+  const qsBlock=qs?`<div class="dossier-sub">Questionnaire de santé <span>${qsYesCount?`${qsYesCount} réponse(s) « oui »`:'aucune réponse « oui »'}</span></div>
+    <div class="qs-list">${QS_SPORT_QUESTIONS.map(q=>{const v=qs[q.key];return `<div class="qs-row ${v==='yes'?'yes':''}"><span>${esc(q.label)}</span><strong>${v==='yes'?'OUI':v==='no'?'non':'—'}</strong></div>`;}).join('')}</div>`:'';
+
+  let docsBlock='';
+  if(reg){
+    const got=Object.fromEntries(getRegistrationDocuments(reg).map(d=>[d.key,d]));
+    const req=registrationCertificateRequirement(reg,dossier);
+    const items=[
+      {key:'photoIdentity',label:'Photo d’identité',expected:true},
+      {key:'medicalCertificate',label:'Certificat médical',expected:req.required===true},
+      {key:'passRegionDocument',label:'Justificatif Pass Région',expected:!!practice.passRegionEnabled},
+      {key:'proofDocument',label:'Justificatif tarif réduit',expected:practice.formulaCode==='pro'||practice.formulaCode==='cse_thales'},
+    ].filter(it=>it.expected||got[it.key]);
+    docsBlock=`<div class="dossier-sub">Justificatifs de l’inscription <span>${Object.keys(got).length} pièce(s) reçue(s) — à ouvrir dans « Documents &amp; justificatifs » plus bas</span></div>
+      <div class="doc-list">${items.map(it=>`<div class="doc-row"><span>${esc(it.label)}</span>${got[it.key]?`<span class="badge bok">✓ Reçu</span>`:`<span class="badge bno">✗ Manquant</span>`}</div>`).join('')}</div>`;
+  }
+
+  const alertsHtml=st.alerts.length?`<div class="dossier-alerts">${st.alerts.map(al=>`<div class="dossier-alert ${al.level}"><strong>${al.icon} ${esc(al.label)}</strong><span>${esc(al.detail)}</span></div>`).join('')}</div>`:'';
+  const hint=cert.state==='a_valider'?`<div class="dossier-hint">Pour valider : ouvrez la pièce dans « Documents &amp; justificatifs » ci-dessous, vérifiez-la, puis cochez « Certificat médical fourni / validé » et enregistrez.</div>`:'';
+
+  return `<div class="fg full dossier-panel">
+    <p class="dossier-title">Dossier d’inscription &amp; justificatifs</p>
+    ${alertsHtml}
+    <div class="dossier-source">${source}</div>
+    <div class="dossier-rows">${rows}</div>
+    ${hint}${qsBlock}${docsBlock}
+  </div>`;
+}
+
+// ── Ouverture d'un PDF protégé ──────────────────────────────────────────────
+// Télécharge un PDF derrière la session (cookie + Bearer en secours) puis l'ouvre dans
+// un nouvel onglet. L'onglet est ouvert AVANT la requête, dans le geste de clic : ouvert
+// après un await, il serait bloqué par les bloqueurs de fenêtres (Safari surtout).
+// Si l'ouverture est refusée, le PDF est téléchargé. Une erreur serveur (ex. « aucune
+// cotisation ») s'affiche en notification, pas dans un onglet de JSON brut.
+async function openPdfFromApi(path,{label='Document',title='Document'}={}){
+  const w=window.open('','_blank');
+  if(w){
+    try{ w.document.title=label; w.document.body.style.cssText='font:14px sans-serif;padding:24px;color:#555'; w.document.body.textContent=`${label} : génération en cours…`; }catch(e){}
+  }
+  try{
+    const headers={};
+    if(AUTH_TOKEN) headers['Authorization']='Bearer '+AUTH_TOKEN;
+    const res=await fetch(apiUrl(path),{headers,credentials:'same-origin',cache:'no-store'});
+    if(!res.ok){
+      let msg=`erreur ${res.status}`;
+      try{
+        const body=await res.json();
+        msg=(typeof body?.error==='string'?body.error:body?.error?.message)||msg;
+      }catch(e){}
+      if(w) w.close();
+      notify('error',`${label} impossible : ${msg}`,title);
+      return;
+    }
+    const url=URL.createObjectURL(new Blob([await res.blob()],{type:'application/pdf'}));
+    if(w){ w.location.href=url; }
+    else{
+      const m=(res.headers.get('Content-Disposition')||'').match(/filename="?([^";]+)"?/i);
+      const link=document.createElement('a');
+      link.href=url; link.download=m?m[1]:'document.pdf';
+      document.body.appendChild(link); link.click(); link.remove();
+    }
+    setTimeout(()=>URL.revokeObjectURL(url),120000);
+  }catch(e){
+    if(w) w.close();
+    notify('error',`${label} : impossible de récupérer le document. Vérifiez la connexion puis réessayez.`,title);
+  }
 }
 
 function clubLogoUrl(){
@@ -1807,9 +2178,10 @@ function dashboardData(){
   const adherentsSoon=adherents.filter(a=>adhStatus(a)==='soon');
   const adherentsExpired=adherents.filter(a=>adhStatus(a)==='expire');
   const renewList=adherents.filter(a=>a.statut==='Renouvellement');
-  const incompleteList=adherents.filter(a=>!a.certificat || !a.droit_image || !a.reglement);
+  const incompleteList=adherents.filter(a=>adherentDossierStatus(a).incomplete);
   const currentSeason=currentSeasonLabel();
   const currentSeasonAdherents=adherents.filter(a=>seasonFromDate(a.date_fin_adhesion||a.date_inscription)===currentSeason);
+  const certAlertList=currentSeasonAdherents.filter(a=>adherentDossierStatus(a).needsCertAction);
   const totalBank=comptes.reduce((sum,c)=>sum+(+c.solde_initial||0)+(c.transactions||[]).reduce((acc,t)=>acc+(+t.credit||0)-(+t.debit||0),0),0);
   const bankTransactions=comptes.flatMap(c=>(c.transactions||[]).map(t=>({...t,compte_nom:c.nom||'Compte'})));
   const unreconciledTransactions=bankTransactions.filter(t=>!t.rapproche);
@@ -1848,7 +2220,8 @@ function dashboardData(){
   const alerts=[];
   if(hasPerm('perm_adherents') && renewList.length) alerts.push({title:`${renewList.length} adhésion(s) à renouveler`,detail:'Statut de renouvellement détecté dans la base adhérents.',tab:'adherents',badge:'bwarn'});
   if(hasPerm('perm_adherents') && adherentsExpired.length) alerts.push({title:`${adherentsExpired.length} adhésion(s) expirée(s)`,detail:'Des adhérents ont dépassé leur date de fin d’adhésion.',tab:'adherents',badge:'bno'});
-  if(hasPerm('perm_adherents') && incompleteList.length) alerts.push({title:`${incompleteList.length} dossier(s) incomplet(s)`,detail:'Certificat, droit à l’image ou règlement intérieur manquants.',tab:'adherents',badge:'bwarn'});
+  if(hasPerm('perm_adherents') && incompleteList.length) alerts.push({title:`${incompleteList.length} dossier(s) incomplet(s)`,detail:'Certificat médical ou règlement intérieur à valider.',tab:'adherents',badge:'bwarn'});
+  if(hasPerm('perm_adherents') && certAlertList.length) alerts.push({title:`${certAlertList.length} certificat(s) médical(aux) obligatoire(s) à traiter`,detail:'Mineurs ou adhérents ayant répondu « oui » au questionnaire de santé, dont le certificat n’est pas encore validé.',tab:'adherents',badge:'bno'});
   if(hasPerm('perm_banque') && unreconciledTransactions.length) alerts.push({title:`${unreconciledTransactions.length} transaction(s) non rapprochée(s)`,detail:'Le rapprochement bancaire reste à finaliser.',tab:'banque',badge:'bwarn'});
   if(hasPerm('perm_banque') && hasPerm('perm_comptabilite') && pendingBankEntries.length) alerts.push({title:`${pendingBankEntries.length} encaissement(s) en attente de relevé`,detail:'Paiements confirmés (HelloAsso, etc.) pas encore rapprochés à une opération bancaire réelle importée.',tab:'banque',badge:'bwarn'});
   if(hasPerm('perm_comptabilite') && accountingGap!==0) alerts.push({title:`Journal déséquilibré de ${euro(accountingGap)}`,detail:'Le total débit / crédit de l’exercice actif n’est pas équilibré.',tab:'comptabilite',badge:'bno'});
@@ -1861,7 +2234,7 @@ function dashboardData(){
   });
   return {
     adherents,achats,factures,journal,comptes,currentSeason,currentSeasonAdherents,
-    adherentsSoon,adherentsExpired,renewList,incompleteList,
+    adherentsSoon,adherentsExpired,renewList,incompleteList,certAlertList,
     totalBank,bankTransactions,unreconciledTransactions,pendingBankEntries,monthEntriesList,prevMonthEntriesList,exoJournal,totalDebit,totalCredit,accountingGap,ecartBilan,
     purchasesPending,purchasesPaid,purchasesRefused,pendingBuyAmount,paidBuyAmount,
     invoicesOpen,invoicesPaid,openInvoiceAmount,paidInvoiceAmount,monthInvoices,prevMonthInvoices,monthInvoiceAmount,prevMonthInvoiceAmount,monthBuys,prevMonthBuys,monthBuyAmount,prevMonthBuyAmount,donations,donationAmount,
@@ -1951,7 +2324,10 @@ function factureMatchesFilter(facture, status){
 
 function adherentMatchesSpecialFilter(adherent, special){
   if(!special) return true;
-  if(special==='incomplete') return !adherent.certificat || !adherent.droit_image || !adherent.reglement;
+  if(special==='incomplete') return adherentDossierStatus(adherent).incomplete;
+  if(special==='cert_requis') return adherentDossierStatus(adherent).cert.required===true && !adherentInactive(adherent);
+  if(special==='cert_a_traiter') return adherentDossierStatus(adherent).needsCertAction;
+  if(special==='image_refuse') return adherentDossierStatus(adherent).image.state==='refuse';
   if(special==='renew') return adherent.statut==='Renouvellement';
   if(special==='expired') return adhStatus(adherent)==='expire';
   if(special==='uptodate') return adhStatus(adherent)==='valid' || adhStatus(adherent)==='soon';
@@ -2088,10 +2464,20 @@ function buildDashboardAttentionItems(d){
                ]
     });
   }
+  if(hasPerm('perm_adherents') && d.certAlertList.length){
+    items.push({
+      title:`${d.certAlertList.length} certificat(s) médical(aux) obligatoire(s) à traiter`,
+      detail:'Adhérents mineurs ou ayant répondu « oui » au questionnaire de santé de la saison en cours, dont le certificat n’est pas encore validé.',
+      advice:'Ouvre la fiche pour consulter la pièce déposée à l’inscription, puis coche « Certificat médical fourni / validé ». Sans pièce, réclame-la à l’adhérent.',
+      badge:'bno',
+      badgeText:'Santé',
+      actions:[{label:'Voir les certificats à traiter',onclick:"focusAdherentsAlert('cert_a_traiter')",primary:true}]
+    });
+  }
   if(hasPerm('perm_adherents') && d.incompleteList.length){
     items.push({
       title:`${d.incompleteList.length} dossier(s) incomplet(s)`,
-               detail:'Certificat, droit à l’image ou règlement intérieur manquants sur une partie des fiches.',
+               detail:'Certificat médical ou règlement intérieur à valider sur une partie des fiches.',
                advice:'Commence par les dossiers actifs de la saison en cours puis demande les pièces manquantes en lot, pas au cas par cas.',
                badge:'bwarn',
                badgeText:'Documents',
@@ -2628,7 +3014,7 @@ function renderDashboardFeed(items, emptyText, badgeLabel){
   : `<div class="dash-empty">${esc(emptyText)}</div>`;
 }
 
-function filteredAdherentsList(){
+function filteredAdherentsList(ignoreSpecial=false){
   const season=currentSeasonLabel();
   return D.adherents.filter(a=>{
     const txt=(a.nom+' '+a.prenom+' '+(a.ville||'')).toLowerCase();
@@ -2637,7 +3023,7 @@ function filteredAdherentsList(){
     const matchesType=!UI.adhFilters.type || (a.discipline||'Club')===UI.adhFilters.type;
     const adhSeason=seasonFromDate(a.date_fin_adhesion||a.date_inscription);
     const matchesSeason=UI.adhFilters.season==='all' || !UI.adhFilters.season || adhSeason===season;
-    const matchesSpecial=adherentMatchesSpecialFilter(a,UI.adhFilters.special);
+    const matchesSpecial=ignoreSpecial||adherentMatchesSpecialFilter(a,UI.adhFilters.special);
     return matchesSearch&&matchesStatut&&matchesType&&matchesSeason&&matchesSpecial;
   });
 }
@@ -2651,7 +3037,8 @@ function vAdh(){
   const filtered=sortAdherentsList(filteredAdherentsList());
   const {rows:f,totalPages}=paginateList(filtered,'adherents');
   const tot=filtered.reduce((s,a)=>s+(+a.cotisation||0)+(+a.montant_pass_region||0),0);
-  const ok=filtered.filter(a=>a.droit_image&&a.certificat&&a.reglement).length;
+  const ok=filtered.filter(a=>!adherentDossierStatus(a).incomplete).length;
+  const alertCounts=adherentAlertCounts(filteredAdherentsList(true)); // indépendant du filtre « dossier » : les compteurs restent visibles quand on filtre
   const exp=filtered.filter(a=>adhStatus(a)==='expire').length;
   const ren=filtered.filter(a=>a.statut==='Renouvellement').length;
   return`<div class="view-head">
@@ -2671,6 +3058,10 @@ function vAdh(){
   <div class="sc"><div class="v vgo">${tot.toLocaleString('fr-FR',{minimumFractionDigits:2})} €</div><div class="l">Total cotisations</div></div>
   <div class="sc"><div class="v vg">${ok}</div><div class="l">Dossiers complets</div></div>
   <div class="sc"><div class="v ${ren>0?'vgo':''}">${ren}</div><div class="l">À renouveler</div></div>
+  </div>
+  <div class="adh-alertbar">
+    <button type="button" class="adh-alert-card danger ${alertCounts.certTraiter?'':'idle'} ${UI.adhFilters.special==='cert_a_traiter'?'active':''}" onclick="setAdhSpecialFilter('cert_a_traiter')" title="Certificat médical obligatoire (mineur ou questionnaire de santé positif) et pas encore validé"><span class="n">${alertCounts.certTraiter}</span><span>🩺 Certificat obligatoire à traiter<small>${alertCounts.certRequis} dossier(s) avec certificat obligatoire au total</small></span></button>
+    <button type="button" class="adh-alert-card warn ${alertCounts.imageRefuse?'':'idle'} ${UI.adhFilters.special==='image_refuse'?'active':''}" onclick="setAdhSpecialFilter('image_refuse')" title="Adhérents n’ayant pas autorisé l’utilisation de leur image : ne publier ni photo ni vidéo"><span class="n">${alertCounts.imageRefuse}</span><span>📷 Droit à l’image refusé<small>ne pas publier de photo / vidéo</small></span></button>
   </div>
   <div class="g2" style="margin-bottom:14px">
   <div class="card" style="padding:12px 16px"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:12px"><span>Annulées : <strong>${filtered.filter(a=>a.statut==='Adhésion annulée').length}</strong></span><span>Inactives : <strong>${filtered.filter(a=>a.statut==='Inactif').length}</strong></span><span>Expirées : <strong>${exp}</strong></span></div></div>
@@ -2693,6 +3084,9 @@ function vAdh(){
   <select style="width:auto;min-width:180px" onchange="UI.adhFilters.special=this.value;render()">
   <option value="" ${!UI.adhFilters.special?'selected':''}>Tous les dossiers</option>
   <option value="incomplete" ${UI.adhFilters.special==='incomplete'?'selected':''}>Dossiers incomplets</option>
+  <option value="cert_a_traiter" ${UI.adhFilters.special==='cert_a_traiter'?'selected':''}>🩺 Certificat obligatoire à traiter</option>
+  <option value="cert_requis" ${UI.adhFilters.special==='cert_requis'?'selected':''}>🩺 Certificat obligatoire (tous)</option>
+  <option value="image_refuse" ${UI.adhFilters.special==='image_refuse'?'selected':''}>📷 Droit à l’image refusé</option>
   <option value="renew" ${UI.adhFilters.special==='renew'?'selected':''}>À renouveler</option>
   <option value="expired" ${UI.adhFilters.special==='expired'?'selected':''}>Expirés</option>
   <option value="uptodate" ${UI.adhFilters.special==='uptodate'?'selected':''}>À jour</option>
@@ -2715,14 +3109,15 @@ function vAdh(){
   <thead><tr>${canWrite?`<th style="width:32px"><input type="checkbox" style="width:auto" onchange='toggleAdhSelectAllVisible(${JSON.stringify(f.map(a=>a.id))})' ${f.length&&f.every(a=>UI.adhSelected[a.id])?'checked':''}></th>`:''}${thSort('Nom / Prénom','nom')}${thSort('Type','discipline')}${thSort('Ceinture','couleur_ceinture')}${thSort('Certif.','certificat')}${thSort('Droit img','droit_image')}${thSort('Pass Région','pass_region')}<th>Règlement</th>${thSort('Cotisation','cotisation')}${thSort('Paiement','paiement')}${thSort('Statut','statut')}${thSort('Inscrit le','date_inscription')}<th>Saison</th>${thSort('Fin adhésion','date_fin_adhesion')}<th>PDF</th><th></th></tr></thead>
   <tbody>${f.map(a=>{
     const docs=getAdherentDocuments(a.id);
-    return `<tr class="${adhStatus(a)==='expire'?'adh-expire':adhStatus(a)==='soon'?'adh-soon':'adh-valid'}">
+    const st=adherentDossierStatus(a);
+    return `<tr class="${adhStatus(a)==='expire'?'adh-expire':adhStatus(a)==='soon'?'adh-soon':'adh-valid'}${st.needsCertAction?' adh-alert':''}">
     ${canWrite?`<td><input type="checkbox" style="width:auto" ${UI.adhSelected[a.id]?'checked':''} onchange="toggleAdhSelect('${a.id}')"></td>`:''}
-    <td><strong style="font-weight:500">${esc(a.nom)} ${esc(a.prenom)}</strong>${Number(a.blackliste)===1?` <span class="badge bno" title="${esc(a.blackliste_motif||'')}">🚫 Blacklisté</span>`:''}${a.ville?`<br><span style="font-size:10px;color:var(--txt2)">${esc(a.ville)}</span>`:''}</td>
+    <td><strong style="font-weight:500">${esc(a.nom)} ${esc(a.prenom)}</strong>${Number(a.blackliste)===1?` <span class="badge bno" title="${esc(a.blackliste_motif||'')}">🚫 Blacklisté</span>`:''}${a.ville?`<br><span style="font-size:10px;color:var(--txt2)">${esc(a.ville)}</span>`:''}${adherentFlagsHtml(st)}</td>
     <td><span class="badge bgray">${a.discipline||'Club'}</span></td>
     <td>${esc(a.couleur_ceinture)||'—'}</td>
-    <td>${bdg(a.certificat)}</td><td>${bdg(a.droit_image)}</td>
-    <td>${bdg(a.pass_region)}${+a.montant_pass_region>0?` <span style="font-size:11px;color:var(--gold-d)">+${(+a.montant_pass_region).toFixed(0)}€</span>`:''}</td>
-    <td>${bdg(a.reglement)}</td>
+    <td>${certifCellHtml(st)}</td><td>${droitImageCellHtml(st)}</td>
+    <td>${passRegionCellHtml(a)}</td>
+    <td>${bdg(st.reglementOk)}</td>
     <td><strong style="font-weight:500">${(+a.cotisation).toFixed(2)} €</strong>${+a.montant_pass_region>0?`<br><span style="font-size:10px;color:var(--txt2)">Pass: ${(+a.montant_pass_region).toFixed(2)}€</span>`:''}</td>
     <td style="font-size:11px">${a.paiement||''}</td>
     <td><span class="badge ${adhStatutBadge(a.statut)}">${a.statut||'—'}</span></td>
@@ -2739,7 +3134,7 @@ function vAdh(){
     <button class="btn sm" style="margin-left:4px;background:var(--gold-l,#fff8e1);color:var(--gold-d,#7a5c00);border-color:var(--gold,#c9a000)" onclick="renewAdh('${a.id}')" title="Renouveler l'adhésion pour la saison suivante">↻</button>
     <button class="btn sm danger" style="margin-left:4px" onclick="delAdh('${a.id}')">✕</button>
     <button class="btn sm" style="margin-left:4px" onclick="openDiplomeForAdherent('${a.id}')">Diplôme</button>
-    <button class="btn sm gold" style="margin-left:4px" onclick="genRecu('${a.id}')">Reçu</button>`:''}
+    <button class="btn sm gold" style="margin-left:4px" onclick="genRecu('${a.id}')" title="Reçu de cotisation (PDF)">Reçu</button>`:''}
     </td>
     </tr>`;
   }).join('')}
@@ -6074,23 +6469,15 @@ async function sendFactureEmail(id){
   }
 }
 
-function genRecu(id){
-  const a=D.adherents.find(x=>x.id===id);if(!a)return;
-  const n=D.factures.length+1;
-  const season=seasonFromDate(a.date_fin_adhesion||a.date_inscription)||currentSeasonLabel();
-  UI.invKind='facture';
-  UI.invState={
-    numero:`REC-${new Date().getFullYear()}-${String(n).padStart(3,'0')}`,
-    date:td(),destinataire:`${a.nom} ${a.prenom}`,
-    adresse:[a.adresse,a.code_postal,a.ville].filter(Boolean).join(', '),
-    objet:`Reçu de cotisation — Saison ${season}`,
-    lignes:[
-      {desc:`Cotisation ${a.discipline||'Club'} — saison ${season}`,qte:1,pu:+a.cotisation},
-      ...(+a.montant_pass_region>0?[{desc:'Pass Région',qte:1,pu:+a.montant_pass_region}]:[])
-    ],
-    notes:`Mode de paiement : ${a.paiement}`
-  };
-  UI.tab='facture';UI.subTab.facture='edit';renderTabs();render();setTimeout(updPrev,100);
+// Reçu de cotisation : vrai PDF généré par le serveur (même moteur et même gabarit que
+// les factures — GET /api/adherents/:id/recu-cotisation). Remplace l'ancien parcours
+// « éditeur de facture pré-rempli + window.print() », qui n'émettait qu'une impression
+// HTML du navigateur. Le numéro est stable (adhérent + saison) : ré-émettre le reçu ne
+// crée pas un nouveau numéro.
+async function genRecu(id){
+  const a=D.adherents.find(x=>x.id===id);
+  if(!a) return;
+  await openPdfFromApi(`/adherents/${encodeURIComponent(id)}/recu-cotisation`,{label:'Reçu de cotisation',title:'Reçu'});
 }
 
 // ═══════════════════════════════════════════════════
@@ -7472,9 +7859,9 @@ function renderModal(){
     <div class="fg full" style="background:var(--bg2);padding:10px;border-radius:var(--r)">
     <p style="font-size:12px;font-weight:500;margin-bottom:8px">Documents administratifs</p>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-    <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer"><input type="checkbox" id="f-di" ${a.droit_image?'checked':''} style="width:auto;accent-color:var(--red)"> Droit à l'image</label>
-    <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer"><input type="checkbox" id="f-ce" ${a.certificat?'checked':''} style="width:auto;accent-color:var(--red)"> Certificat médical</label>
-    <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer"><input type="checkbox" id="f-ri" ${a.reglement?'checked':''} style="width:auto;accent-color:var(--red)"> Règlement intérieur</label>
+    <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer"><input type="checkbox" id="f-di" ${a.droit_image?'checked':''} style="width:auto;accent-color:var(--red)"> Droit à l'image accordé</label>
+    <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer"><input type="checkbox" id="f-ce" ${a.certificat?'checked':''} style="width:auto;accent-color:var(--red)"> Certificat médical fourni / validé</label>
+    <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer"><input type="checkbox" id="f-ri" ${a.reglement?'checked':''} style="width:auto;accent-color:var(--red)"> Règlement intérieur accepté</label>
     </div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
     <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer">
@@ -7487,6 +7874,7 @@ function renderModal(){
     </div>
     </div>
     </div>
+    ${a.id?renderAdherentDossierPanel(a):''}
     <div class="fg"><label>Cotisation (€)</label><input id="f-cot" type="number" value="${a.cotisation||0}" min="0" step="0.01"></div>
     <div class="fg"><label>Mode de paiement</label><select id="f-pay">${MODES_PAIE.map(p=>`<option ${a.paiement===p?'selected':''}>${p}</option>`).join('')}</select></div>
     <div class="fg"><label>Date d'inscription</label><input id="f-di2" type="date" value="${a.date_inscription||td()}" onchange="if(!document.getElementById('f-fin').value)document.getElementById('f-fin').value=defaultAdhesionEnd(this.value)"></div>
@@ -10114,8 +10502,8 @@ function exportCSV(){
   // Exporte les adhérents actuellement filtrés (recherche, type, statut, saison, dossier) — mêmes filtres que la vue
   const filtered=filteredAdherentsList();
   if(!filtered.length){notify('warn','Aucun adhérent dans la sélection courante.','Export CSV');return;}
-  const rows=[['Nom','Prénom','Couleur ceinture','N° licence','Type adhésion','Certif.','Droit image','Pass Région','Montant Pass','Règlement','Cotisation','Paiement','Statut','Saison','Fin adhésion','Adresse','CP','Ville','Urgence nom','Urgence tél']];
-  filtered.forEach(a=>rows.push([csvSafe(a.nom),csvSafe(a.prenom),csvSafe(a.couleur_ceinture||''),csvSafe(a.numero_licence||''),a.discipline||'Club',a.certificat?'Oui':'Non',a.droit_image?'Oui':'Non',a.pass_region?'Oui':'Non',(+a.montant_pass_region||0).toFixed(2),a.reglement?'Oui':'Non',(+a.cotisation).toFixed(2),a.paiement,a.statut,seasonFromDate(a.date_fin_adhesion||a.date_inscription)||'',a.date_fin_adhesion||'',csvSafe(a.adresse||''),csvSafe(a.code_postal||''),csvSafe(a.ville||''),csvSafe(a.urgence_nom||''),csvSafe(a.urgence_telephone||'')]));
+  const rows=[['Nom','Prénom','Couleur ceinture','N° licence','Type adhésion','Certif.','Droit image','Pass Région','Montant Pass','Règlement','Cotisation','Paiement','Statut','Saison','Fin adhésion','Adresse','CP','Ville','Urgence nom','Urgence tél','Droit image (détail)','Certificat obligatoire','État certificat','Motif certificat','Dossier complet']];
+  filtered.forEach(a=>rows.push([csvSafe(a.nom),csvSafe(a.prenom),csvSafe(a.couleur_ceinture||''),csvSafe(a.numero_licence||''),a.discipline||'Club',a.certificat?'Oui':'Non',a.droit_image?'Oui':'Non',a.pass_region?'Oui':'Non',(+a.montant_pass_region||0).toFixed(2),a.reglement?'Oui':'Non',(+a.cotisation).toFixed(2),a.paiement,a.statut,seasonFromDate(a.date_fin_adhesion||a.date_inscription)||'',a.date_fin_adhesion||'',csvSafe(a.adresse||''),csvSafe(a.code_postal||''),csvSafe(a.ville||''),csvSafe(a.urgence_nom||''),csvSafe(a.urgence_telephone||''),...adherentCsvDossierColumns(a)]));
   const typeSuffix=UI.adhFilters.type?'_'+UI.adhFilters.type.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,''):'';
   dl('\uFEFF'+rows.map(r=>r.join(';')).join('\n'),`adherents${typeSuffix}_${td()}.csv`,'text/csv;charset=utf-8');
   notify('success',`${filtered.length} adhérent(s) exporté(s)${UI.adhFilters.type?` (type : ${UI.adhFilters.type})`:''}.`,'Export CSV');

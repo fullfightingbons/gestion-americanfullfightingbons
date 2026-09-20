@@ -349,3 +349,57 @@ tr:hover td{background:#fbf6ef}
   .modal{padding:18px}
   .dash-hero-title{font-size:24px}
 }
+
+/* ═══════════════════════════════════════════════════
+   DOSSIER ADHÉRENT — alertes (droit à l'image refusé, certificat obligatoire)
+   et transcription de l'inscription en ligne
+   ═══════════════════════════════════════════════════ */
+
+/* Pastilles sous le nom dans le tableau */
+.adh-flags{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
+.adh-flag{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;font-size:10.5px;font-weight:600;line-height:1.5;border:1px solid transparent;white-space:nowrap;cursor:help}
+.adh-flag.danger{background:var(--red-l);color:var(--red-dark);border-color:rgba(216,74,47,.4)}
+.adh-flag.warn{background:var(--gold-soft);color:#6b4c08;border-color:rgba(166,124,46,.45)}
+.adh-flag.ok{background:#e4f3e7;color:#155724;border-color:rgba(30,126,52,.25)}
+
+.badge.adh-state{white-space:nowrap}
+
+/* Ligne dont le certificat, obligatoire, n'est pas encore validé */
+tr.adh-alert td{background:rgba(251,224,216,.38)}
+tr.adh-alert:hover td{background:rgba(251,224,216,.72)}
+
+/* Barre de compteurs cliquables au-dessus du tableau */
+.adh-alertbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.adh-alert-card{display:flex;align-items:center;gap:10px;padding:9px 14px;border-radius:14px;border:1px solid var(--brd);background:rgba(255,255,255,.7);font:inherit;font-size:12.5px;color:var(--ink);cursor:pointer;text-align:left;transition:box-shadow .15s,opacity .15s}
+.adh-alert-card:hover{box-shadow:0 2px 10px rgba(0,0,0,.08)}
+.adh-alert-card .n{font-size:20px;font-weight:700;letter-spacing:-.02em;line-height:1}
+.adh-alert-card.danger{background:var(--red-l);border-color:rgba(216,74,47,.4)}
+.adh-alert-card.danger .n{color:var(--red-dark)}
+.adh-alert-card.warn{background:var(--gold-soft);border-color:rgba(166,124,46,.45)}
+.adh-alert-card.warn .n{color:#6b4c08}
+.adh-alert-card.idle{opacity:.6}
+.adh-alert-card.active{box-shadow:0 0 0 3px rgba(216,74,47,.22)}
+.adh-alert-card small{display:block;font-size:10.5px;color:var(--muted);margin-top:1px}
+
+/* Bloc « Dossier d'inscription » de la fiche adhérent */
+.dossier-panel{background:var(--bg2);padding:12px;border-radius:var(--r);display:flex;flex-direction:column;gap:10px}
+.dossier-title{font-size:12px;font-weight:600;margin:0}
+.dossier-source{font-size:11.5px;color:var(--muted);line-height:1.5}
+.dossier-alerts{display:flex;flex-direction:column;gap:6px}
+.dossier-alert{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-radius:10px;font-size:12px;line-height:1.45;border:1px solid transparent}
+.dossier-alert.danger{background:var(--red-l);color:var(--red-dark);border-color:rgba(216,74,47,.4)}
+.dossier-alert.warn{background:var(--gold-soft);color:#6b4c08;border-color:rgba(166,124,46,.45)}
+.dossier-alert.ok{background:#e4f3e7;color:#155724;border-color:rgba(30,126,52,.25)}
+.dossier-rows{display:flex;flex-direction:column}
+.dossier-row{display:grid;grid-template-columns:135px auto 1fr;gap:10px;align-items:baseline;padding:6px 0;border-bottom:.5px solid var(--brd);font-size:12.5px}
+.dossier-row:last-child{border-bottom:0}
+.dossier-row .k{color:var(--muted)}
+.dossier-row small{color:var(--muted);font-size:11.5px;line-height:1.45}
+.dossier-sub{display:flex;justify-content:space-between;gap:10px;align-items:baseline;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-top:4px}
+.dossier-sub span{text-transform:none;letter-spacing:0;font-weight:500;text-align:right}
+.qs-list,.doc-list{display:flex;flex-direction:column;gap:3px}
+.qs-row,.doc-row{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:5px 9px;border-radius:8px;background:rgba(255,255,255,.7);font-size:12px}
+.qs-row.yes{background:var(--red-l);color:var(--red-dark);font-weight:600}
+.qs-row strong{white-space:nowrap}
+.dossier-hint{font-size:11.5px;padding:8px 10px;border-radius:10px;background:var(--gold-soft);color:#6b4c08;line-height:1.5}
+@media (max-width:640px){.dossier-row{grid-template-columns:1fr;gap:3px}}

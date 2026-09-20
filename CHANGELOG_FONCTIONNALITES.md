@@ -4,6 +4,67 @@ Ajoutées sur la base du projet existant, sans rien retirer. `tsc --noEmit`,
 les 31 tests existants (`vitest run`) et `wrangler deploy --dry-run` sont
 propres après ajout.
 
+## Dossiers adhérents et reçu PDF — 20/09/2026
+
+Symptôme : un adhérent qui refuse le droit à l'image apparaissait « dossier
+incomplet ». Le bouton « Reçu » n'émettait pas un vrai PDF mais une impression
+HTML du navigateur.
+
+**Cause du faux « incomplet »** — trois endroits d'`app.js` (compteur « Dossiers
+complets », filtre « Dossiers incomplets », tableau de bord) testaient
+`!certificat || !droit_image || !reglement`. Or `droit_image = 0` est un *choix* de
+l'adhérent (`imageRights === "no"` à l'inscription), pas une pièce manquante. Autre
+ambiguïté : `certificat = 1` voulait dire à la fois « non requis » et « validé ».
+
+**Lecture du dossier** (`app.js`, section « DOSSIER D'ADHÉSION ») — le tableau croise
+maintenant la ligne `adherents`, le dossier d'inscription en ligne
+(`inscriptions_publiques.dossier_json` / `documents_json`, déjà chargé mais jamais lu)
+et l'âge. Règle du club, identique à `validatePayload()` côté `inscription` :
+certificat obligatoire si **mineur** ou si au moins une des 9 réponses du
+questionnaire de santé est « oui ».
+
+- Certificat : *non requis* / *fourni* / *à valider* (pièce reçue, à vérifier puis
+  cocher) / *manquant* / *à fournir* (exigence inconnue : fiche saisie à la main).
+- **Un refus du droit à l'image n'est plus « incomplet »** ; il déclenche une alerte.
+- « Incomplet » = certificat non résolu ou règlement non validé.
+- Alertes : pastilles sous le nom (📷 Droit à l'image refusé, 🩺 Certificat
+  obligatoire · manquant / à valider / fourni), ligne teintée quand un certificat
+  obligatoire n'est pas validé, deux compteurs cliquables au-dessus du tableau, trois
+  nouveaux filtres, alerte + action sur le tableau de bord.
+- Pass Région : « — » quand non utilisé (au lieu d'un ✗ rouge pour tous).
+- Fiche adhérent : bloc « Dossier d'inscription & justificatifs » (consentements,
+  représentant légal, Pass Région, questionnaire de santé question par question,
+  checklist des pièces attendues / reçues).
+- Export CSV : colonnes existantes inchangées ; 5 colonnes ajoutées à la fin.
+- Renouvellement : l'inscription d'une saison passée n'est **pas** retenue pour la
+  saison en cours (`renewAdh` remet certificat et règlement à 0 pour revalidation).
+- Confidentialité : pastilles et infobulles n'indiquent que « mineur » ou le *nombre*
+  de réponses « oui » ; le détail question par question (donnée de santé) n'est que
+  dans la fiche. Aucune migration, aucun changement du repo `inscription`.
+
+**Bouton « Reçu »** — vrai PDF généré par le serveur : nouvelle route
+`GET /api/adherents/:id/recu-cotisation` (droit de lecture sur les adhérents), même
+moteur et même gabarit que `/api/factures/:id/pdf`. Ouvert dans un nouvel onglet ; une
+erreur (ex. cotisation à 0 €) s'affiche en notification. L'ancien passage par l'éditeur
+de facture n'existe plus pour ce bouton. Numéro **stable** `REC-<saison>-<id>` (l'ancien
+`REC-<année>-<nb de factures + 1>` changeait à chaque clic).
+
+**Moteur PDF (`pdf-engine.ts`)** — `safe()` supprimait tous les accents et remplaçait
+`€` par une espace : « Mickaël » sortait « Mickael » et les montants sans devise, sur
+**tous** les PDF (factures, dons, attestations, reçus). Les lettres accentuées du
+français et le € sont maintenant écrits en WinAnsi ; les PDF portent un titre dans leurs
+métadonnées. Comparaison avant/après sur factures, dons et attestations : seules
+différences = accents restitués et « € » présent, aucune mise en page modifiée. Seul le
+titre `cotisation` est passé à « Reçu de cotisation » ; les autres libellés fixes du
+gabarit (« Recu de don », « DESIGNATION »…) sont inchangés. La copie du moteur dans le
+repo `inscription` a le même défaut et n'a pas été touchée.
+
+Non traité volontairement : l'expiration du certificat (`certificat_date`) n'entre pas
+dans les alertes, pour ne pas changer ce qui compte comme « incomplet » au-delà du besoin.
+
+`tsc --noEmit` propre ; 153 tests (93 existants + 60 nouveaux :
+`test/adherent-dossier.test.ts`, `test/pdf-cotisation-receipt.test.ts`).
+
 ## Correctif comptable — 17/09/2026 : intégration exhaustive des écritures
 
 Symptôme : les remboursements saisis avec les boutons rapides

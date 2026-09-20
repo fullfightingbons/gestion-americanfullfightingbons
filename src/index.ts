@@ -32,6 +32,7 @@ export interface Env {
 import {verifyPassword, createSessionToken, parseSessionToken, hashPassword, prepareUserWriteValues, hasStoragePermission, isPublicStorageObject, secureEquals} from './lib/security';
 import { buildDocumentPdfBytes, type DocumentInput, type DocumentLigne } from './lib/pdf/document-template';
 import { bytesToBase64 } from './lib/pdf/pdf-engine';
+import { buildCotisationReceipt } from './lib/pdf/cotisation-receipt';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -3301,6 +3302,36 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
         headers: {
           'Content-Type': 'application/pdf',
           'Content-Disposition': 'inline; filename="recu-cotisation.pdf"',
+          'Cache-Control': 'private, no-store',
+        },
+      });
+    }
+
+    // GET /api/adherents/:id/recu-cotisation — reçu de cotisation PDF pour le
+    // back-office (bouton « Reçu » de l'onglet Adhérents). Remplace l'ancien
+    // parcours 100 % client (genRecu → éditeur de facture → pwPrint/window.print),
+    // qui n'émettait qu'une impression HTML du navigateur et non un fichier PDF.
+    // Même moteur et même gabarit que /api/factures/:id/pdf et que le reçu de
+    // l'espace membre. Le contenu est reconstruit depuis la fiche adhérent
+    // (cf. buildCotisationReceipt) : le numéro est stable (adhérent + saison),
+    // un reçu ré-émis porte donc toujours le même numéro.
+    const recuCotisationMatch = path.match(/^\/api\/adherents\/([^/]+)\/recu-cotisation$/);
+    if (recuCotisationMatch && method === 'GET') {
+      const user = await getCurrentUserFromBearer(request, env);
+      if (!user) return err('Unauthorized', 401);
+      const rolePerms = await getRolePerms(env);
+      if (!dbHasPermission(user, 'perm_adherents', 'read', rolePerms)) return err('Permission refusée', 403);
+
+      const adherent = await env.DB.prepare(`SELECT * FROM adherents WHERE id = ?`).bind(recuCotisationMatch[1]).first<Record<string, any>>();
+      if (!adherent) return err('Adhérent introuvable', 404);
+
+      const receipt = buildCotisationReceipt(adherent);
+      if (!receipt.ok) return err(receipt.message, receipt.status);
+
+      return new Response(buildDocumentPdfBytes(receipt.doc), {
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `inline; filename="${receipt.filename}"`,
           'Cache-Control': 'private, no-store',
         },
       });
