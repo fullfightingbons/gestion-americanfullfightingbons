@@ -212,12 +212,67 @@ describe("buildCotisationReceipt", () => {
     expect(r.doc.footerNote).toBeUndefined();
     expect(r.doc.objet).not.toContain("inscription du");
   });
+
+  // ── Ventes liées à l'inscription (tenue, passeport, articles boutique) ─────
+  it("ajoute les ventes liées à l'inscription (tenue, passeport...) après Cotisation/Pass Région, et les cumule au total", () => {
+    const r = buildCotisationReceipt({ ...ADH, cotisation: 220, montant_pass_region: 30 }, NOW, [
+      { desc: "Vente t-shirt club AFFBC (M)", qte: 1, pu: 25 },
+      { desc: "Vente pantalon club AFFBC (M)", qte: 1, pu: 15 },
+      { desc: "Vente passeport sportif", qte: 1, pu: 25 },
+    ]);
+    if (!r.ok) throw new Error(r.message);
+    expect(r.doc.lignes.map((l) => l.designation)).toEqual([
+      "Cotisation Club — saison 2026-2027",
+      "Pass Région",
+      "Vente t-shirt club AFFBC (M)",
+      "Vente pantalon club AFFBC (M)",
+      "Vente passeport sportif",
+    ]);
+    expect(r.doc.lignes.slice(2)).toEqual([
+      { designation: "Vente t-shirt club AFFBC (M)", qte: 1, pu: 25, total: 25 },
+      { designation: "Vente pantalon club AFFBC (M)", qte: 1, pu: 15, total: 15 },
+      { designation: "Vente passeport sportif", qte: 1, pu: 25, total: 25 },
+    ]);
+    expect(r.doc.total).toBe(315); // 220 + 30 + 25 + 15 + 25
+  });
+
+  it("émet quand même un reçu à cotisation nulle si des ventes liées à l'inscription existent (ex. membre du Bureau ayant commandé une tenue)", () => {
+    const r = buildCotisationReceipt({ ...ADH, cotisation: 0, montant_pass_region: 0 }, NOW, [
+      { desc: "Vente t-shirt club AFFBC (L)", qte: 1, pu: 25 },
+      { desc: "Vente pantalon club AFFBC (L)", qte: 1, pu: 15 },
+    ]);
+    expect(r).toMatchObject({ ok: true });
+    if (!r.ok) throw new Error("reçu attendu");
+    expect(r.doc.lignes[0]).toEqual({ designation: "Cotisation Club — saison 2026-2027", total: 0 });
+    expect(r.doc.total).toBe(40);
+  });
+
+  it("sans ventes liées à l'inscription (paramètre par défaut), comportement strictement inchangé", () => {
+    const withDefault = buildCotisationReceipt(ADH, NOW);
+    const withEmptyArray = buildCotisationReceipt(ADH, NOW, []);
+    if (!withDefault.ok || !withEmptyArray.ok) throw new Error("reçu attendu");
+    expect(withDefault.doc).toEqual(withEmptyArray.doc);
+  });
+
+  it("ignore une ligne de vente à quantité ou prix unitaire nul/absent (donnée mal formée, ne doit pas polluer le reçu)", () => {
+    const r = buildCotisationReceipt(ADH, NOW, [
+      { desc: "Ligne vide", qte: 0, pu: 25 },
+      { desc: "Ligne sans prix", qte: 1, pu: 0 },
+      { desc: "Ligne valide", qte: 1, pu: 25 },
+    ]);
+    if (!r.ok) throw new Error(r.message);
+    expect(r.doc.lignes.map((l) => l.designation)).toEqual(["Cotisation Club — saison 2026-2027", "Ligne valide"]);
+    expect(r.doc.total).toBe(275); // 250 + 25 seulement
+  });
 });
 
 // ── 3. Route GET /api/adherents/:id/recu-cotisation ───────────────────────────
 const SECRET = "s".repeat(40);
 
-function makeEnv(opts: { users: Record<string, any>; adherents: Record<string, any> }) {
+// `factures` simule la table réelle : les tests posent { exercice_id, notes, lignes }
+// (lignes déjà en JSON.stringify, comme en base) pour vérifier que la route les
+// retrouve (ou pas) exactement comme loadVentesInscriptionLignes le ferait sur D1.
+function makeEnv(opts: { users: Record<string, any>; adherents: Record<string, any>; factures?: Record<string, any>[] }) {
   const db = {
     prepare(sql: string) {
       let binds: unknown[] = [];
@@ -232,6 +287,15 @@ function makeEnv(opts: { users: Record<string, any>; adherents: Record<string, a
           return null; // club_info / role_permissions : permissions par défaut
         },
         async all() {
+          if (/FROM factures/.test(sql)) {
+            // reproduit `WHERE exercice_id = ? AND notes LIKE ?` (binds[1] = "%<adherentId>%")
+            const [exerciceId, likePattern] = binds;
+            const needle = String(likePattern ?? "").replace(/^%|%$/g, "");
+            const results = (opts.factures || []).filter(
+              (f) => f.exercice_id === exerciceId && String(f.notes ?? "").includes(needle)
+            );
+            return { results };
+          }
           return { results: [] };
         },
         async run() {
@@ -330,5 +394,96 @@ describe("GET /api/adherents/:id/recu-cotisation", () => {
     const [a, b] = [await t(), await t()];
     expect(a).toContain("REC-2026-2027-AB12CD34");
     expect(b).toContain("REC-2026-2027-AB12CD34");
+  });
+});
+
+// ── Ventes liées à l'inscription (tenue, passeport...) intégrées au reçu ────
+describe("GET /api/adherents/:id/recu-cotisation — ventes liées à l'inscription", () => {
+  const users = { admin1: { id: "admin1", role: "admin", actif: 1 } };
+
+  const adherentHelloAsso = { ...ADH, id: "ab12cd34-5678-4abc-9def-0123456789ab", exercice_id: "ex-2026-2027" };
+  const adherentBureau = { ...adherentHelloAsso, id: "bureau-0001-0002-0003-000000000009", cotisation: 0, montant_pass_region: 0 };
+  const adherentSansVente = { ...adherentHelloAsso, id: "solo-0001-0002-0003-000000000010" };
+  const adherentLigneCorrompue = { ...adherentHelloAsso, id: "corrompu-01-02-03-000000000011" };
+
+  const factures = [
+    {
+      // parcours HelloAsso (insertInscriptionSales) : format de `notes` réel du repo inscription
+      exercice_id: "ex-2026-2027",
+      notes: `Vente générée automatiquement lors de l'inscription web. Paiement HelloAsso validé. Registration ID : reg-1. Adhérent ID : ${adherentHelloAsso.id}`,
+      lignes: JSON.stringify([
+        { desc: "Vente t-shirt club AFFBC (M)", qte: 1, pu: 25 },
+        { desc: "Vente pantalon club AFFBC (M)", qte: 1, pu: 15 },
+      ]),
+    },
+    {
+      // parcours renouvellement gratuit Membre du Bureau (insertFreeSalesIfAny) : format de `notes` DIFFÉRENT
+      exercice_id: "ex-2026-2027",
+      notes: `Inscription web publique #reg2000 — adherent ${adherentBureau.id}`,
+      lignes: JSON.stringify([
+        { desc: "Vente t-shirt club AFFBC (L)", qte: 1, pu: 25 },
+        { desc: "Vente pantalon club AFFBC (L)", qte: 1, pu: 15 },
+      ]),
+    },
+    {
+      // même adhérent, mais saison précédente : ne doit PAS apparaître sur le reçu de la saison en cours
+      exercice_id: "ex-2025-2026",
+      notes: `Adhérent ID : ${adherentHelloAsso.id}`,
+      lignes: JSON.stringify([{ desc: "Vente t-shirt club AFFBC — saison précédente", qte: 1, pu: 25 }]),
+    },
+    {
+      // ligne JSON corrompue : ne doit jamais faire échouer la génération du reçu
+      exercice_id: "ex-2026-2027",
+      notes: `Adhérent ID : ${adherentLigneCorrompue.id}`,
+      lignes: "{ ceci n'est pas du JSON valide",
+    },
+  ];
+
+  const env = makeEnv({
+    users,
+    adherents: {
+      [adherentHelloAsso.id]: adherentHelloAsso,
+      [adherentBureau.id]: adherentBureau,
+      [adherentSansVente.id]: adherentSansVente,
+      [adherentLigneCorrompue.id]: adherentLigneCorrompue,
+    },
+    factures,
+  });
+
+  it("inclut la tenue commandée à l'inscription (parcours HelloAsso) et exclut la vente d'une autre saison", async () => {
+    const res = await callRoute(env, adherentHelloAsso.id, "admin1");
+    expect(res.status).toBe(200);
+    const txt = latin1(new Uint8Array(await res.arrayBuffer()));
+    // Le moteur PDF échappe les parenthèses (`(M)` → `\(M\)`, cf. pdf-engine.ts) :
+    // on cherche donc le texte hors parenthèses, pas la désignation complète.
+    expect(txt).toContain("Vente t-shirt club AFFBC");
+    expect(txt).toContain("Vente pantalon club AFFBC");
+    expect(txt).not.toContain("saison précédente");
+    expect(txt).toContain("290,00 \u0080"); // 250 (cotisation) + 25 + 15
+  });
+
+  it("reconnaît aussi le format de notes du renouvellement gratuit Membre du Bureau, et émet un reçu même à cotisation nulle", async () => {
+    const res = await callRoute(env, adherentBureau.id, "admin1");
+    expect(res.status).toBe(200); // sans ce correctif : 404 « Aucune cotisation enregistrée »
+    const txt = latin1(new Uint8Array(await res.arrayBuffer()));
+    expect(txt).toContain("Vente t-shirt club AFFBC");
+    expect(txt).toContain("Vente pantalon club AFFBC");
+    expect(txt).toContain("40,00 \u0080"); // 0 (cotisation) + 25 + 15
+  });
+
+  it("adhérent sans vente liée à son inscription : reçu inchangé (cotisation seule)", async () => {
+    const res = await callRoute(env, adherentSansVente.id, "admin1");
+    expect(res.status).toBe(200);
+    const txt = latin1(new Uint8Array(await res.arrayBuffer()));
+    expect(txt).not.toContain("Vente t-shirt");
+    expect(txt).toContain("250,00 \u0080");
+  });
+
+  it("une ligne de vente au JSON corrompu ne fait pas échouer la génération du reçu (repli silencieux)", async () => {
+    const res = await callRoute(env, adherentLigneCorrompue.id, "admin1");
+    expect(res.status).toBe(200);
+    const txt = latin1(new Uint8Array(await res.arrayBuffer()));
+    expect(txt.startsWith("%PDF-")).toBe(true);
+    expect(txt).toContain("250,00 \u0080"); // cotisation seule, la ligne corrompue est ignorée
   });
 });

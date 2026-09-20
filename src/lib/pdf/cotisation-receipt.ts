@@ -2,12 +2,16 @@
  * cotisation-receipt.ts — AFFBC (gestion)
  * ─────────────────────────────────────────────────────────────────────────
  * Construit le reçu de cotisation d'un adhérent pour le back-office (bouton
- * « Reçu » de l'onglet Adhérents), à partir de sa ligne `adherents`.
+ * « Reçu » de l'onglet Adhérents), à partir de sa ligne `adherents` et,
+ * optionnellement, des ventes liées à l'inscription (tenue, passeport
+ * sportif, articles boutique commandés en même temps — cf. paramètre
+ * `ventesInscription`).
  *
  * Fonction pure (aucun accès base/réseau) : la route
- * GET /api/adherents/:id/recu-cotisation charge la fiche, appelle
- * buildCotisationReceipt(), puis passe le résultat à buildDocumentPdfBytes().
- * Isolée dans ce fichier pour pouvoir être testée sans monter tout le Worker.
+ * GET /api/adherents/:id/recu-cotisation charge la fiche adhérent ET les
+ * factures de vente correspondantes, appelle buildCotisationReceipt(), puis
+ * passe le résultat à buildDocumentPdfBytes(). Isolée dans ce fichier pour
+ * pouvoir être testée sans monter tout le Worker.
  *
  * Numéro de reçu : `REC-<saison>-<8 premiers caractères de l'id adhérent>`.
  * Il est STABLE (même adhérent + même saison = même numéro) : ré-émettre un
@@ -71,10 +75,37 @@ function euros(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-export function buildCotisationReceipt(adherent: Record<string, any>, now: Date = new Date()): CotisationReceiptResult {
+/** Forme brute d'une ligne de vente telle que stockée dans `factures.lignes` (JSON). */
+export type VenteLigneBrute = { desc?: string; qte?: number; pu?: number };
+
+// Même convention que factureRowToDocumentInput (src/index.ts) : desc → designation,
+// total = qte × pu. Une ligne à qté ou prix unitaire nul/négatif est ignorée
+// (ne doit normalement pas arriver, mais on ne veut pas polluer le reçu avec
+// une ligne à 0 € si jamais une vente mal formée existe en base).
+function ventesLignesToDocumentLignes(ventes: VenteLigneBrute[]): DocumentLigne[] {
+  return ventes
+    .map((l) => {
+      const qte = Number(l?.qte || 0);
+      const pu = Number(l?.pu || 0);
+      return { designation: String(l?.desc || '—'), qte: qte || undefined, pu: pu || undefined, total: euros(qte * pu) };
+    })
+    .filter((l) => l.total > 0);
+}
+
+export function buildCotisationReceipt(
+  adherent: Record<string, any>,
+  now: Date = new Date(),
+  ventesInscription: VenteLigneBrute[] = []
+): CotisationReceiptResult {
   const cotisation = Number(adherent.cotisation) || 0;
   const passRegion = Number(adherent.montant_pass_region) || 0;
-  const total = euros(cotisation + passRegion);
+  const ventesLignes = ventesLignesToDocumentLignes(ventesInscription);
+  const ventesTotal = ventesLignes.reduce((s, l) => s + l.total, 0);
+  // Un adhérent exonéré de cotisation (ex. membre du Bureau, cotisation à 0)
+  // qui a malgré tout commandé une tenue lors de son inscription a bien une
+  // vente à justifier : le total qui déclenche (ou non) l'émission du reçu
+  // inclut donc désormais ventesTotal, pas seulement cotisation + pass région.
+  const total = euros(cotisation + passRegion + ventesTotal);
   if (!(total > 0)) {
     return {
       ok: false,
@@ -111,6 +142,7 @@ export function buildCotisationReceipt(adherent: Record<string, any>, now: Date 
     { designation: `Cotisation ${String(adherent.discipline || 'Club')} — saison ${season}`, total: euros(cotisation) },
   ];
   if (passRegion > 0) lignes.push({ designation: 'Pass Région', total: euros(passRegion) });
+  lignes.push(...ventesLignes);
 
   const paiement = String(adherent.paiement ?? '').trim();
 

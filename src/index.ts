@@ -32,7 +32,7 @@ export interface Env {
 import {verifyPassword, createSessionToken, parseSessionToken, hashPassword, prepareUserWriteValues, hasStoragePermission, isPublicStorageObject, secureEquals} from './lib/security';
 import { buildDocumentPdfBytes, type DocumentInput, type DocumentLigne } from './lib/pdf/document-template';
 import { bytesToBase64 } from './lib/pdf/pdf-engine';
-import { buildCotisationReceipt } from './lib/pdf/cotisation-receipt';
+import { buildCotisationReceipt, type VenteLigneBrute } from './lib/pdf/cotisation-receipt';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -1109,6 +1109,53 @@ async function getClubContactEmail(env: Env): Promise<string> {
 // Convertit une ligne de la table `factures` (vente OU reçu de don — même
 // table, distingués par isDonationReceipt côté front, cf. app.js) en entrée
 // pour le gabarit PDF harmonisé. `lignes` est stocké en JSON (colonne TEXT).
+// Retrouve les ventes liées à l'inscription/au renouvellement d'un adhérent
+// (tenue t-shirt/pantalon, passeport sportif, articles boutique commandés en
+// même temps), pour les inclure dans le reçu de cotisation (cf.
+// buildCotisationReceipt, GET /api/adherents/:id/recu-cotisation).
+//
+// Ces ventes sont créées par le worker `inscription` dans `factures`
+// (insertInscriptionSales pour le parcours HelloAsso, insertFreeSalesIfAny
+// pour le renouvellement gratuit Membre du Bureau) — AUCUNE colonne
+// structurée ne relie ces lignes à l'adhérent (contrairement aux ventes
+// boutique synchronisées, qui ont `source_type`/`source_id` depuis la
+// migration 0033) : seul `notes` mentionne l'UUID de l'adhérent, en texte
+// libre, avec un format différent selon le parcours. On filtre donc par
+// `exercice_id` (borne déjà la recherche à la bonne saison — cohérent avec
+// le fait qu'une fiche `adherents` ne porte qu'une seule saison, la plus
+// récente) puis on vérifie que l'UUID complet de l'adhérent apparaît bien
+// dans `notes`, sans dépendre d'un format de texte précis.
+//
+// Ne doit JAMAIS faire échouer l'émission du reçu : en cas de souci (donnée
+// malformée, etc.), on revient simplement au comportement précédent
+// (cotisation + Pass Région uniquement).
+async function loadVentesInscriptionLignes(env: Env, adherent: Record<string, any>): Promise<VenteLigneBrute[]> {
+  const exerciceId = adherent?.exercice_id;
+  const adherentId = String(adherent?.id ?? '');
+  if (!exerciceId || !adherentId) return [];
+  try {
+    const { results } = await env.DB
+      .prepare(`SELECT lignes, notes FROM factures WHERE exercice_id = ? AND notes LIKE ? ORDER BY created_at ASC`)
+      .bind(exerciceId, `%${adherentId}%`)
+      .all<{ lignes: string; notes: string }>();
+    const lignes: VenteLigneBrute[] = [];
+    for (const row of results || []) {
+      // `LIKE` ne garantit qu'une correspondance de sous-chaîne : on revérifie
+      // une inclusion exacte de l'UUID pour éviter tout faux positif.
+      if (!String(row?.notes ?? '').includes(adherentId)) continue;
+      try {
+        const raw = typeof row.lignes === 'string' ? JSON.parse(row.lignes) : [];
+        if (Array.isArray(raw)) lignes.push(...raw);
+      } catch {
+        // ligne mal formée : ignorée, ne bloque pas les autres
+      }
+    }
+    return lignes;
+  } catch {
+    return [];
+  }
+}
+
 function factureRowToDocumentInput(f: Record<string, any>): DocumentInput {
   const lignesRaw: Array<{ desc?: string; qte?: number; pu?: number }> = (() => {
     try { return typeof f.lignes === 'string' ? JSON.parse(f.lignes) : (f.lignes || []); }
@@ -3313,8 +3360,11 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
     // qui n'émettait qu'une impression HTML du navigateur et non un fichier PDF.
     // Même moteur et même gabarit que /api/factures/:id/pdf et que le reçu de
     // l'espace membre. Le contenu est reconstruit depuis la fiche adhérent
-    // (cf. buildCotisationReceipt) : le numéro est stable (adhérent + saison),
-    // un reçu ré-émis porte donc toujours le même numéro.
+    // (cf. buildCotisationReceipt), complété par les ventes liées à
+    // l'inscription — tenue, passeport sportif, articles boutique — trouvées
+    // via loadVentesInscriptionLignes (cf. son commentaire pour le détail de
+    // la correspondance) : le numéro est stable (adhérent + saison), un reçu
+    // ré-émis porte donc toujours le même numéro.
     const recuCotisationMatch = path.match(/^\/api\/adherents\/([^/]+)\/recu-cotisation$/);
     if (recuCotisationMatch && method === 'GET') {
       const user = await getCurrentUserFromBearer(request, env);
@@ -3325,7 +3375,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       const adherent = await env.DB.prepare(`SELECT * FROM adherents WHERE id = ?`).bind(recuCotisationMatch[1]).first<Record<string, any>>();
       if (!adherent) return err('Adhérent introuvable', 404);
 
-      const receipt = buildCotisationReceipt(adherent);
+      const ventesInscription = await loadVentesInscriptionLignes(env, adherent);
+      const receipt = buildCotisationReceipt(adherent, new Date(), ventesInscription);
       if (!receipt.ok) return err(receipt.message, receipt.status);
 
       return new Response(buildDocumentPdfBytes(receipt.doc), {
