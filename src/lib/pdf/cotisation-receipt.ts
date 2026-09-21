@@ -210,6 +210,49 @@ export function registrationGoodsLines(dossier: Record<string, any> | null): Doc
   return lignes;
 }
 
+// ── Mention de paiement (pied de page) ──────────────────────────────────────
+
+/**
+ * État du paiement en ligne, tel que le worker `inscription` le persiste dans
+ * `dossier_json.payment` (updateRegistrationPayment). Montants en CENTIMES.
+ */
+export interface PaymentInfo {
+  installmentCount?: number;
+  paidAmountCents?: number;
+  remainingAmountCents?: number;
+}
+
+/**
+ * Ligne du pied de page. Le total du tableau est la VALEUR de l'adhésion et des
+ * articles ; le pied précise ce qui a été réglé :
+ *  - paiement unique : « Mode de paiement : HelloAsso » (+ part Pass Région le cas échéant) ;
+ *  - paiement en 2 ou 3 fois : ce qui est réglé à ce jour et ce qui reste à prélever, pour qu'un
+ *    reçu émis dès la 1re échéance ne laisse pas croire que tout est déjà encaissé.
+ * Doit rester identique à la copie du repo `inscription` (src/routes/_lib/cotisation-receipt.js) :
+ * le reçu joint à l'e-mail de confirmation et celui du bouton « Reçu » sont le même document.
+ */
+export function paymentNote(paiement: string, passRegion: number, total: number, payment?: PaymentInfo): string | undefined {
+  const count = Math.max(1, Math.min(3, Math.round(num(payment?.installmentCount)) || 1));
+  const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+
+  if (count > 1) {
+    const paid = payment?.paidAmountCents;
+    const remaining = payment?.remainingAmountCents;
+    const known = paid != null && remaining != null && Number.isFinite(Number(paid)) && Number.isFinite(Number(remaining));
+    const etat = !known
+      ? ''
+      : Number(remaining) <= 0
+        ? 'intégralement réglé'
+        : `${eur2(Number(paid) / 100)} € réglés à ce jour, ${eur2(Number(remaining) / 100)} € à prélever`;
+    const region = passRegion > 0 ? `dont Pass Région : ${eur2(passRegion)} €` : '';
+    return [`Mode de paiement : ${paiement || 'Paiement'} en ${count} fois`, etat, region].filter(Boolean).join(' - ');
+  }
+
+  const partRegion = passRegion > 0 ? `dont Pass Région : ${eur2(passRegion)} €, soit ${eur2(euros(total - passRegion))} € réglés par l'adhérent` : '';
+  if (paiement) return `Mode de paiement : ${paiement}${partRegion ? ` (${partRegion})` : ''}`;
+  return partRegion ? cap(partRegion) : undefined;
+}
+
 // ── Contenu du reçu (partagé staff / espace membre) ─────────────────────────
 
 export type ReceiptContent =
@@ -228,7 +271,8 @@ export type ReceiptContent =
 export function buildReceiptContent(
   adherent: Record<string, any>,
   registrations: RegistrationRow[] = [],
-  now: Date = new Date()
+  now: Date = new Date(),
+  options: { payment?: PaymentInfo } = {}
 ): ReceiptContent {
   const cotisation = euros(num(adherent.cotisation));
   const passRegion = euros(num(adherent.montant_pass_region));
@@ -238,7 +282,11 @@ export function buildReceiptContent(
     seasonLabelFromIso(adherent.date_inscription) ||
     seasonLabelFromIso(now.toISOString());
 
-  const goods = registrationGoodsLines(pickSeasonRegistration(registrations, season));
+  const dossier = pickSeasonRegistration(registrations, season);
+  const goods = registrationGoodsLines(dossier);
+  // État du paiement : celui fourni par l'appelant (envoi juste après le paiement, avant la
+  // mise à jour du dossier), sinon celui persisté dans l'inscription retenue.
+  const payment = options.payment ?? (dossier?.payment as PaymentInfo | undefined);
 
   const lignes: DocumentLigne[] = [];
   if (cotisation > 0) {
@@ -262,16 +310,7 @@ export function buildReceiptContent(
     ? `Inscription saison ${season} : cotisation et articles commandés${suffixe}`
     : `Cotisation à l'association - saison ${season}${suffixe}`;
 
-  // Le total est la valeur de l'adhésion ET des articles ; le Pass Région est pris
-  // en charge par la Région. On indique donc ce que l'adhérent a réellement réglé
-  // (montant de son paiement en ligne).
-  const paiement = String(adherent.paiement ?? '').trim();
-  const partRegion = passRegion > 0 ? `dont Pass Région : ${eur2(passRegion)} €, soit ${eur2(euros(total - passRegion))} € réglés par l'adhérent` : '';
-  const footerNote = paiement
-    ? `Mode de paiement : ${paiement}${partRegion ? ` (${partRegion})` : ''}`
-    : partRegion
-      ? partRegion.charAt(0).toUpperCase() + partRegion.slice(1)
-      : undefined;
+  const footerNote = paymentNote(String(adherent.paiement ?? '').trim(), passRegion, total, payment);
 
   return { ok: true, season, lignes, total, goodsCount: goods.length, objet, footerNote };
 }
@@ -279,9 +318,10 @@ export function buildReceiptContent(
 export function buildCotisationReceipt(
   adherent: Record<string, any>,
   now: Date = new Date(),
-  registrations: RegistrationRow[] = []
+  registrations: RegistrationRow[] = [],
+  options: { payment?: PaymentInfo } = {}
 ): CotisationReceiptResult {
-  const content = buildReceiptContent(adherent, registrations, now);
+  const content = buildReceiptContent(adherent, registrations, now, options);
   if (!content.ok) return content;
 
   const idShort = String(adherent.id ?? '').replace(/[^A-Za-z0-9]/g, '').slice(0, 8).toUpperCase() || 'XXXXXXXX';

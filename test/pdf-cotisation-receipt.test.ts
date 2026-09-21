@@ -9,7 +9,7 @@ import { describe, it, expect } from "vitest";
 import worker from "../src/index";
 import { safe, measureTextWidth } from "../src/lib/pdf/pdf-engine";
 import { buildDocumentPdfBytes } from "../src/lib/pdf/document-template";
-import { buildCotisationReceipt, seasonLabelFromIso, registrationSeason } from "../src/lib/pdf/cotisation-receipt";
+import { buildCotisationReceipt, seasonLabelFromIso, registrationSeason, paymentNote } from "../src/lib/pdf/cotisation-receipt";
 import { createSessionToken } from "../src/lib/security";
 
 const latin1 = (bytes: Uint8Array) => Buffer.from(bytes).toString("latin1");
@@ -426,6 +426,75 @@ describe("reçu — articles commandés à l'inscription", () => {
     expect(txt).toContain("15,00 \u0080");
     expect(txt).toContain("290,00 \u0080"); // total
     expect(txt).toContain("cotisation et articles command\u00e9s");
+  });
+});
+
+// ── 2 ter. Paiement en plusieurs fois : ce qui est réglé, ce qui reste ─────────
+// La fiche est créée dès la 1re échéance ; un reçu émis à ce moment-là ne doit pas laisser croire
+// que tout est encaissé. Montants en centimes, tels que persistés dans dossier_json.payment.
+describe("reçu — paiement en plusieurs fois", () => {
+  const withPayment = (payment: Record<string, unknown>, statut = "paiement_planifie") =>
+    reg({ ...NEW_MEMBER, payment }, { statut });
+  const footer = (r: ReturnType<typeof buildCotisationReceipt>) => {
+    if (!r.ok) throw new Error(r.message);
+    return r.doc.footerNote;
+  };
+
+  it("en 3 fois, 1re échéance réglée : « réglés à ce jour » et « à prélever »", () => {
+    const r = buildCotisationReceipt(ADH, NOW, [withPayment({ installmentCount: 3, paidAmountCents: 9667, remainingAmountCents: 19333 })]);
+    expect(footer(r)).toBe("Mode de paiement : HelloAsso en 3 fois - 96,67 € réglés à ce jour, 193,33 € à prélever");
+  });
+
+  it("le total du tableau reste la valeur de l'adhésion (290 €), pas le montant déjà encaissé", () => {
+    const r = buildCotisationReceipt(ADH, NOW, [withPayment({ installmentCount: 3, paidAmountCents: 9667, remainingAmountCents: 19333 })]);
+    if (!r.ok) throw new Error(r.message);
+    expect(r.doc.total).toBe(290);
+  });
+
+  it("avec un Pass Région, la part de la Région est ajoutée", () => {
+    const d = { ...NEW_MEMBER, computedTotals: { ...NEW_MEMBER.computedTotals, cotisation: 220, passRegionAmount: 30, total: 260 }, payment: { installmentCount: 2, paidAmountCents: 13000, remainingAmountCents: 13000 } };
+    const r = buildCotisationReceipt({ ...ADH, cotisation: 220, montant_pass_region: 30 }, NOW, [reg(d, { statut: "paiement_planifie" })]);
+    expect(footer(r)).toBe("Mode de paiement : HelloAsso en 2 fois - 130,00 € réglés à ce jour, 130,00 € à prélever - dont Pass Région : 30,00 €");
+  });
+
+  it("toutes les échéances réglées : « intégralement réglé »", () => {
+    const r = buildCotisationReceipt(ADH, NOW, [withPayment({ installmentCount: 3, paidAmountCents: 29000, remainingAmountCents: 0 }, "payee")]);
+    expect(footer(r)).toBe("Mode de paiement : HelloAsso en 3 fois - intégralement réglé");
+  });
+
+  it("échéancier connu mais montants réglés inconnus : on n'invente aucun chiffre", () => {
+    const r = buildCotisationReceipt(ADH, NOW, [withPayment({ installmentCount: 3 })]);
+    expect(footer(r)).toBe("Mode de paiement : HelloAsso en 3 fois");
+  });
+
+  it("un paiement en une fois (ou ancien dossier sans échéancier) garde la mention d'origine", () => {
+    expect(footer(buildCotisationReceipt(ADH, NOW, [withPayment({ installmentCount: 1 }, "payee")]))).toBe("Mode de paiement : HelloAsso");
+    expect(footer(buildCotisationReceipt(ADH, NOW, [reg(NEW_MEMBER)]))).toBe("Mode de paiement : HelloAsso");
+  });
+
+  it("l'état fourni par l'appelant (envoi juste après le paiement) prime sur celui du dossier", () => {
+    // Dans le worker inscription, le dossier lu au début de la requête n'a pas encore les montants réglés.
+    const r = buildCotisationReceipt(ADH, NOW, [withPayment({ installmentCount: 3 })], {
+      payment: { installmentCount: 3, paidAmountCents: 9667, remainingAmountCents: 19333 },
+    });
+    expect(footer(r)).toContain("96,67 € réglés à ce jour");
+  });
+
+  it("sans mode de paiement enregistré : « Paiement en N fois »", () => {
+    const r = buildCotisationReceipt({ ...ADH, paiement: "" }, NOW, [withPayment({ installmentCount: 2, paidAmountCents: 100, remainingAmountCents: 100 })]);
+    expect(footer(r)).toBe("Mode de paiement : Paiement en 2 fois - 1,00 € réglés à ce jour, 1,00 € à prélever");
+  });
+
+  it("le pied de page ne déborde jamais de la page, même dans le pire cas (long mode, 3 fois, gros montants, Pass Région)", () => {
+    const worst = paymentNote("Virement bancaire", 60, 1234.5, { installmentCount: 3, paidAmountCents: 123450, remainingAmountCents: 246900 })!;
+    // Pied de page : Helvetica 7,3 pt, centré ; marges de 14 mm sur une page de 210 mm → 182 mm utiles.
+    expect(measureTextWidth(worst, "F1", 7.3)).toBeLessThanOrEqual(182 * 2.8346);
+    for (const paiement of ["HelloAsso", "Chèque", "Espèces", ""]) {
+      for (const pr of [0, 30, 60]) {
+        const n = paymentNote(paiement, pr, 999.99, { installmentCount: 3, paidAmountCents: 33333, remainingAmountCents: 66666 })!;
+        expect(measureTextWidth(n, "F1", 7.3)).toBeLessThanOrEqual(182 * 2.8346);
+      }
+    }
   });
 });
 

@@ -4,6 +4,25 @@ Ajoutées sur la base du projet existant, sans rien retirer. `tsc --noEmit`,
 les 31 tests existants (`vitest run`) et `wrangler deploy --dry-run` sont
 propres après ajout.
 
+## Reçu joint à l'e-mail de confirmation d'inscription — 21/09/2026
+
+Le reçu de cotisation est maintenant joint automatiquement, dans un fichier séparé du
+dossier récapitulatif, à l'e-mail envoyé quand le paiement est confirmé (repo `inscription`,
+`sendPaymentConfirmedAlert`). Côté `gestion` :
+
+- **Paiement en 2 ou 3 fois** — la fiche est créée dès la 1re échéance ; le reçu ne doit pas
+  laisser croire que tout est encaissé. Le pied de page indique maintenant ce qui est réglé à
+  ce jour et ce qui reste à prélever (« Mode de paiement : HelloAsso en 3 fois - 99,00 €
+  réglés à ce jour, 198,00 € à prélever »), d'après `dossier_json.payment` (persisté par le
+  worker `inscription` à chaque échéance). Le total du tableau reste la valeur de l'adhésion.
+  Paiement unique : mention inchangée. Garde de largeur : le pied de page ne déborde jamais.
+- `src/lib/pdf/cotisation-receipt.ts` a désormais une **copie JS** dans le repo `inscription`
+  (`src/routes/_lib/cotisation-receipt.js`) : les deux doivent être modifiés ensemble. Parité
+  vérifiée sur 6 000 reçus aléatoires (statuts, saisons, exercices, formats de dossier,
+  échéanciers) : 0 écart.
+
+`tsc --noEmit` propre ; 191 tests (dont 9 nouveaux sur les paiements échelonnés).
+
 ## Reçu : articles commandés à l'inscription — 21/09/2026
 
 Symptôme : le reçu ne tenait compte que de la cotisation (et du Pass Région). Le
