@@ -1291,7 +1291,15 @@ function parseRegistrationDossier(reg){
   return dossier;
 }
 
-function registrationSeason(reg){ return seasonFromDate(reg?.submitted_at||reg?.created_at||''); }
+// Saison de l'inscription = saison de la date de fin de SON exercice (même source que
+// date_fin_adhesion de la fiche), pas de sa date de dépôt : une inscription faite en juin
+// pour la saison suivante appartient à la saison suivante. Repli : date de dépôt.
+function registrationSeason(reg){
+  if(!reg) return '';
+  const exo=reg.exercice_id?(D.exercices||[]).find(e=>e.id===reg.exercice_id):null;
+  const fin=exo&&/^\d{4}-\d{2}-\d{2}$/.test(String(exo.date_fin||''))?exo.date_fin:'';
+  return seasonFromDate(fin||reg.submitted_at||reg.created_at||'');
+}
 
 // { reg, current, dossier } — `current` : l'inscription est de la saison de la fiche.
 function adherentRegistration(a){

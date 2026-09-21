@@ -1,22 +1,40 @@
 /**
  * cotisation-receipt.ts — AFFBC (gestion)
  * ─────────────────────────────────────────────────────────────────────────
- * Construit le reçu de cotisation d'un adhérent pour le back-office (bouton
- * « Reçu » de l'onglet Adhérents), à partir de sa ligne `adherents` et,
- * optionnellement, des ventes liées à l'inscription (tenue, passeport
- * sportif, articles boutique commandés en même temps — cf. paramètre
- * `ventesInscription`).
+ * Construit le reçu d'inscription d'un adhérent : cotisation, Pass Région et
+ * ARTICLES COMMANDÉS À L'INSCRIPTION (t-shirt, pantalon, passeport sportif,
+ * produits en option). Sert au bouton « Reçu » du back-office
+ * (GET /api/adherents/:id/recu-cotisation) et au reçu de l'espace membre
+ * (GET /api/member/documents/recu-cotisation) : les deux affichent ainsi
+ * exactement les mêmes lignes et le même total.
  *
- * Fonction pure (aucun accès base/réseau) : la route
- * GET /api/adherents/:id/recu-cotisation charge la fiche adhérent ET les
- * factures de vente correspondantes, appelle buildCotisationReceipt(), puis
- * passe le résultat à buildDocumentPdfBytes(). Isolée dans ce fichier pour
- * pouvoir être testée sans monter tout le Worker.
+ * Fonctions pures (aucun accès base/réseau) : les routes chargent la fiche et
+ * les inscriptions, puis appellent buildReceiptContent() / buildCotisationReceipt().
+ *
+ * D'où viennent les données
+ * ─────────────────────────
+ *  - Cotisation et Pass Région : la fiche `adherents` (`cotisation`,
+ *    `montant_pass_region`). C'est la valeur que le bureau peut corriger à la
+ *    main, elle fait donc foi.
+ *  - Articles : `inscriptions_publiques.dossier_json` (`clothingOrder` pour les
+ *    tailles, `computedTotals` pour quantités, prix et produits en option). La
+ *    fiche adhérent n'en garde AUCUNE trace : t-shirt et pantalon sont facturés
+ *    à part, dans la facture « Ventes liées à l'inscription web » (VTE-…) créée
+ *    au paiement. Les lignes reprennent celles de cette facture
+ *    (buildInscriptionSaleLines côté `inscription`).
+ *
+ * Quelle inscription est retenue : la plus récente qui (1) est finalisée, (2) est
+ * de la SAISON de l'adhérent, (3) porte des totaux. Une inscription d'une saison
+ * passée n'apporte pas ses articles au reçu de la saison en cours (même règle que
+ * le tableau Adhérents). Sans inscription en ligne (fiche saisie ou importée), le
+ * reçu ne contient que la cotisation, comme avant.
+ *
+ * Le total est toujours égal à ce qui a été facturé à l'inscription : si des
+ * articles ne sont pas détaillables (ancien format de dossier), le reste est
+ * porté par une ligne « Autres articles » plutôt que perdu.
  *
  * Numéro de reçu : `REC-<saison>-<8 premiers caractères de l'id adhérent>`.
- * Il est STABLE (même adhérent + même saison = même numéro) : ré-émettre un
- * reçu ne crée pas un nouveau numéro. L'ancien parcours utilisait
- * `REC-<année>-<nb de factures + 1>`, qui changeait à chaque clic.
+ * Il est STABLE (même adhérent + même saison = même numéro).
  */
 
 import type { DocumentInput, DocumentLigne } from './document-template';
@@ -75,37 +93,161 @@ function euros(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-/** Forme brute d'une ligne de vente telle que stockée dans `factures.lignes` (JSON). */
-export type VenteLigneBrute = { desc?: string; qte?: number; pu?: number };
-
-// Même convention que factureRowToDocumentInput (src/index.ts) : desc → designation,
-// total = qte × pu. Une ligne à qté ou prix unitaire nul/négatif est ignorée
-// (ne doit normalement pas arriver, mais on ne veut pas polluer le reçu avec
-// une ligne à 0 € si jamais une vente mal formée existe en base).
-function ventesLignesToDocumentLignes(ventes: VenteLigneBrute[]): DocumentLigne[] {
-  return ventes
-    .map((l) => {
-      const qte = Number(l?.qte || 0);
-      const pu = Number(l?.pu || 0);
-      return { designation: String(l?.desc || '—'), qte: qte || undefined, pu: pu || undefined, total: euros(qte * pu) };
-    })
-    .filter((l) => l.total > 0);
+function num(v: unknown): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
 }
 
-export function buildCotisationReceipt(
+function eur2(n: number): string {
+  return n.toFixed(2).replace('.', ',');
+}
+
+// ── Inscription en ligne → articles commandés ───────────────────────────────
+
+/** Colonnes de `inscriptions_publiques` utiles au reçu. */
+export interface RegistrationRow {
+  id?: string | null;
+  statut?: string | null;
+  submitted_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  dossier_json?: unknown;
+  /** date_fin de l'exercice de l'inscription (jointure) : voir registrationSeason(). */
+  exercice_date_fin?: string | null;
+}
+
+const VALID_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Saison d'une inscription = saison de la date de fin de SON exercice, et non de sa
+ * date de dépôt. C'est exactement la source de `adherents.date_fin_adhesion` (le
+ * worker `inscription` la pose avec exercise.date_fin), donc la saison de la fiche
+ * et celle de son inscription se comparent à coup sûr : une inscription déposée en
+ * juin pour la saison suivante appartient bien à la saison suivante, alors que sa
+ * date de dépôt (avant le 1er juillet) la rangerait dans l'ancienne. Sans exercice
+ * exploitable, repli sur la date de dépôt (même repli que le worker `inscription`).
+ */
+export function registrationSeason(r: RegistrationRow): string {
+  const fin = String(r.exercice_date_fin ?? '');
+  return seasonLabelFromIso(VALID_DATE.test(fin) ? fin : r.submitted_at || r.created_at);
+}
+
+// Statuts d'une inscription NON aboutie. `adherent_id` n'est renseigné qu'à la
+// finalisation, donc ces statuts ne coexistent normalement jamais avec un
+// adherent_id ; le filtre est une seconde barrière.
+const NON_FINAL_STATUSES = new Set(['brouillon', 'paiement_en_attente', 'traitement_paiement', 'echec_creation', 'abandonnee']);
+
+// dossier_json est une colonne TEXT : chaîne JSON brute (objet déjà parsé toléré).
+function parseDossier(raw: unknown): Record<string, any> | null {
+  if (raw && typeof raw === 'object') return raw as Record<string, any>;
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const o = JSON.parse(raw);
+      return o && typeof o === 'object' ? (o as Record<string, any>) : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/** Dossier de la plus récente inscription finalisée de la saison donnée, ou null. */
+export function pickSeasonRegistration(rows: RegistrationRow[] | null | undefined, season: string): Record<string, any> | null {
+  let best: { at: string; dossier: Record<string, any> } | null = null;
+  for (const r of rows || []) {
+    if (!r || NON_FINAL_STATUSES.has(String(r.statut ?? ''))) continue;
+    if (!season || registrationSeason(r) !== season) continue;
+    const dossier = parseDossier(r.dossier_json);
+    if (!dossier || !dossier.computedTotals || typeof dossier.computedTotals !== 'object') continue;
+    const at = String(r.updated_at || r.created_at || '');
+    if (!best || at.localeCompare(best.at) > 0) best = { at, dossier };
+  }
+  return best ? best.dossier : null;
+}
+
+/**
+ * Lignes « articles » d'une inscription : passeport, t-shirt, pantalon, produits
+ * en option. Miroir de buildInscriptionSaleLines() (repo `inscription`, facture
+ * « Ventes liées à l'inscription web »), avec des libellés lisibles pour
+ * l'adhérent (« T-shirt club AFFBC (taille M) » plutôt que « Vente t-shirt… »).
+ *
+ * Le « kit nouvel adhérent » (40 €) n'est plus facturé depuis le correctif du
+ * 10/09/2026, mais les inscriptions antérieures l'ont réellement payé : il est
+ * repris s'il figure dans leurs totaux.
+ */
+export function registrationGoodsLines(dossier: Record<string, any> | null): DocumentLigne[] {
+  const totals = dossier?.computedTotals;
+  if (!totals || typeof totals !== 'object') return [];
+  const clothing = (dossier?.clothingOrder && typeof dossier.clothingOrder === 'object' ? dossier.clothingOrder : {}) as Record<string, any>;
+  const lignes: DocumentLigne[] = [];
+
+  const add = (designation: string, qte: number, pu: number) => {
+    const total = euros(qte * pu);
+    if (qte > 0 && total > 0) lignes.push({ designation, qte, pu: euros(pu), total });
+  };
+  const taille = (s: unknown) => {
+    const t = String(s ?? '').trim();
+    return t ? ` (taille ${t})` : '';
+  };
+
+  add('Kit nouvel adhérent', 1, num(totals.newMemberKit));
+  add('Passeport sportif', 1, num(totals.passport));
+  add(`T-shirt club AFFBC${taille(clothing.tshirtSize)}`, num(totals.tshirtQty), num(totals.pricingTshirt));
+  add(`Pantalon club AFFBC${taille(clothing.pantalonSize)}`, num(totals.pantalonQty), num(totals.pricingPantalon));
+  for (const item of Array.isArray(totals.orderItems) ? totals.orderItems : []) {
+    add(`${String(item?.name || 'Article')}${taille(item?.size)}`, num(item?.quantity), num(item?.unitPrice));
+  }
+
+  // Garde-fou : tout ce qui a été facturé en plus de la cotisation doit figurer
+  // sur le reçu. Si le détail est incomplet (ancien format de dossier, prix
+  // absent), le reste part sur une ligne « Autres articles ».
+  if (num(totals.total) > 0) {
+    const facturéHorsCotisation = euros(num(totals.total) - num(totals.cotisation));
+    const detaille = euros(lignes.reduce((s, l) => s + l.total, 0));
+    const reste = euros(facturéHorsCotisation - detaille);
+    if (reste >= 0.01) add('Autres articles', 1, reste);
+  }
+  return lignes;
+}
+
+// ── Contenu du reçu (partagé staff / espace membre) ─────────────────────────
+
+export type ReceiptContent =
+  | {
+      ok: true;
+      season: string;
+      lignes: DocumentLigne[];
+      total: number;
+      /** Nombre de lignes « articles » (t-shirt, pantalon…) issues de l'inscription. */
+      goodsCount: number;
+      objet: string;
+      footerNote?: string;
+    }
+  | { ok: false; status: number; message: string };
+
+export function buildReceiptContent(
   adherent: Record<string, any>,
-  now: Date = new Date(),
-  ventesInscription: VenteLigneBrute[] = []
-): CotisationReceiptResult {
-  const cotisation = Number(adherent.cotisation) || 0;
-  const passRegion = Number(adherent.montant_pass_region) || 0;
-  const ventesLignes = ventesLignesToDocumentLignes(ventesInscription);
-  const ventesTotal = ventesLignes.reduce((s, l) => s + l.total, 0);
-  // Un adhérent exonéré de cotisation (ex. membre du Bureau, cotisation à 0)
-  // qui a malgré tout commandé une tenue lors de son inscription a bien une
-  // vente à justifier : le total qui déclenche (ou non) l'émission du reçu
-  // inclut donc désormais ventesTotal, pas seulement cotisation + pass région.
-  const total = euros(cotisation + passRegion + ventesTotal);
+  registrations: RegistrationRow[] = [],
+  now: Date = new Date()
+): ReceiptContent {
+  const cotisation = euros(num(adherent.cotisation));
+  const passRegion = euros(num(adherent.montant_pass_region));
+
+  const season =
+    seasonLabelFromIso(adherent.date_fin_adhesion) ||
+    seasonLabelFromIso(adherent.date_inscription) ||
+    seasonLabelFromIso(now.toISOString());
+
+  const goods = registrationGoodsLines(pickSeasonRegistration(registrations, season));
+
+  const lignes: DocumentLigne[] = [];
+  if (cotisation > 0) {
+    lignes.push({ designation: `Cotisation ${String(adherent.discipline || 'Club')} — saison ${season}`, qte: 1, pu: cotisation, total: cotisation });
+  }
+  if (passRegion > 0) lignes.push({ designation: 'Pass Région', qte: 1, pu: passRegion, total: passRegion });
+  lignes.push(...goods);
+
+  const total = euros(lignes.reduce((s, l) => s + l.total, 0));
   if (!(total > 0)) {
     return {
       ok: false,
@@ -114,20 +256,41 @@ export function buildCotisationReceipt(
     };
   }
 
+  const inscription = frDate(adherent.date_inscription);
+  const suffixe = inscription ? ` (inscription du ${inscription})` : '';
+  const objet = goods.length
+    ? `Inscription saison ${season} : cotisation et articles commandés${suffixe}`
+    : `Cotisation à l'association - saison ${season}${suffixe}`;
+
+  // Le total est la valeur de l'adhésion ET des articles ; le Pass Région est pris
+  // en charge par la Région. On indique donc ce que l'adhérent a réellement réglé
+  // (montant de son paiement en ligne).
+  const paiement = String(adherent.paiement ?? '').trim();
+  const partRegion = passRegion > 0 ? `dont Pass Région : ${eur2(passRegion)} €, soit ${eur2(euros(total - passRegion))} € réglés par l'adhérent` : '';
+  const footerNote = paiement
+    ? `Mode de paiement : ${paiement}${partRegion ? ` (${partRegion})` : ''}`
+    : partRegion
+      ? partRegion.charAt(0).toUpperCase() + partRegion.slice(1)
+      : undefined;
+
+  return { ok: true, season, lignes, total, goodsCount: goods.length, objet, footerNote };
+}
+
+export function buildCotisationReceipt(
+  adherent: Record<string, any>,
+  now: Date = new Date(),
+  registrations: RegistrationRow[] = []
+): CotisationReceiptResult {
+  const content = buildReceiptContent(adherent, registrations, now);
+  if (!content.ok) return content;
+
   const idShort = String(adherent.id ?? '').replace(/[^A-Za-z0-9]/g, '').slice(0, 8).toUpperCase() || 'XXXXXXXX';
   const nom = String(adherent.nom ?? '').trim().toLocaleUpperCase('fr-FR');
   const prenom = String(adherent.prenom ?? '').trim();
   const nomComplet = `${prenom} ${nom}`.trim() || 'Adhérent';
 
-  const nowIso = now.toISOString();
-  const season =
-    seasonLabelFromIso(adherent.date_fin_adhesion) ||
-    seasonLabelFromIso(adherent.date_inscription) ||
-    seasonLabelFromIso(nowIso);
-
-  const numero = `REC-${season}-${idShort}`;
+  const numero = `REC-${content.season}-${idShort}`;
   const emisLe = now.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' });
-  const inscription = frDate(adherent.date_inscription);
 
   const adresse = String(adherent.adresse ?? '').trim();
   const cpVille = [adherent.code_postal, adherent.ville].map((s) => String(s ?? '').trim()).filter(Boolean).join(' ');
@@ -135,30 +298,22 @@ export function buildCotisationReceipt(
     ...(adresse ? wrapWords(adresse, 44, 3) : []),
     ...(cpVille ? [cpVille] : []),
     `Adhérent n°${idShort}`,
-    `Saison ${season}`,
+    `Saison ${content.season}`,
   ];
-
-  const lignes: DocumentLigne[] = [
-    { designation: `Cotisation ${String(adherent.discipline || 'Club')} — saison ${season}`, total: euros(cotisation) },
-  ];
-  if (passRegion > 0) lignes.push({ designation: 'Pass Région', total: euros(passRegion) });
-  lignes.push(...ventesLignes);
-
-  const paiement = String(adherent.paiement ?? '').trim();
 
   const doc: DocumentInput = {
     type: 'cotisation',
     numero,
     dateLabel: `Émis le ${emisLe}`,
     destinataire: { nom: nomComplet, lignes: lignesDestinataire },
-    objet: `Cotisation à l'association - saison ${season}${inscription ? ` (inscription du ${inscription})` : ''}`,
-    lignes,
-    total,
+    objet: content.objet,
+    lignes: content.lignes,
+    total: content.total,
     tvaLabel: 'Association loi 1901 — non assujettie à la TVA',
-    footerNote: paiement ? `Mode de paiement : ${paiement}` : undefined,
+    footerNote: content.footerNote,
     pdfTitle: `Reçu de cotisation ${numero} — ${nomComplet}`,
   };
 
-  const filename = `Recu-cotisation-${slug(nomComplet) || 'adherent'}-${season}.pdf`;
+  const filename = `Recu-cotisation-${slug(nomComplet) || 'adherent'}-${content.season}.pdf`;
   return { ok: true, doc, filename };
 }

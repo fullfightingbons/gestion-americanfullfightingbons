@@ -281,6 +281,41 @@ describe("renouvellement — l'inscription d'une saison passée ne masque pas le
     expect(r).toEqual({ state: "manquant", source: "age", hasDocument: false });
   });
 
+  it("inscription déposée en JUIN pour la saison suivante : rattachée via son exercice (D.exercices)", () => {
+    // Dépôt le 20/06/2026 (avant le 1er juillet) mais exercice 2026-2027 : elle appartient à la
+    // saison de la fiche (fin d'adhésion 30/06/2027). Sans cela, la pièce reçue passerait pour absente.
+    const r = run(`
+      D.exercices=[{id:'ex27',libelle:'2026-2027',date_fin:'2027-06-30',statut:'actif'}];
+      D.adherents=[adh('m1',{naissance:'2014-03-01',certificat:0})];
+      var rg=reg('m1',{mineur:true,at:'2026-06-20T09:00:00.000Z',docs:{medicalCertificate:DOC}}); rg.exercice_id='ex27';
+      D.publicRegistrations=[rg];
+      capture({current:adherentRegistration(D.adherents[0]).current,season:registrationSeason(rg),state:adherentCertificatInfo(D.adherents[0]).state});
+    `);
+    expect(r).toEqual({ current: true, season: "2026-2027", state: "a_valider" });
+  });
+
+  it("sans exercice connu, repli sur la date de dépôt (comportement inchangé)", () => {
+    const r = run(`
+      D.exercices=[];
+      D.adherents=[adh('m1',{naissance:'2014-03-01',certificat:0})];
+      var rg=reg('m1',{mineur:true,at:'2026-06-20T09:00:00.000Z',docs:{medicalCertificate:DOC}}); rg.exercice_id='ex27';
+      D.publicRegistrations=[rg];
+      capture({current:adherentRegistration(D.adherents[0]).current,season:registrationSeason(rg)});
+    `);
+    expect(r).toEqual({ current: false, season: "2025-2026" });
+  });
+
+  it("l'exercice de l'inscription est celui de l'an dernier : pas de rattachement à la saison en cours", () => {
+    const r = run(`
+      D.exercices=[{id:'ex26',libelle:'2025-2026',date_fin:'2026-06-30',statut:'archive'}];
+      D.adherents=[adh('a1',{certificat:0,date_fin_adhesion:'2027-06-30'})];
+      var rg=reg('a1'); rg.exercice_id='ex26';
+      D.publicRegistrations=[rg];
+      capture(adherentRegistration(D.adherents[0]).current);
+    `);
+    expect(r).toBe(false);
+  });
+
   it("inscription de la saison en cours : elle prime, même si une plus ancienne existe", () => {
     const r = run(`
       D.adherents=[adh('a1',{certificat:0})];

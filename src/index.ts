@@ -32,7 +32,8 @@ export interface Env {
 import {verifyPassword, createSessionToken, parseSessionToken, hashPassword, prepareUserWriteValues, hasStoragePermission, isPublicStorageObject, secureEquals} from './lib/security';
 import { buildDocumentPdfBytes, type DocumentInput, type DocumentLigne } from './lib/pdf/document-template';
 import { bytesToBase64 } from './lib/pdf/pdf-engine';
-import { buildCotisationReceipt, type VenteLigneBrute } from './lib/pdf/cotisation-receipt';
+import { buildCotisationReceipt, buildReceiptContent } from './lib/pdf/cotisation-receipt';
+import type { RegistrationRow } from './lib/pdf/cotisation-receipt';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -494,6 +495,25 @@ async function getRolePerms(env: Env): Promise<PermissionMatrix> {
     // ignore — on retombe sur les permissions par défaut
   }
   return DB_DEFAULT_ROLE_PERMS;
+}
+
+// Inscriptions en ligne rattachées à un adhérent (le plus récentes d'abord). Sert aux
+// reçus : la fiche `adherents` ne garde que cotisation et Pass Région, alors que les
+// articles commandés à l'inscription (t-shirt, pantalon, passeport, produits en
+// option) ne sont que dans inscriptions_publiques.dossier_json.
+// `adherent_id` n'est renseigné qu'à la finalisation de l'inscription (paiement
+// confirmé ou inscription gratuite) : les brouillons n'apparaissent pas ici.
+async function loadAdherentRegistrations(env: Env, adherentId: string): Promise<RegistrationRow[]> {
+  if (!adherentId) return [];
+  const res = await env.DB.prepare(
+    `SELECT ip.id, ip.statut, ip.submitted_at, ip.created_at, ip.updated_at, ip.dossier_json,
+            (SELECT e.date_fin FROM exercices e WHERE e.id = ip.exercice_id) AS exercice_date_fin
+       FROM inscriptions_publiques ip
+      WHERE ip.adherent_id = ?
+      ORDER BY COALESCE(ip.updated_at, ip.created_at) DESC
+      LIMIT 10`
+  ).bind(adherentId).all<RegistrationRow>();
+  return (res.results || []) as RegistrationRow[];
 }
 
 export function getPermLevel(user: Record<string, any>, key: string, rolePerms: PermissionMatrix): string {
@@ -1109,53 +1129,6 @@ async function getClubContactEmail(env: Env): Promise<string> {
 // Convertit une ligne de la table `factures` (vente OU reçu de don — même
 // table, distingués par isDonationReceipt côté front, cf. app.js) en entrée
 // pour le gabarit PDF harmonisé. `lignes` est stocké en JSON (colonne TEXT).
-// Retrouve les ventes liées à l'inscription/au renouvellement d'un adhérent
-// (tenue t-shirt/pantalon, passeport sportif, articles boutique commandés en
-// même temps), pour les inclure dans le reçu de cotisation (cf.
-// buildCotisationReceipt, GET /api/adherents/:id/recu-cotisation).
-//
-// Ces ventes sont créées par le worker `inscription` dans `factures`
-// (insertInscriptionSales pour le parcours HelloAsso, insertFreeSalesIfAny
-// pour le renouvellement gratuit Membre du Bureau) — AUCUNE colonne
-// structurée ne relie ces lignes à l'adhérent (contrairement aux ventes
-// boutique synchronisées, qui ont `source_type`/`source_id` depuis la
-// migration 0033) : seul `notes` mentionne l'UUID de l'adhérent, en texte
-// libre, avec un format différent selon le parcours. On filtre donc par
-// `exercice_id` (borne déjà la recherche à la bonne saison — cohérent avec
-// le fait qu'une fiche `adherents` ne porte qu'une seule saison, la plus
-// récente) puis on vérifie que l'UUID complet de l'adhérent apparaît bien
-// dans `notes`, sans dépendre d'un format de texte précis.
-//
-// Ne doit JAMAIS faire échouer l'émission du reçu : en cas de souci (donnée
-// malformée, etc.), on revient simplement au comportement précédent
-// (cotisation + Pass Région uniquement).
-async function loadVentesInscriptionLignes(env: Env, adherent: Record<string, any>): Promise<VenteLigneBrute[]> {
-  const exerciceId = adherent?.exercice_id;
-  const adherentId = String(adherent?.id ?? '');
-  if (!exerciceId || !adherentId) return [];
-  try {
-    const { results } = await env.DB
-      .prepare(`SELECT lignes, notes FROM factures WHERE exercice_id = ? AND notes LIKE ? ORDER BY created_at ASC`)
-      .bind(exerciceId, `%${adherentId}%`)
-      .all<{ lignes: string; notes: string }>();
-    const lignes: VenteLigneBrute[] = [];
-    for (const row of results || []) {
-      // `LIKE` ne garantit qu'une correspondance de sous-chaîne : on revérifie
-      // une inclusion exacte de l'UUID pour éviter tout faux positif.
-      if (!String(row?.notes ?? '').includes(adherentId)) continue;
-      try {
-        const raw = typeof row.lignes === 'string' ? JSON.parse(row.lignes) : [];
-        if (Array.isArray(raw)) lignes.push(...raw);
-      } catch {
-        // ligne mal formée : ignorée, ne bloque pas les autres
-      }
-    }
-    return lignes;
-  } catch {
-    return [];
-  }
-}
-
 function factureRowToDocumentInput(f: Record<string, any>): DocumentInput {
   const lignesRaw: Array<{ desc?: string; qte?: number; pu?: number }> = (() => {
     try { return typeof f.lignes === 'string' ? JSON.parse(f.lignes) : (f.lignes || []); }
@@ -3318,31 +3291,27 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
 
       const nomComplet = `${member.prenom || ''} ${member.nom || ''}`.trim() || 'Adhérent·e';
       const numeroAdherent = String(member.adherent_id || member.id || '').slice(0, 8).toUpperCase();
-      const saison = member.date_fin_adhesion
-        ? `${new Date(member.date_fin_adhesion).getFullYear() - 1}-${new Date(member.date_fin_adhesion).getFullYear()}`
-        : String(new Date().getFullYear());
-      const cotisation = Number(member.cotisation || 0);
-      const passRegion = Number(member.montant_pass_region || 0);
-      if (!(cotisation > 0)) {
+
+      // Même contenu que le bouton « Reçu » du back-office : cotisation, Pass Région ET
+      // articles commandés à l'inscription (t-shirt, pantalon, passeport…), pour que le
+      // membre et le bureau voient le même reçu et le même total.
+      const registrations = await loadAdherentRegistrations(env, String(member.adherent_id || ''));
+      const content = buildReceiptContent({ ...member, id: member.adherent_id || member.id }, registrations);
+      if (!content.ok) {
         return err('Aucune cotisation enregistrée pour le moment', 404);
       }
-
-      const lignes: DocumentLigne[] = [
-        { designation: `Cotisation ${member.discipline || 'Club'} — saison ${saison}`, total: cotisation },
-      ];
-      if (passRegion > 0) lignes.push({ designation: 'Pass Région', total: passRegion });
-      const total = cotisation + passRegion;
-      const aujourdhui = new Date().toLocaleDateString('fr-FR');
+      const aujourdhui = new Date().toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' });
 
       const pdfBytes = buildDocumentPdfBytes({
         type: 'cotisation',
         numero: `COT-${new Date().getFullYear()}-${numeroAdherent}`,
-        dateLabel: `Emis le ${aujourdhui}`,
-        destinataire: { nom: nomComplet, lignes: [`Adherent n°${numeroAdherent}`, `Saison ${saison}`] },
-        lignes,
-        total,
-        tvaLabel: 'Association loi 1901 - non assujettie a la TVA',
-        footerNote: member.paiement ? `Mode de paiement : ${member.paiement}` : undefined,
+        dateLabel: `Émis le ${aujourdhui}`,
+        destinataire: { nom: nomComplet, lignes: [`Adhérent n°${numeroAdherent}`, `Saison ${content.season}`] },
+        objet: content.objet,
+        lignes: content.lignes,
+        total: content.total,
+        tvaLabel: 'Association loi 1901 — non assujettie à la TVA',
+        footerNote: content.footerNote,
       });
 
       return new Response(pdfBytes, {
@@ -3360,11 +3329,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
     // qui n'émettait qu'une impression HTML du navigateur et non un fichier PDF.
     // Même moteur et même gabarit que /api/factures/:id/pdf et que le reçu de
     // l'espace membre. Le contenu est reconstruit depuis la fiche adhérent
-    // (cf. buildCotisationReceipt), complété par les ventes liées à
-    // l'inscription — tenue, passeport sportif, articles boutique — trouvées
-    // via loadVentesInscriptionLignes (cf. son commentaire pour le détail de
-    // la correspondance) : le numéro est stable (adhérent + saison), un reçu
-    // ré-émis porte donc toujours le même numéro.
+    // (cf. buildCotisationReceipt) : le numéro est stable (adhérent + saison),
+    // un reçu ré-émis porte donc toujours le même numéro.
     const recuCotisationMatch = path.match(/^\/api\/adherents\/([^/]+)\/recu-cotisation$/);
     if (recuCotisationMatch && method === 'GET') {
       const user = await getCurrentUserFromBearer(request, env);
@@ -3375,8 +3341,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       const adherent = await env.DB.prepare(`SELECT * FROM adherents WHERE id = ?`).bind(recuCotisationMatch[1]).first<Record<string, any>>();
       if (!adherent) return err('Adhérent introuvable', 404);
 
-      const ventesInscription = await loadVentesInscriptionLignes(env, adherent);
-      const receipt = buildCotisationReceipt(adherent, new Date(), ventesInscription);
+      const registrations = await loadAdherentRegistrations(env, String(adherent.id));
+      const receipt = buildCotisationReceipt(adherent, new Date(), registrations);
       if (!receipt.ok) return err(receipt.message, receipt.status);
 
       return new Response(buildDocumentPdfBytes(receipt.doc), {

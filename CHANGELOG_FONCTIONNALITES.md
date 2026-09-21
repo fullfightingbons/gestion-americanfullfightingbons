@@ -4,6 +4,48 @@ Ajoutées sur la base du projet existant, sans rien retirer. `tsc --noEmit`,
 les 31 tests existants (`vitest run`) et `wrangler deploy --dry-run` sont
 propres après ajout.
 
+## Reçu : articles commandés à l'inscription — 21/09/2026
+
+Symptôme : le reçu ne tenait compte que de la cotisation (et du Pass Région). Le
+t-shirt et le pantalon commandés à l'inscription — obligatoires pour une nouvelle
+adhésion — n'y figuraient pas, si bien que le total ne correspondait pas au paiement.
+
+**Cause** — la fiche `adherents` ne garde que `cotisation` et `montant_pass_region`.
+Les articles n'existent que dans `inscriptions_publiques.dossier_json`
+(`clothingOrder` pour les tailles, `computedTotals` pour quantités, prix et produits en
+option) et dans la facture séparée « Ventes liées à l'inscription web » (`VTE-…`).
+
+**Correction** (`src/lib/pdf/cotisation-receipt.ts`, partagé par les deux reçus)
+- Le reçu ajoute, à la cotisation et au Pass Région, les articles de l'inscription :
+  **t-shirt et pantalon (taille, quantité, prix unitaire)**, passeport sportif, produits
+  en option. Mêmes lignes que la facture `VTE-…` (`buildInscriptionSaleLines`), avec des
+  libellés lisibles (« T-shirt club AFFBC (taille M) »).
+- Le **kit nouvel adhérent** des inscriptions d'avant le 10/09/2026 (réellement payé) est
+  repris. Si le détail est incomplet (ancien format), le reste facturé part sur une ligne
+  « Autres articles » : le total est toujours égal à ce qui a été facturé.
+- Le pied de page indique la part réglée par l'adhérent quand il y a un Pass Région
+  (« dont Pass Région : 30,00 €, soit 297,00 € réglés par l'adhérent »).
+- Inscription retenue : la plus récente qui est **finalisée** (les brouillons, paiements
+  en attente, échecs et abandons sont ignorés), de **la saison de la fiche** et porteuse
+  de totaux. Une inscription de l'an dernier n'apporte pas ses articles (renouvellement
+  par le bureau). La saison d'une inscription est celle de la `date_fin` de **son
+  exercice** (même source que `date_fin_adhesion`), pas de sa date de dépôt : une
+  inscription faite en juin pour la saison suivante est bien rattachée à la suivante.
+  Même règle côté front (`registrationSeason`) pour l'analyse du dossier.
+- Sans inscription en ligne (fiche saisie ou importée) : cotisation seule, comme avant.
+- Le tableau des lignes affiche maintenant quantité et prix unitaire pour toutes les lignes.
+- Le **reçu de l'espace membre** (`/api/member/documents/recu-cotisation`) utilise le même
+  contenu ; sa numérotation `COT-…` est inchangée (accents et « Émis le » corrigés).
+
+Vérifié en exécutant le vrai `calculateTotals()` du projet `inscription` sur 5 scénarios
+(nouvelle adhésion, Pass Région + passeport + produits, renouvellement avec ou sans
+articles, CSE Thalès) : total du reçu − Pass Région = montant facturé à l'adhérent.
+
+Limite connue : le reçu lit l'inscription, pas la facture `VTE-…`. Un article remboursé ou
+une facture annulée à la main après le paiement n'y est pas répercuté.
+
+`tsc --noEmit` propre ; 182 tests (dont 29 nouveaux sur cette évolution).
+
 ## Dossiers adhérents et reçu PDF — 20/09/2026
 
 Symptôme : un adhérent qui refuse le droit à l'image apparaissait « dossier
