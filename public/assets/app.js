@@ -7611,6 +7611,7 @@ async function runAutomationManual(kind){
   const cfg={
     certificats:{path:'/admin/certificats/verifier',label:'Vérification des certificats'},
     factures_retard:{path:'/admin/factures/relancer-impayes',label:'Relance des factures impayées'},
+    adhesions:{path:'/admin/adhesions/relancer',label:'Rappels renouvellement adhésion'},
     backup:{path:'/admin/backup/run',label:'Sauvegarde complète'},
   }[kind];
   if(!cfg) return;
@@ -7630,6 +7631,7 @@ function vAutomations(){
   const expected=[
     {key:'certificats',label:'Rappels certificats',manual:true},
     {key:'factures_retard',label:'Relances factures impayées',manual:true},
+    {key:'adhesions',label:'Rappels renouvellement adhésion',manual:true},
     {key:'materiel_retard',label:'Relances matériel en retard'},
     {key:'rgpd',label:'Signalement RGPD'},
     {key:'backup',label:'Sauvegarde complète',manual:true},

@@ -1232,6 +1232,66 @@ async function checkCertificatsExpirants(env: Env): Promise<{ checked: number; s
   return { checked: results?.length || 0, sent, errors };
 }
 
+// ── Rappel de renouvellement d'adhésion ─────────────────────────────────────
+// Volontairement différent de checkCertificatsExpirants ci-dessus : pas de
+// fenêtre proactive avant échéance. Un adhérent "Actif" dont la
+// date_fin_adhesion est dépassée reçoit UN SEUL email, une fois l'échéance
+// passée — jamais avant, jamais une deuxième fois pour la même échéance
+// (dédoublonnage par (adherent_id, echeance) dans adhesion_rappels, cf.
+// migration 0036 — même principe que certificat_rappels).
+//
+// Note de comportement au premier déploiement : les adhérents déjà "Actif"
+// avec une date_fin_adhesion passée de longue date (fiches jamais repassées
+// à "Inactif" par le bureau) recevront chacun un email dès le premier
+// passage du cron, même si l'échéance remonte à plusieurs mois — c'est le
+// comportement demandé ("une seule fois après la date de fin"), pas une
+// fenêtre glissante.
+async function checkAdhesionsExpirees(env: Env): Promise<{ checked: number; sent: number; errors: string[] }> {
+  const errors: string[] = [];
+  let sent = 0;
+
+  const { results } = await env.DB.prepare(
+    `SELECT id, prenom, nom, email, date_fin_adhesion
+     FROM adherents
+     WHERE statut = 'Actif'
+       AND date_fin_adhesion IS NOT NULL AND date_fin_adhesion != ''
+       AND email IS NOT NULL AND email != ''
+       AND date(date_fin_adhesion) < date('now')`
+  ).all<{ id: string; prenom: string; nom: string; email: string; date_fin_adhesion: string }>();
+
+  for (const row of results || []) {
+    const already = await env.DB.prepare(
+      `SELECT id FROM adhesion_rappels WHERE adherent_id = ? AND echeance = ?`
+    ).bind(row.id, row.date_fin_adhesion).first();
+    if (already) continue;
+
+    const echeanceFr = new Date(row.date_fin_adhesion).toLocaleDateString('fr-FR');
+    const html = `
+      <p>Bonjour ${escapeHtmlLite(row.prenom || '')},</p>
+      <p>Votre adhésion au club est arrivée à échéance le ${echeanceFr}.</p>
+      <p>Pour continuer à pratiquer avec nous, merci de renouveler votre inscription dès que possible depuis notre site :
+      <a href="https://inscription.americanfullfightingbons.fr">inscription.americanfullfightingbons.fr</a>.</p>
+      <p>Sportivement,<br>AFFBC</p>`;
+
+    const result = await sendBrevoEmail(env, {
+      to: [{ email: row.email, name: `${row.prenom} ${row.nom}` }],
+      subject: `Adhésion arrivée à échéance — ${row.prenom} ${row.nom}`,
+      html,
+    });
+
+    if (result.ok) {
+      sent++;
+      await env.DB.prepare(
+        `INSERT INTO adhesion_rappels (id, adherent_id, echeance) VALUES (?, ?, ?)`
+      ).bind(crypto.randomUUID(), row.id, row.date_fin_adhesion).run();
+    } else {
+      errors.push(`${row.prenom} ${row.nom} (${row.email}) : ${result.error}`);
+    }
+  }
+
+  return { checked: results?.length || 0, sent, errors };
+}
+
 // ── Relance automatique des prêts de matériel en retard ─────────────────────
 // Même principe que checkCertificatsExpirants : un prêt dont la date de
 // retour prévue est dépassée et qui n'a pas encore été rendu déclenche une
@@ -4302,6 +4362,13 @@ if (path.startsWith("/api/") && !publicApiRoutes.has(path)) {
         return json({ data: result, error: null });
     }
 
+    // POST /api/admin/adhesions/relancer — équivalent manuel du cron
+    // quotidien de rappel de renouvellement d'adhésion (cf. checkAdhesionsExpirees).
+    if (method === 'POST' && path === '/api/admin/adhesions/relancer') {
+        const result = await runTrackedAutomation(env, 'adhesions', 'Rappels renouvellement adhésion', 'manual', () => checkAdhesionsExpirees(env));
+        return json({ data: result, error: null });
+    }
+
     // GET /api/budget/:exercice_id/comparatif — prévu (budget_previsionnel)
     // vs réalisé (somme des débits/crédits du journal comptable par compte,
     // sur l'exercice donné). Lecture seule, protégée par perm_comptabilite
@@ -4562,6 +4629,14 @@ export default {
       runTrackedAutomation(env, 'factures_retard', 'Relances factures impayées', 'cron', () => checkFacturesEnRetard(env)).then(
         (r) => console.log('[cron:relances-factures]', JSON.stringify(r)),
         (e) => console.error('[cron:relances-factures] échec', e instanceof Error ? e.stack || e.message : String(e)),
+      ),
+    );
+    // Rappel de renouvellement d'adhésion, une seule fois, une fois
+    // l'échéance dépassée (cf. checkAdhesionsExpirees) — même trigger cron.
+    ctx.waitUntil(
+      runTrackedAutomation(env, 'adhesions', 'Rappels renouvellement adhésion', 'cron', () => checkAdhesionsExpirees(env)).then(
+        (r) => console.log('[cron:adhesions]', JSON.stringify(r)),
+        (e) => console.error('[cron:adhesions] échec', e instanceof Error ? e.stack || e.message : String(e)),
       ),
     );
     // Relance automatique des prêts de matériel en retard
