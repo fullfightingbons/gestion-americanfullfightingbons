@@ -499,6 +499,16 @@ function csvSafe(v){
   return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
 }
 
+// Libellé lisible du sexe de l'adhérent (colonne "Genre" de la liste,
+// fiche adhérent). Valeurs stockées en base : 'F' / 'M' (cf. migration
+// 0035_adherents_sexe.sql) ou vide pour les fiches antérieures à cette
+// migration / importées sans cette info.
+function sexeLabel(sexe){
+  if(sexe==='F') return 'Féminin';
+  if(sexe==='M') return 'Masculin';
+  return '—';
+}
+
 function sortAdherentsList(list){
   const {key='nom',dir='asc'}=UI?.adhSort||{};
   return (list||[]).sort((a,b)=>{
@@ -3114,13 +3124,14 @@ function vAdh(){
   <button class="btn" onclick="clearAdhSelection()">Désélectionner tout</button>
   </div>`:''}
   <div class="wrap"><table>
-  <thead><tr>${canWrite?`<th style="width:32px"><input type="checkbox" style="width:auto" onchange='toggleAdhSelectAllVisible(${JSON.stringify(f.map(a=>a.id))})' ${f.length&&f.every(a=>UI.adhSelected[a.id])?'checked':''}></th>`:''}${thSort('Nom / Prénom','nom')}${thSort('Type','discipline')}${thSort('Ceinture','couleur_ceinture')}${thSort('Certif.','certificat')}${thSort('Droit img','droit_image')}${thSort('Pass Région','pass_region')}<th>Règlement</th>${thSort('Cotisation','cotisation')}${thSort('Paiement','paiement')}${thSort('Statut','statut')}${thSort('Inscrit le','date_inscription')}<th>Saison</th>${thSort('Fin adhésion','date_fin_adhesion')}<th>PDF</th><th></th></tr></thead>
+  <thead><tr>${canWrite?`<th style="width:32px"><input type="checkbox" style="width:auto" onchange='toggleAdhSelectAllVisible(${JSON.stringify(f.map(a=>a.id))})' ${f.length&&f.every(a=>UI.adhSelected[a.id])?'checked':''}></th>`:''}${thSort('Nom / Prénom','nom')}${thSort('Genre','sexe')}${thSort('Type','discipline')}${thSort('Ceinture','couleur_ceinture')}${thSort('Certif.','certificat')}${thSort('Droit img','droit_image')}${thSort('Pass Région','pass_region')}<th>Règlement</th>${thSort('Cotisation','cotisation')}${thSort('Paiement','paiement')}${thSort('Statut','statut')}${thSort('Inscrit le','date_inscription')}<th>Saison</th>${thSort('Fin adhésion','date_fin_adhesion')}<th>PDF</th><th></th></tr></thead>
   <tbody>${f.map(a=>{
     const docs=getAdherentDocuments(a.id);
     const st=adherentDossierStatus(a);
     return `<tr class="${adhStatus(a)==='expire'?'adh-expire':adhStatus(a)==='soon'?'adh-soon':'adh-valid'}${st.needsCertAction?' adh-alert':''}">
     ${canWrite?`<td><input type="checkbox" style="width:auto" ${UI.adhSelected[a.id]?'checked':''} onchange="toggleAdhSelect('${a.id}')"></td>`:''}
     <td><strong style="font-weight:500">${esc(a.nom)} ${esc(a.prenom)}</strong>${Number(a.blackliste)===1?` <span class="badge bno" title="${esc(a.blackliste_motif||'')}">🚫 Blacklisté</span>`:''}${a.ville?`<br><span style="font-size:10px;color:var(--txt2)">${esc(a.ville)}</span>`:''}${adherentFlagsHtml(st)}</td>
+    <td>${sexeLabel(a.sexe)}</td>
     <td><span class="badge bgray">${a.discipline||'Club'}</span></td>
     <td>${esc(a.couleur_ceinture)||'—'}</td>
     <td>${certifCellHtml(st)}</td><td>${droitImageCellHtml(st)}</td>
@@ -3146,7 +3157,7 @@ function vAdh(){
     </td>
     </tr>`;
   }).join('')}
-  ${f.length===0?`<tr><td colspan="${canWrite?14:13}" class="empty">Aucun adhérent</td></tr>`:''}
+  ${f.length===0?`<tr><td colspan="${canWrite?15:14}" class="empty">Aucun adhérent</td></tr>`:''}
   </tbody>
   </table></div>
   ${renderPager('adherents',totalPages)}`;
@@ -7849,12 +7860,13 @@ function renderModal(){
   if(UI.modal==='bank_preview'){
     html=vBankPreviewModal();
   }else if(UI.modal==='adh'){
-    const a=UI.editObj||{nom:'',prenom:'',naissance:'',couleur_ceinture:'',numero_licence:'',email:'',telephone:'',adresse:'',code_postal:'',ville:'',discipline:'Club',droit_image:false,certificat:false,pass_region:false,montant_pass_region:0,reglement:false,cotisation:0,paiement:'Virement',statut:'Actif',date_inscription:td(),date_fin_adhesion:'',urgence_nom:'',urgence_telephone:'',urgence_lien:'',notes:'',pdf_public_url:'',pdf_nom_fichier:''};
+    const a=UI.editObj||{nom:'',prenom:'',sexe:'',naissance:'',couleur_ceinture:'',numero_licence:'',email:'',telephone:'',adresse:'',code_postal:'',ville:'',discipline:'Club',droit_image:false,certificat:false,pass_region:false,montant_pass_region:0,reglement:false,cotisation:0,paiement:'Virement',statut:'Actif',date_inscription:td(),date_fin_adhesion:'',urgence_nom:'',urgence_telephone:'',urgence_lien:'',notes:'',pdf_public_url:'',pdf_nom_fichier:''};
     const signupDocs=getAdherentDocuments(a.id);
     html=`<div class="modal" style="max-width:720px"><h2>👥 ${UI.editObj?'Modifier':'Nouvel'} adhérent</h2>
     <div class="g2">
     <div class="fg"><label>Nom</label><input id="f-nom" value="${esc(a.nom)}"></div>
     <div class="fg"><label>Prénom</label><input id="f-prn" value="${esc(a.prenom)}"></div>
+    <div class="fg"><label>Sexe</label><select id="f-sex"><option value="" ${!a.sexe?'selected':''}>—</option><option value="F" ${a.sexe==='F'?'selected':''}>Féminin</option><option value="M" ${a.sexe==='M'?'selected':''}>Masculin</option></select></div>
     <div class="fg"><label>Date de naissance</label><input id="f-nai" type="date" value="${esc(a.naissance||'')}"></div>
     <div class="fg"><label>Type adhésion</label><select id="f-dis" onchange="onAdhTypeChange(this.value)">${ADH_TYPES.map(d=>`<option ${a.discipline===d?'selected':''}>${d}</option>`).join('')}</select></div>
     <div class="fg"><label>Couleur de ceinture</label><select id="f-cei"><option value="">—</option>${CEINTURE_COLORS.map(c=>`<option value="${c}" ${a.couleur_ceinture===c?'selected':''}>${c}</option>`).join('')}${a.couleur_ceinture&&!CEINTURE_COLORS.includes(a.couleur_ceinture)?`<option value="${esc(a.couleur_ceinture)}" selected>${esc(a.couleur_ceinture)}</option>`:''}</select></div>
@@ -9147,7 +9159,7 @@ async function saveAdh(id){
   // clôture via "WHERE exercice_id = ?", ne le trouve plus. Seule la création
   // d'un nouvel adhérent doit utiliser D.currentExo par défaut.
   const existingAdh=id?D.adherents.find(a=>a.id===id):null;
-  const d=normalizeAdherentFinance({nom:g('f-nom').value.trim(),prenom:g('f-prn').value.trim(),naissance:g('f-nai').value||null,couleur_ceinture:g('f-cei').value.trim(),numero_licence:g('f-lic').value.trim(),discipline,email:g('f-eml').value.trim().toLowerCase(),telephone:g('f-tel').value.trim(),adresse:g('f-adr').value.trim(),code_postal:g('f-cp').value.trim(),ville:g('f-vil').value.trim(),droit_image:g('f-di').checked,certificat:g('f-ce').checked,pass_region:g('f-pr').checked,montant_pass_region:parseFloat(g('f-mpr-val')?.value)||0,reglement:g('f-ri').checked,cotisation:parseFloat(g('f-cot').value)||0,paiement:g('f-pay').value,statut:g('f-sta').value,date_inscription:inscription,date_fin_adhesion:finAdhesion,urgence_nom:g('f-urn').value.trim(),urgence_telephone:g('f-urt').value.trim(),urgence_lien:g('f-url').value.trim(),notes:g('f-not').value,exercice_id:existingAdh?(existingAdh.exercice_id||D.currentExo?.id||null):(D.currentExo?.id||null),updated_at:new Date().toISOString()});
+  const d=normalizeAdherentFinance({nom:g('f-nom').value.trim(),prenom:g('f-prn').value.trim(),sexe:g('f-sex').value||null,naissance:g('f-nai').value||null,couleur_ceinture:g('f-cei').value.trim(),numero_licence:g('f-lic').value.trim(),discipline,email:g('f-eml').value.trim().toLowerCase(),telephone:g('f-tel').value.trim(),adresse:g('f-adr').value.trim(),code_postal:g('f-cp').value.trim(),ville:g('f-vil').value.trim(),droit_image:g('f-di').checked,certificat:g('f-ce').checked,pass_region:g('f-pr').checked,montant_pass_region:parseFloat(g('f-mpr-val')?.value)||0,reglement:g('f-ri').checked,cotisation:parseFloat(g('f-cot').value)||0,paiement:g('f-pay').value,statut:g('f-sta').value,date_inscription:inscription,date_fin_adhesion:finAdhesion,urgence_nom:g('f-urn').value.trim(),urgence_telephone:g('f-urt').value.trim(),urgence_lien:g('f-url').value.trim(),notes:g('f-not').value,exercice_id:existingAdh?(existingAdh.exercice_id||D.currentExo?.id||null):(D.currentExo?.id||null),updated_at:new Date().toISOString()});
   if(!d.nom||!d.prenom)return alert('Nom et prénom obligatoires');
   if(id){
     const {error}=await SB.from('adherents').update(d).eq('id',id);
@@ -10510,8 +10522,8 @@ function exportCSV(){
   // Exporte les adhérents actuellement filtrés (recherche, type, statut, saison, dossier) — mêmes filtres que la vue
   const filtered=filteredAdherentsList();
   if(!filtered.length){notify('warn','Aucun adhérent dans la sélection courante.','Export CSV');return;}
-  const rows=[['Nom','Prénom','Couleur ceinture','N° licence','Type adhésion','Certif.','Droit image','Pass Région','Montant Pass','Règlement','Cotisation','Paiement','Statut','Saison','Fin adhésion','Adresse','CP','Ville','Urgence nom','Urgence tél','Droit image (détail)','Certificat obligatoire','État certificat','Motif certificat','Dossier complet']];
-  filtered.forEach(a=>rows.push([csvSafe(a.nom),csvSafe(a.prenom),csvSafe(a.couleur_ceinture||''),csvSafe(a.numero_licence||''),a.discipline||'Club',a.certificat?'Oui':'Non',a.droit_image?'Oui':'Non',a.pass_region?'Oui':'Non',(+a.montant_pass_region||0).toFixed(2),a.reglement?'Oui':'Non',(+a.cotisation).toFixed(2),a.paiement,a.statut,seasonFromDate(a.date_fin_adhesion||a.date_inscription)||'',a.date_fin_adhesion||'',csvSafe(a.adresse||''),csvSafe(a.code_postal||''),csvSafe(a.ville||''),csvSafe(a.urgence_nom||''),csvSafe(a.urgence_telephone||''),...adherentCsvDossierColumns(a)]));
+  const rows=[['Nom','Prénom','Genre','Couleur ceinture','N° licence','Type adhésion','Certif.','Droit image','Pass Région','Montant Pass','Règlement','Cotisation','Paiement','Statut','Saison','Fin adhésion','Adresse','CP','Ville','Urgence nom','Urgence tél','Droit image (détail)','Certificat obligatoire','État certificat','Motif certificat','Dossier complet']];
+  filtered.forEach(a=>rows.push([csvSafe(a.nom),csvSafe(a.prenom),sexeLabel(a.sexe),csvSafe(a.couleur_ceinture||''),csvSafe(a.numero_licence||''),a.discipline||'Club',a.certificat?'Oui':'Non',a.droit_image?'Oui':'Non',a.pass_region?'Oui':'Non',(+a.montant_pass_region||0).toFixed(2),a.reglement?'Oui':'Non',(+a.cotisation).toFixed(2),a.paiement,a.statut,seasonFromDate(a.date_fin_adhesion||a.date_inscription)||'',a.date_fin_adhesion||'',csvSafe(a.adresse||''),csvSafe(a.code_postal||''),csvSafe(a.ville||''),csvSafe(a.urgence_nom||''),csvSafe(a.urgence_telephone||''),...adherentCsvDossierColumns(a)]));
   const typeSuffix=UI.adhFilters.type?'_'+UI.adhFilters.type.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,''):'';
   dl('\uFEFF'+rows.map(r=>r.join(';')).join('\n'),`adherents${typeSuffix}_${td()}.csv`,'text/csv;charset=utf-8');
   notify('success',`${filtered.length} adhérent(s) exporté(s)${UI.adhFilters.type?` (type : ${UI.adhFilters.type})`:''}.`,'Export CSV');
