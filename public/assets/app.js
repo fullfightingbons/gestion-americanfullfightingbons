@@ -7600,6 +7600,7 @@ function automationSummary(entry){
   const parts=[];
   if(r.checked!==undefined) parts.push(`${r.checked} vérifié(s)`);
   if(r.sent!==undefined) parts.push(`${r.sent} email(s) envoyé(s)`);
+  if(r.skippedDoublon) parts.push(`${r.skippedDoublon} doublon(s) probable(s) ignoré(s)`);
   if(r.notified!==undefined) parts.push(r.notified?'bureau notifié':'aucune notification');
   if(r.pruned!==undefined) parts.push(`${r.pruned} ancien(s) fichier(s) purgé(s)`);
   if(Array.isArray(r.errors)&&r.errors.length) parts.push(`${r.errors.length} erreur(s)`);
@@ -8705,6 +8706,21 @@ function adhDuplicateKeys(a){
   if(birth) keys.push({key:`identite:${season}:${name}:${birth}`,reason:'Même nom/prénom et date de naissance sur la même saison'});
   if(email) keys.push({key:`email:${season}:${name}:${email}`,reason:'Même nom/prénom et email sur la même saison'});
   if(phone.length>=8) keys.push({key:`telephone:${season}:${name}:${phone}`,reason:'Même nom/prénom et téléphone sur la même saison'});
+  // Cas distinct, volontairement PAS scopé par saison : deux fiches
+  // "Actif" EN MÊME TEMPS pour la même identité. Une fiche "Inactif" d'une
+  // saison précédente n'est PAS un doublon en soi — c'est l'historique
+  // normal d'un renouvellement correctement traité (nouvelle fiche créée
+  // ou mise à jour, ancienne repassée à Inactif) et ne doit pas être
+  // signalée comme telle (cf. test "sans confondre un renouvellement d'une
+  // autre saison"). Mais DEUX fiches "Actif" simultanément pour la même
+  // identité ne devraient jamais arriver : un renouvellement doit mettre à
+  // jour la fiche existante, pas en laisser une deuxième active derrière
+  // lui. Ce cas précis trahit un échec de rapprochement à l'inscription en
+  // ligne (ex. casse différente sur le prénom d'une saison à l'autre — cf.
+  // le garde-fou du même type dans checkAdhesionsExpirees côté serveur).
+  if(birth && String(a.statut||'')==='Actif'){
+    keys.push({key:`identite-actif:${name}:${birth}`,reason:'Même identité, deux fiches "Actif" en même temps (probablement des saisons différentes)'});
+  }
   return keys;
 }
 
@@ -8738,7 +8754,7 @@ function vAdhDoublons(canWrite){
   <div>
   <div class="eyebrow">Qualité des données</div>
   <h2>Doublons potentiels</h2>
-  <p>Repérez les fiches qui semblent dupliquées sur une même saison avant de corriger manuellement la donnée source.</p>
+  <p>Repérez les fiches qui semblent dupliquées — double saisie sur une même saison, ou fiche recréée d'une saison à l'autre faute de rapprochement — avant de corriger manuellement la donnée source.</p>
   </div>
   </div>
   <div class="toolbar" style="margin-bottom:14px">
@@ -8761,6 +8777,7 @@ function vAdhDoublons(canWrite){
           ${certifBadge(a)}
           <span class="badge bgray">${esc(a.email||'email manquant')}</span>
           <span class="badge bgray">${esc(a.date_inscription?fd(a.date_inscription):'date inconnue')}</span>
+          <span class="badge bgray">Fin adhésion : ${esc(a.date_fin_adhesion?fd(a.date_fin_adhesion):'—')}</span>
         </div>
       </div>
       <button class="btn sm" onclick="openModal('adh','${a.id}')" title="Voir la fiche">Voir la fiche</button>

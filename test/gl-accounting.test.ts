@@ -271,6 +271,25 @@ describe("Adhérents — détection prudente des doublons", () => {
     `);
     expect(result).toEqual([["a1", "a2"]]);
   });
+
+  it("signale deux fiches \"Actif\" en même temps pour la même identité, même sur deux saisons différentes (échec de rapprochement au renouvellement)", () => {
+    // Reproduit le cas réel GRALLIEN Laurent : prénom saisi \"Laurent\" une
+    // saison puis \"LAURENT\" la suivante — le rapprochement par égalité
+    // stricte échoue côté inscription, une deuxième fiche est créée, et
+    // l'ancienne reste \"Actif\" avec une date_fin_adhesion périmée au lieu
+    // de repasser à \"Inactif\". Les deux fiches partagent nom/prénom/
+    // naissance mais pas le même exercice_id : doit être signalé malgré la
+    // saison différente, contrairement au cas ci-dessus (où l'ancienne
+    // fiche est correctement \"Inactif\").
+    const result = loadAppAndRun(`
+      D.adherents = [
+        {id:'old', nom:'GRALLIEN', prenom:'Laurent', naissance:'1980-05-12', email:'laurent@example.test', exercice_id:'2025', date_fin_adhesion:'2025-09-01', statut:'Actif'},
+        {id:'new', nom:'GRALLIEN', prenom:'LAURENT', naissance:'1980-05-12', email:'laurent@example.test', exercice_id:'2026', date_fin_adhesion:'2026-09-07', statut:'Actif'}
+      ];
+      capture(buildAdherentDuplicateGroups().map(g => g.rows.map(a => a.id).sort()));
+    `);
+    expect(result).toEqual([["new", "old"]]);
+  });
 });
 
 describe("Restauration — garde-fous serveur et interface", () => {

@@ -1246,20 +1246,51 @@ async function checkCertificatsExpirants(env: Env): Promise<{ checked: number; s
 // passage du cron, même si l'échéance remonte à plusieurs mois — c'est le
 // comportement demandé ("une seule fois après la date de fin"), pas une
 // fenêtre glissante.
-async function checkAdhesionsExpirees(env: Env): Promise<{ checked: number; sent: number; errors: string[] }> {
+//
+// Garde-fou doublon inter-saisons : le rapprochement fait à l'inscription
+// en ligne (findMatchingAdherent, dans inscription/src/routes/_lib/
+// free-registration.js et .../payment/helloasso/status.js) recherche une
+// fiche existante par email exact, puis par nom+prénom+date de naissance
+// EXACTS. Si la personne a saisi son prénom avec une casse différente d'une
+// saison à l'autre (ex. "Jean" puis "jean"), ou toute autre variation
+// minime, ce rapprochement échoue silencieusement : au lieu de mettre à
+// jour l'ancienne fiche, l'inscription en crée une nouvelle. L'ancienne
+// reste "Actif" avec sa date_fin_adhesion désormais périmée — c'est
+// exactement la fiche que la requête ci-dessous repère. Avant d'envoyer,
+// on vérifie donc s'il existe une AUTRE fiche (même nom/prénom en
+// comparaison insensible à la casse, même date de naissance) dont la
+// date_fin_adhesion est déjà à jour : si oui, la personne a très
+// probablement déjà renouvelé sous cette fiche-là, et on n'envoie pas —
+// ce serait un rappel confus adressé à quelqu'un déjà en règle. L'onglet
+// Adhérents > Doublons ne suffit pas à couvrir ce cas : il ne détecte que
+// les doublons sur une même saison, pas entre deux saisons.
+async function checkAdhesionsExpirees(env: Env): Promise<{ checked: number; sent: number; skippedDoublon: number; errors: string[] }> {
   const errors: string[] = [];
   let sent = 0;
+  let skippedDoublon = 0;
 
   const { results } = await env.DB.prepare(
-    `SELECT id, prenom, nom, email, date_fin_adhesion
+    `SELECT id, prenom, nom, naissance, email, date_fin_adhesion
      FROM adherents
      WHERE statut = 'Actif'
        AND date_fin_adhesion IS NOT NULL AND date_fin_adhesion != ''
        AND email IS NOT NULL AND email != ''
        AND date(date_fin_adhesion) < date('now')`
-  ).all<{ id: string; prenom: string; nom: string; email: string; date_fin_adhesion: string }>();
+  ).all<{ id: string; prenom: string; nom: string; naissance: string; email: string; date_fin_adhesion: string }>();
 
   for (const row of results || []) {
+    const newerMatch = await env.DB.prepare(
+      `SELECT id FROM adherents
+       WHERE id != ?
+         AND UPPER(TRIM(nom)) = UPPER(TRIM(?))
+         AND UPPER(TRIM(prenom)) = UPPER(TRIM(?))
+         AND naissance = ?
+         AND date_fin_adhesion IS NOT NULL AND date_fin_adhesion != ''
+         AND date(date_fin_adhesion) >= date('now')
+       LIMIT 1`
+    ).bind(row.id, row.nom, row.prenom, row.naissance).first();
+    if (newerMatch) { skippedDoublon++; continue; }
+
     const already = await env.DB.prepare(
       `SELECT id FROM adhesion_rappels WHERE adherent_id = ? AND echeance = ?`
     ).bind(row.id, row.date_fin_adhesion).first();
@@ -1289,7 +1320,7 @@ async function checkAdhesionsExpirees(env: Env): Promise<{ checked: number; sent
     }
   }
 
-  return { checked: results?.length || 0, sent, errors };
+  return { checked: results?.length || 0, sent, skippedDoublon, errors };
 }
 
 // ── Relance automatique des prêts de matériel en retard ─────────────────────
