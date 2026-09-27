@@ -2197,6 +2197,10 @@ function dashboardData(){
   const adherentsExpired=adherents.filter(a=>adhStatus(a)==='expire');
   const renewList=adherents.filter(a=>a.statut==='Renouvellement');
   const incompleteList=adherents.filter(a=>adherentDossierStatus(a).incomplete);
+  // buildAdherentDuplicateGroups() lit D.adherents directement (même source
+  // que la vue Doublons de l'onglet Adhérents) — pas besoin de lui passer
+  // `adherents` en paramètre, elle reste cohérente avec ce qui est affiché.
+  const duplicateGroups=buildAdherentDuplicateGroups();
   const currentSeason=currentSeasonLabel();
   const currentSeasonAdherents=adherents.filter(a=>seasonFromDate(a.date_fin_adhesion||a.date_inscription)===currentSeason);
   const certAlertList=currentSeasonAdherents.filter(a=>adherentDossierStatus(a).needsCertAction);
@@ -2240,6 +2244,7 @@ function dashboardData(){
   if(hasPerm('perm_adherents') && adherentsExpired.length) alerts.push({title:`${adherentsExpired.length} adhésion(s) expirée(s)`,detail:'Des adhérents ont dépassé leur date de fin d’adhésion.',tab:'adherents',badge:'bno'});
   if(hasPerm('perm_adherents') && incompleteList.length) alerts.push({title:`${incompleteList.length} dossier(s) incomplet(s)`,detail:'Certificat médical ou règlement intérieur à valider.',tab:'adherents',badge:'bwarn'});
   if(hasPerm('perm_adherents') && certAlertList.length) alerts.push({title:`${certAlertList.length} certificat(s) médical(aux) obligatoire(s) à traiter`,detail:'Mineurs ou adhérents ayant répondu « oui » au questionnaire de santé, dont le certificat n’est pas encore validé.',tab:'adherents',badge:'bno'});
+  if(hasPerm('perm_adherents') && duplicateGroups.length) alerts.push({title:`${duplicateGroups.length} doublon(s) potentiel(s) détecté(s)`,detail:'Des fiches adhérent semblent décrire la même personne (double saisie, ou fiche recréée lors d’un renouvellement).',tab:'adherents',badge:'bwarn'});
   if(hasPerm('perm_banque') && unreconciledTransactions.length) alerts.push({title:`${unreconciledTransactions.length} transaction(s) non rapprochée(s)`,detail:'Le rapprochement bancaire reste à finaliser.',tab:'banque',badge:'bwarn'});
   if(hasPerm('perm_banque') && hasPerm('perm_comptabilite') && pendingBankEntries.length) alerts.push({title:`${pendingBankEntries.length} encaissement(s) en attente de relevé`,detail:'Paiements confirmés (HelloAsso, etc.) pas encore rapprochés à une opération bancaire réelle importée.',tab:'banque',badge:'bwarn'});
   if(hasPerm('perm_comptabilite') && accountingGap!==0) alerts.push({title:`Journal déséquilibré de ${euro(accountingGap)}`,detail:'Le total débit / crédit de l’exercice actif n’est pas équilibré.',tab:'comptabilite',badge:'bno'});
@@ -2252,7 +2257,7 @@ function dashboardData(){
   });
   return {
     adherents,achats,factures,journal,comptes,currentSeason,currentSeasonAdherents,
-    adherentsSoon,adherentsExpired,renewList,incompleteList,certAlertList,
+    adherentsSoon,adherentsExpired,renewList,incompleteList,certAlertList,duplicateGroups,
     totalBank,bankTransactions,unreconciledTransactions,pendingBankEntries,monthEntriesList,prevMonthEntriesList,exoJournal,totalDebit,totalCredit,accountingGap,ecartBilan,
     purchasesPending,purchasesPaid,purchasesRefused,pendingBuyAmount,paidBuyAmount,
     invoicesOpen,invoicesPaid,openInvoiceAmount,paidInvoiceAmount,monthInvoices,prevMonthInvoices,monthInvoiceAmount,prevMonthInvoiceAmount,monthBuys,prevMonthBuys,monthBuyAmount,prevMonthBuyAmount,donations,donationAmount,
@@ -2408,6 +2413,13 @@ async function focusAdherentsIssue(mode=''){
   render();
 }
 
+async function focusAdherentsDoublons(){
+  UI.search.adherents='';
+  UI.adhSection='doublons';
+  await showTab('adherents');
+  render();
+}
+
 async function focusAchats(status=''){
   UI.search.achats='';
   UI.achatFilterStatus=status;
@@ -2490,6 +2502,16 @@ function buildDashboardAttentionItems(d){
       badge:'bno',
       badgeText:'Santé',
       actions:[{label:'Voir les certificats à traiter',onclick:"focusAdherentsAlert('cert_a_traiter')",primary:true}]
+    });
+  }
+  if(hasPerm('perm_adherents') && d.duplicateGroups.length){
+    items.push({
+      title:`${d.duplicateGroups.length} doublon(s) potentiel(s) détecté(s)`,
+      detail:'Des fiches semblent décrire la même personne — double saisie sur une même saison, ou fiche recréée d’une saison à l’autre faute de rapprochement au renouvellement.',
+      advice:'Ouvre chaque fiche pour comparer, garde la plus récente et à jour, et vérifie qu’aucune facture ne référence celle que tu comptes archiver avant de la supprimer.',
+      badge:'bwarn',
+      badgeText:'Qualité des données',
+      actions:[{label:'Voir les doublons',onclick:"focusAdherentsDoublons()",primary:true}]
     });
   }
   if(hasPerm('perm_adherents') && d.incompleteList.length){
@@ -7108,6 +7130,11 @@ function vClub(){
   <div class="fg"><label>Email</label><input id="ci-email" value="${esc(ci.email||'')}"></div>
   <div class="fg"><label>SIRET</label><input id="ci-siret" value="${esc(ci.siret||'')}"></div>
   <div class="fg"><label>Code APE</label><input id="ci-ape" value="${esc(ci.ape||'')}"></div>
+  <div class="fg">
+  <label>Durée de validité du certificat médical (mois)</label>
+  <input id="ci-duree-certif" type="number" min="1" max="120" step="1" value="${esc(ci.duree_validite_certificat_mois||'36')}" ${canWrite?'':'readonly'}>
+  <p style="font-size:11px;color:var(--txt2);margin-top:4px">Principe réglementaire général : 3 ans (36 mois), avec auto-questionnaire de santé QS-SPORT les années intermédiaires. Pilote à la fois le rappel automatique par email avant échéance et les badges de validité affichés sur les fiches adhérent (vues Famille et Doublons).</p>
+  </div>
   ${canWrite?`<button class="btn primary" style="align-self:flex-start" onclick="saveClub()">💾 Sauvegarder</button>`:''}
   </div>`;
 }
@@ -9622,7 +9649,11 @@ async function finalizeExoClose(id){
 async function saveClub(){
   if(!requireWritePerm('perm_administration')) return;
   const g=n=>document.getElementById(n)?.value||'';
-  const ups=[{cle:'nom',valeur:g('ci-nom')},{cle:'adresse',valeur:g('ci-adr')},{cle:'telephone',valeur:g('ci-tel')},{cle:'email',valeur:g('ci-email')},{cle:'siret',valeur:g('ci-siret')},{cle:'ape',valeur:g('ci-ape')}];
+  const dureeCertif=Number(g('ci-duree-certif'));
+  if(!Number.isInteger(dureeCertif) || dureeCertif<1 || dureeCertif>120){
+    return alert('Durée de validité du certificat médical : merci d\'indiquer un nombre de mois entier entre 1 et 120.');
+  }
+  const ups=[{cle:'nom',valeur:g('ci-nom')},{cle:'adresse',valeur:g('ci-adr')},{cle:'telephone',valeur:g('ci-tel')},{cle:'email',valeur:g('ci-email')},{cle:'siret',valeur:g('ci-siret')},{cle:'ape',valeur:g('ci-ape')},{cle:'duree_validite_certificat_mois',valeur:String(dureeCertif)}];
   const {error:clubErr}=await SB.from('club_info').upsert(ups,{onConflict:'cle'});
   if(clubErr) return alert('Erreur lors de la sauvegarde : '+clubErr.message);
   ups.forEach(u=>D.clubInfo[u.cle]=u.valeur);
