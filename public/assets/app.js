@@ -9132,13 +9132,7 @@ async function syncVenteJournal(facture){
 }
 
 async function syncAdherentJournal(adherent){
-  // Même bug que insertCotisationJournal côté inscription (id adhérent stable
-  // d'une saison à l'autre) : ici il pouvait se déclencher à chaque simple
-  // édition de fiche adhérent (saveAdh), pas seulement à l'encaissement.
-  // "_" et non "-" : normalizePieceGroupKey ci-dessous attend un unique
-  // segment sans tiret entre le préfixe et le suffixe -ENC/-COT/-PAS.
-  const exerciceIdForPiece=adherent.exercice_id||D.currentExo?.id||'NA';
-  const prefix=autoPiecePrefix('ADH',adherent.id)+'_'+String(exerciceIdForPiece).slice(0,8);
+  const prefix=autoPiecePrefix('ADH',adherent.id);
   const hasPublicAccounting=hasInscriptionWebAdherentAccounting(adherent,prefix);
   await deleteGestionAdherentJournal(prefix);
   if(hasPublicAccounting) return;

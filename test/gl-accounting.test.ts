@@ -292,6 +292,56 @@ describe("Adhérents — détection prudente des doublons", () => {
   });
 });
 
+describe("Comptabilité — pièces d'adhésion générées par le worker inscription", () => {
+  // Contrat croisé avec inscription/src/routes/api/public/payment/helloasso/
+  // status.js → insertCotisationJournal, qui écrit les pièces
+  // "ADH-<8 premiers caractères de l'id adhérent>-CLI" et "...-COT".
+  // Le test miroir côté inscription (tests/cotisation-journal.test.mjs)
+  // vérifie que le format produit reste celui-ci.
+  it("regroupe les lignes CLI et COT d'une même cotisation sous la même clé de pièce", () => {
+    const result = loadAppAndRun(`
+      capture([
+        normalizePieceGroupKey('ADH-9f3c2a71-CLI'),
+        normalizePieceGroupKey('ADH-9f3c2a71-COT')
+      ]);
+    `);
+    expect(result).toEqual(["ADH-9f3c2a71", "ADH-9f3c2a71"]);
+  });
+
+  it("un adhérent ayant cotisé sur deux saisons n'engendre aucun faux écart d'équilibre", () => {
+    // Les deux saisons réutilisent les mêmes noms de pièce (l'id adhérent
+    // survit au renouvellement) mais portent des exercice_id différents.
+    // Chaque saison est équilibrée : le regroupement par pièce ne doit
+    // signaler aucun écart.
+    const result = loadAppAndRun(`
+      const rows = [
+        {piece:'ADH-9f3c2a71-CLI', compte:'411 - Adhérents et clients', debit:250, credit:0,   exercice_id:'ex2025'},
+        {piece:'ADH-9f3c2a71-COT', compte:'7561 - Cotisations membres actifs', debit:0, credit:250, exercice_id:'ex2025'},
+        {piece:'ADH-9f3c2a71-CLI', compte:'411 - Adhérents et clients', debit:250, credit:0,   exercice_id:'ex2026'},
+        {piece:'ADH-9f3c2a71-COT', compte:'7561 - Cotisations membres actifs', debit:0, credit:250, exercice_id:'ex2026'}
+      ];
+      capture(pieceBalanceDiagnostics(rows).length);
+    `);
+    expect(result).toBe(0);
+  });
+
+  it("un segment intermédiaire dans la pièce (ex. exercice) scinderait CLI et COT en deux groupes déséquilibrés", () => {
+    // Documente POURQUOI inscription ne doit pas écrire
+    // "ADH-<adhérent>-<exercice>-CLI" : normalizePieceGroupKey ne sait
+    // décomposer que ADH-<un seul segment>-<SUFFIXE>. Si ce parseur est
+    // un jour étendu, mettre à jour ce test ET le commentaire de
+    // insertCotisationJournal côté inscription.
+    const result = loadAppAndRun(`
+      const rows = [
+        {piece:'ADH-9f3c2a71-bbbbbbbb-CLI', debit:250, credit:0},
+        {piece:'ADH-9f3c2a71-bbbbbbbb-COT', debit:0, credit:250}
+      ];
+      capture(pieceBalanceDiagnostics(rows).length);
+    `);
+    expect(result).toBe(2);
+  });
+});
+
 describe("Restauration — garde-fous serveur et interface", () => {
   it("expose un aperçu non destructif avant la route de restauration", () => {
     expect(workerSource).toContain("path === '/api/admin/restore/preview'");
