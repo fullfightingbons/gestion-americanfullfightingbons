@@ -150,6 +150,11 @@ async function memberProfilePayload(member: Record<string, any>, env: Env, preco
   return {
     nom: row.nom, prenom: row.prenom, email: member.adherent_email,
     naissance: row.naissance || null,
+    // Sexe ('F' | 'M' | null) : utilisé par l'espace membre pour préremplir le
+    // formulaire de renouvellement (cf. buildRenewalUrl). `row` provient d'un
+    // SELECT * : rien ici ne dépend de l'existence de la colonne, donc pas de
+    // risque si ce code est déployé avant la migration 0035.
+    sexe: row.sexe || null,
     telephone: row.telephone, adresse: row.adresse, code_postal: row.code_postal, ville: row.ville,
     statut: row.statut, cotisation: row.cotisation, paiement: row.paiement,
     date_inscription: row.date_inscription, date_fin_adhesion: row.date_fin_adhesion,
@@ -1232,6 +1237,34 @@ async function checkCertificatsExpirants(env: Env): Promise<{ checked: number; s
   return { checked: results?.length || 0, sent, errors };
 }
 
+const DEFAULT_MEMBER_PORTAL_URL = 'https://espace-membre.americanfullfightingbons.fr';
+const INSCRIPTION_FORM_URL = 'https://inscription.americanfullfightingbons.fr';
+
+// Corps HTML de l'email de rappel de fin d'adhésion. Fonction pure (aucun
+// accès base/réseau) pour pouvoir la tester directement.
+//
+// Le lien principal mène à l'ESPACE MEMBRE, pas au formulaire nu : son bouton
+// « Renouveler mon adhésion » ouvre le formulaire d'inscription déjà
+// pré-rempli (identité, coordonnées, sexe…), là où le formulaire direct
+// oblige à tout ressaisir. Le formulaire direct reste proposé en secours
+// pour qui ne veut pas se connecter, et le lien /activer pour qui n'a pas
+// encore de compte (l'activation ne dépend ni du statut ni de l'échéance :
+// un adhérent expiré peut donc bien créer son accès).
+export function buildAdhesionExpireeEmailHtml(opts: { prenom: string; echeanceFr: string; portalUrl: string }): string {
+  const portal = String(opts.portalUrl || DEFAULT_MEMBER_PORTAL_URL).replace(/\/+$/, '');
+  return `
+      <p>Bonjour ${escapeHtmlLite(opts.prenom || '')},</p>
+      <p>Votre adhésion au club est arrivée à échéance le ${escapeHtmlLite(opts.echeanceFr)}.</p>
+      <p>Pour continuer à pratiquer avec nous, renouvelez-la en quelques clics depuis votre espace membre :
+      vos informations y sont déjà pré-remplies.</p>
+      <p><a href="${portal}" style="display:inline-block;padding:10px 18px;background:#a23521;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:bold">Renouveler depuis mon espace membre</a></p>
+      <p style="font-size:13px;color:#555">Première visite ? Activez d'abord votre espace avec cette même adresse e-mail :
+      <a href="${portal}/activer">${portal}/activer</a>.</p>
+      <p style="font-size:13px;color:#555">Vous préférez ne pas vous connecter ? Vous pouvez aussi renouveler directement depuis le
+      <a href="${INSCRIPTION_FORM_URL}">formulaire d'inscription</a>.</p>
+      <p>Sportivement,<br>AFFBC</p>`;
+}
+
 // ── Rappel de renouvellement d'adhésion ─────────────────────────────────────
 // Volontairement différent de checkCertificatsExpirants ci-dessus : pas de
 // fenêtre proactive avant échéance. Un adhérent "Actif" dont la
@@ -1297,12 +1330,11 @@ async function checkAdhesionsExpirees(env: Env): Promise<{ checked: number; sent
     if (already) continue;
 
     const echeanceFr = new Date(row.date_fin_adhesion).toLocaleDateString('fr-FR');
-    const html = `
-      <p>Bonjour ${escapeHtmlLite(row.prenom || '')},</p>
-      <p>Votre adhésion au club est arrivée à échéance le ${echeanceFr}.</p>
-      <p>Pour continuer à pratiquer avec nous, merci de renouveler votre inscription dès que possible depuis notre site :
-      <a href="https://inscription.americanfullfightingbons.fr">inscription.americanfullfightingbons.fr</a>.</p>
-      <p>Sportivement,<br>AFFBC</p>`;
+    const html = buildAdhesionExpireeEmailHtml({
+      prenom: row.prenom || '',
+      echeanceFr,
+      portalUrl: env.MEMBER_PORTAL_URL || DEFAULT_MEMBER_PORTAL_URL,
+    });
 
     const result = await sendBrevoEmail(env, {
       to: [{ email: row.email, name: `${row.prenom} ${row.nom}` }],
@@ -3688,7 +3720,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       const [ownRecord, childrenResult, dureeMois] = await Promise.all([
         loadMemberRecord(member.id, undefined, env),
         env.DB.prepare(
-          `SELECT id, nom, prenom, statut, couleur_ceinture, paiement, certificat_date
+          `SELECT id, nom, prenom, statut, couleur_ceinture, paiement, certificat_date, date_fin_adhesion
            FROM adherents a
            WHERE guardian_compte_id = ?
              AND date_inscription = (
@@ -3716,7 +3748,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
         ...(ownRecord ? [{
           id: ownRecord.loginAdherentId, nom: ownRecord.nom, prenom: ownRecord.prenom,
           statut: ownRecord.statut, couleur_ceinture: ownRecord.couleur_ceinture, isSelf: true,
-          paiement: ownRecord.paiement, certificat_expire_le: certificatExpireLe(ownRecord.certificat_date),
+          paiement: ownRecord.paiement, date_fin_adhesion: ownRecord.date_fin_adhesion ?? null,
+          certificat_expire_le: certificatExpireLe(ownRecord.certificat_date),
           family_role: ownRecord.family_role ?? null,
         }] : []),
         ...((childrenResult.results || []).map((r) => ({
