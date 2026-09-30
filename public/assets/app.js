@@ -7170,6 +7170,8 @@ function vTarifs(){
   const ci = D.clubInfo||{};
   const isOpen = ci.public_inscription_enabled===undefined ? true : !['0','false','non','off'].includes(String(ci.public_inscription_enabled).trim().toLowerCase());
   const closedMessage = ci.public_inscription_closed_message || '';
+  const cseCode = String(ci.public_inscription_cse_code || '').trim();
+  const cseActive = cseCode.replace(/[\s-]+/g,'').length >= 8;
   const DEFAULT_HORAIRES = 'Lundi : 19h00 - 20h30\nMercredi : 20h30 - 22h30\nVendredi : 20h30 - 22h30';
   const horaires = ci.public_inscription_horaires || DEFAULT_HORAIRES;
   const fields = [
@@ -7207,6 +7209,19 @@ function vTarifs(){
   <textarea id="insc-closed-message" rows="2" placeholder="Les inscriptions sont actuellement fermées. Revenez bientôt !" ${canWrite?'':'readonly'}>${esc(closedMessage)}</textarea>
   </div>
   ${canWrite?`<button class="btn primary" style="margin-top:10px" onclick="saveInscriptionStatus()">💾 Sauvegarder</button>`:''}
+  </div>
+  <div class="card" style="border:1px solid ${cseActive?'rgba(46,125,50,.35)':'var(--line)'}">
+  <p style="font-size:11px;font-weight:500;color:var(--txt2);letter-spacing:.06em;margin-bottom:4px">ACCÈS CSE THALÈS HORS PÉRIODE D'OUVERTURE</p>
+  <p style="font-size:12px;color:var(--txt2);margin-bottom:12px">Quand les inscriptions sont fermées, un bouton « Je suis membre du CSE Thalès » apparaît sur la page d'inscription. Les membres saisissent ce code pour accéder au formulaire, limité au <strong>tarif CSE Thalès</strong> (attestation employeur exigée). Sans code enregistré, le bouton n'apparaît pas et l'accès reste totalement fermé. Le code est vérifié côté serveur, il n'est jamais visible sur le site public.</p>
+  <div class="fg">
+  <label>Code d'accès CSE Thalès (8 caractères minimum)</label>
+  <div style="display:flex;gap:8px">
+  <input id="insc-cse-code" type="text" value="${esc(cseCode)}" placeholder="Aucun code : accès désactivé" autocomplete="off" spellcheck="false" maxlength="64" style="flex:1;font-family:monospace;letter-spacing:.05em" ${canWrite?'':'readonly'}>
+  ${canWrite?`<button class="btn" type="button" onclick="generateCseAccessCode()">🎲 Générer</button>`:''}
+  </div>
+  <p style="font-size:12px;color:var(--txt2);margin-top:6px">${cseActive?'🟢 Accès CSE actif — à communiquer au CSE Thalès.':'⚪ Accès CSE désactivé.'} Lettres, chiffres et tirets uniquement ; majuscules et tirets ne comptent pas à la saisie. Laissez vide puis sauvegardez pour désactiver ; changer le code invalide l'ancien immédiatement.</p>
+  </div>
+  ${canWrite?`<button class="btn primary" style="margin-top:10px" onclick="saveCseAccessCode()">💾 Sauvegarder</button>`:''}
   </div>
   <div class="card">
   <p style="font-size:11px;font-weight:500;color:var(--txt2);letter-spacing:.06em;margin-bottom:4px">HORAIRES DES ENTRAÎNEMENTS</p>
@@ -7266,6 +7281,46 @@ async function saveInscriptionStatus(){
   D.clubInfo.public_inscription_enabled = isOpen ? '1' : '0';
   D.clubInfo.public_inscription_closed_message = message;
   notify('success', isOpen ? 'Inscriptions rouvertes — le site les accepte de nouveau ✓' : 'Inscriptions fermées — le site refuse désormais toute nouvelle inscription ✓');
+  render();
+}
+
+// Code d'accès « CSE Thalès » : permet aux membres du CSE de s'inscrire même
+// quand les inscriptions sont fermées (repo inscription : _lib/cse-access.js).
+// Stocké dans club_info.public_inscription_cse_code ; vide = fonctionnalité
+// désactivée. La longueur minimale (8 caractères hors tirets/espaces) est
+// aussi imposée côté serveur : un code plus court est ignoré.
+function generateCseAccessCode(){
+  const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // sans I, L, O, 0, 1 (lisibilité)
+  const limit = 256 - (256 % alphabet.length);       // rejet des valeurs qui biaiseraient le tirage
+  let out = '';
+  while(out.replace(/-/g,'').length < 12){
+    const buf = new Uint8Array(24);
+    crypto.getRandomValues(buf);
+    for(const b of buf){
+      if(b >= limit) continue;
+      const len = out.replace(/-/g,'').length;
+      if(len >= 12) break;
+      if(len > 0 && len % 4 === 0 && !out.endsWith('-')) out += '-';
+      out += alphabet[b % alphabet.length];
+    }
+  }
+  const el = document.getElementById('insc-cse-code');
+  if(el) el.value = out;
+  notify('info','Nouveau code généré — pensez à cliquer sur « Sauvegarder » pour l\'activer.');
+}
+
+async function saveCseAccessCode(){
+  if(!requireWritePerm('perm_administration')) return;
+  const raw = (document.getElementById('insc-cse-code')?.value || '').trim();
+  if(raw && !/^[A-Za-z0-9 -]+$/.test(raw)) return notify('warn','Le code ne peut contenir que des lettres, des chiffres et des tirets.');
+  if(raw && raw.replace(/[\s-]+/g,'').length < 8) return notify('warn','Le code doit contenir au moins 8 caractères (hors tirets).');
+  const {error} = await SB.from('club_info').upsert({cle:'public_inscription_cse_code',valeur:raw},{onConflict:'cle'});
+  if(error) return notify('error','Erreur : '+error.message);
+  D.clubInfo=D.clubInfo||{};
+  D.clubInfo.public_inscription_cse_code = raw;
+  notify('success', raw
+    ? 'Code CSE Thalès enregistré ✓ — actif immédiatement (l\'ancien code ne fonctionne plus).'
+    : 'Accès CSE Thalès désactivé ✓ — le bouton n\'apparaît plus sur le site d\'inscription.');
   render();
 }
 

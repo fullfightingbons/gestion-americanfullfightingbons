@@ -4,6 +4,27 @@ Ajoutées sur la base du projet existant, sans rien retirer. `tsc --noEmit`,
 les 31 tests existants (`vitest run`) et `wrangler deploy --dry-run` sont
 propres après ajout.
 
+## Accès CSE Thalès quand les inscriptions sont fermées — 30/09/2026
+
+Les membres du CSE Thalès doivent pouvoir s'inscrire toute l'année, même quand les
+inscriptions sont fermées au public. Côté `gestion` (écran **Tarifs en ligne**) :
+
+- Nouvelle carte **« Accès CSE Thalès hors période d'ouverture »** : un code d'accès à
+  définir (ou à générer, format `XXXX-XXXX-XXXX` sans caractères ambigus) puis à
+  communiquer au CSE. Stocké dans `club_info.public_inscription_cse_code`, sans
+  migration.
+- Code vide = fonctionnalité désactivée : le bouton « Je suis membre du CSE Thalès »
+  n'apparaît pas sur le site d'inscription et l'accès reste totalement fermé. Minimum
+  8 caractères (hors tirets) — imposé ici et côté serveur. Changer le code invalide
+  l'ancien immédiatement.
+- Le code n'ouvre que le **tarif CSE Thalès** (attestation employeur exigée) ; la
+  restriction est appliquée côté serveur dans le repo `inscription`
+  (`src/routes/_lib/cse-access.js`, `POST /api/public/cse-access`).
+- `public/index.html` : cache-busting `app.js?v=20260930a`. `app.min.js` n'est pas
+  chargé par `index.html` : non régénéré.
+
+`tsc --noEmit` propre ; 202 tests passent (aucun test modifié).
+
 ## Reçu joint à l'e-mail de confirmation d'inscription — 21/09/2026
 
 Le reçu de cotisation est maintenant joint automatiquement, dans un fichier séparé du
