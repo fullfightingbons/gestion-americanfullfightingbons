@@ -2417,6 +2417,37 @@ async function upsertBoutiquePaymentJournal(db: D1Database, payload: BoutiqueSal
   return pieceBase;
 }
 
+// Répond uniquement { bureau: boolean } — jamais la fiche adhérent : la
+// boutique n'a besoin que de cette décision, pas des données personnelles.
+// Même règle qu'à l'inscription publique (inscription/adherent-eligibility) :
+// discipline contenant "membre du bureau", insensible à la casse.
+async function handleBoutiqueMemberStatus(request: Request, env: Env): Promise<Response> {
+  const expected = String(env.BOUTIQUE_SALES_SYNC_TOKEN || '');
+  const provided = request.headers.get('X-Boutique-Sales-Token') || '';
+  if (!expected || expected.length < 16 || !secureEquals(provided, expected)) {
+    return json({ data: null, error: { message: 'Non autorisé' } }, 401);
+  }
+
+  let body: { email?: string };
+  try {
+    body = await request.json();
+  } catch {
+    return json({ data: null, error: { message: 'JSON invalide' } }, 400);
+  }
+
+  const email = String(body?.email || '').trim().toLowerCase();
+  if (!email) return json({ data: null, error: { message: 'email obligatoire' } }, 400);
+
+  const { results } = await env.DB
+    .prepare(`SELECT discipline FROM adherents WHERE LOWER(TRIM(email)) = ?`)
+    .bind(email)
+    .all();
+  const bureau = (results || []).some((row: any) =>
+    String(row?.discipline || '').toLowerCase().includes('membre du bureau'),
+  );
+  return json({ data: { bureau }, error: null });
+}
+
 async function handleBoutiqueSalesSync(request: Request, env: Env): Promise<Response> {
   const expected = String(env.BOUTIQUE_SALES_SYNC_TOKEN || '');
   const provided = request.headers.get('X-Boutique-Sales-Token') || '';
@@ -4394,6 +4425,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
   "/api/member/profiles/switch",
   "/api/member/contact",
   "/api/internal/sales/sync/boutique",
+  "/api/internal/boutique/member-status",
 ]);
 
 if (path.startsWith("/api/") && !publicApiRoutes.has(path)) {
@@ -4409,6 +4441,14 @@ if (path.startsWith("/api/") && !publicApiRoutes.has(path)) {
     // journal). Protégé par secret partagé, pas par le cookie/token staff.
     if (method === 'POST' && path === '/api/internal/sales/sync/boutique') {
         return handleBoutiqueSalesSync(request, env);
+    }
+
+    // POST /api/internal/boutique/member-status — appelé par le worker boutique
+    // (jamais par un navigateur) pour savoir si l'adhérent connecté à son
+    // espace membre est un Membre du Bureau (tenue offerte en boutique).
+    // Même secret partagé que la synchro des ventes.
+    if (method === 'POST' && path === '/api/internal/boutique/member-status') {
+        return handleBoutiqueMemberStatus(request, env);
     }
 
     // POST /api/admin/certificats/verifier — déclenche manuellement la même
