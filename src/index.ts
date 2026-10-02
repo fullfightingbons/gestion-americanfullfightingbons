@@ -1128,7 +1128,7 @@ async function sendBrevoEmailWithAttachment(
 // tout document doit partir à la fois vers le destinataire ET vers le club.
 async function getClubContactEmail(env: Env): Promise<string> {
   const row = await env.DB.prepare(`SELECT valeur FROM club_info WHERE cle = 'email'`).first<{ valeur: string }>();
-  return String(row?.valeur || '').trim() || 'fullfightingbons@gmail.com';
+  return String(row?.valeur || '').trim() || 'club@americanfullfightingbons.fr';
 }
 
 // Convertit une ligne de la table `factures` (vente OU reçu de don — même
