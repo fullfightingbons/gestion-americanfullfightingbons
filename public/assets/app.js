@@ -1355,6 +1355,9 @@ function adherentCertificatInfo(a){
   // Case d'engagement cochée à l'inscription (« je m'engage à fournir le certificat au plus vite »).
   const engagement=(useReg&&dossier?.computedTotals?.certificateDeferred===true)
     ?{at:dossier?.health?.certificateCommitmentAt||reg.submitted_at||reg.created_at||''}:null;
+  // Renouvellement : certificat déjà validé et encore valable, réutilisé par l'inscription en ligne.
+  const reused=(useReg&&dossier?.computedTotals?.certificateReused===true)
+    ?{from:dossier?.computedTotals?.certificateReferenceDate||'',until:dossier?.computedTotals?.certificateValidUntil||''}:null;
 
   let state;
   if(required===false) state='non_requis';
@@ -1371,7 +1374,9 @@ function adherentCertificatInfo(a){
   const why=reasons.join(' · ');
   const tips={
     non_requis:'Certificat non exigé pour ce dossier (adulte, questionnaire de santé sans réponse « oui »).',
-    fourni:required===true?`Certificat obligatoire (${why}) : fourni et validé.`:'Certificat coché comme fourni.',
+    fourni:reused
+      ?`Certificat obligatoire (${why}) : certificat déjà validé réutilisé à l’inscription${reused.from?` (daté du ${fd(reused.from)}`:''}${reused.from&&reused.until?`, valable jusqu’au ${fd(reused.until)})`:reused.from?')':''}${!reused.from&&reused.until?` (valable jusqu’au ${fd(reused.until)})`:''}. Rien à demander à l’adhérent.`
+      :required===true?`Certificat obligatoire (${why}) : fourni et validé.`:'Certificat coché comme fourni.',
     a_valider:`Certificat obligatoire (${why}) : pièce reçue à l’inscription, à vérifier puis à cocher dans la fiche.`,
     manquant:engagement
       ?`Certificat obligatoire (${why}) : aucune pièce reçue. L’adhérent s’est engagé à le fournir au plus vite${engagement.at?` (case cochée à l’inscription du ${fd(engagement.at)})`:''}, à défaut l’accès aux entraînements est refusé. Un rappel e-mail automatique part tant que la case « Certificat » n’est pas cochée dans la fiche.`
@@ -1379,7 +1384,7 @@ function adherentCertificatInfo(a){
     a_fournir:'Certificat non coché. Pas de questionnaire d’inscription en ligne pour cette saison : impossible de savoir s’il est exigé.',
   };
   const meta=CERT_STATES[state];
-  return {state,required,mineur,reasons,reasonCodes,qsYes,qsAnswered,hasDocument,engagement,source,resolved:meta.resolved,label:meta.label,tone:meta.tone,tip:tips[state]};
+  return {state,required,mineur,reasons,reasonCodes,qsYes,qsAnswered,hasDocument,engagement,reused,source,resolved:meta.resolved,label:meta.label,tone:meta.tone,tip:tips[state]};
 }
 
 // ── Droit à l'image ─────────────────────────────────────────────────────────

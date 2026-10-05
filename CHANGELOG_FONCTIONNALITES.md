@@ -4,6 +4,32 @@ Ajoutées sur la base du projet existant, sans rien retirer. `tsc --noEmit`,
 les 31 tests existants (`vitest run`) et `wrangler deploy --dry-run` sont
 propres après ajout.
 
+## Renouvellement : certificat médical déjà validé réutilisé (3 ans) — 05/10/2026
+
+Au **renouvellement en ligne** (repo `inscription`), l'adhérent dont le certificat médical a déjà été
+validé et reste dans sa durée de validité n'a plus rien à fournir : ni pièce, ni case d'engagement.
+
+- **Conditions** (toutes requises) : renouvellement dont l'identité est vérifiée (nom, prénom, date de
+  naissance, e-mail) ; fiche cochée « Certificat » ; certificat **daté** ; date + durée de validité encore
+  dans le futur. Durée = `club_info.duree_validite_certificat_mois` (onglet Club), **plafonnée à 36 mois** ;
+  la migration `0036` la porte déjà à 36 si elle valait encore 12. gestion et inscription lisent la même
+  valeur : on ne réutilise jamais un certificat que gestion juge expiré.
+- **Date du certificat** (la plus récente des sources) : `adherents.certificat_date` (dépôt depuis l'espace
+  membre) ; sinon date de dépôt d'une inscription où un certificat a été **joint** ; sinon date d'origine
+  reportée par une inscription qui l'avait déjà réutilisé (la réutilisation **ne prolonge jamais** la
+  validité : un certificat de 2024 cesse d'être réutilisable en 2027, quel que soit le nombre de renouvellements).
+  Sans date (adulte dispensé : « Certificat » vaut 1 sans aucun certificat), rien n'est réutilisé.
+- **Jamais réutilisé** si une réponse « oui » au questionnaire de santé (l'état de santé a pu évoluer : un
+  nouveau certificat est nécessaire, comme l'indique le formulaire) ni si l'adhérent joint un nouveau
+  certificat (plus récent, il passe par la vérification habituelle).
+- **Effet sur la fiche** : « Certificat » reste coché (au lieu d'être remis à zéro puis à re-valider),
+  `certificat_date` n'est pas modifiée. Infobulle : « certificat déjà validé réutilisé… valable jusqu'au… ».
+  Aucun rappel « certificat promis » n'est envoyé dans ce cas.
+- Aucune migration. `public/index.html` : cache-busting `app.js?v=20261005a`.
+
+Non modifié : le bouton ↻ Renouveler (et le renouvellement groupé) de l'onglet Adhérents continue de
+décocher « Certificat » pour re-validation manuelle, comme avant.
+
 ## Certificat médical promis à l'inscription + rappels automatiques — 04/10/2026
 
 Quand le certificat est obligatoire (mineur, ou au moins un « oui » au questionnaire de santé),
