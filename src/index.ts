@@ -1355,6 +1355,185 @@ async function checkAdhesionsExpirees(env: Env): Promise<{ checked: number; sent
   return { checked: results?.length || 0, sent, skippedDoublon, errors };
 }
 
+// ── Rappels « certificat médical promis à l'inscription » ───────────────────
+// Un certificat est obligatoire (mineur, ou « oui » au questionnaire de santé).
+// Si l'adhérent ne pouvait pas le fournir le jour de l'inscription, le worker
+// `inscription` lui a laissé cocher une case d'engagement : « je m'engage à
+// fournir le certificat médical au plus vite, à défaut, l'accès aux
+// entraînements me sera refusé ». Il a donc pu terminer son inscription SANS la
+// pièce ; ce cron le relance par e-mail, à intervalle régulier, jusqu'à ce que
+// le bureau coche « Certificat médical fourni / validé » sur sa fiche
+// (adherents.certificat = 1 — ce que fait aussi le dépôt par l'adhérent lui-même
+// depuis l'espace membre, cf. POST /api/member/documents/certificat).
+//
+// Source de vérité de l'engagement : inscriptions_publiques.dossier_json
+// (computedTotals.certificateDeferred, health.certificateCommitmentAt), écrit
+// par `inscription`. Aucune colonne sur `adherents` : rien à migrer côté
+// inscription, et gestion lisait déjà ce dossier pour son affichage.
+//
+// Garde-fous (chacun a un test dans test/certificat-engagement.test.ts) :
+//  - seule l'inscription la PLUS RÉCENTE de la fiche compte, et uniquement si
+//    elle est de la saison de la fiche — le renouvellement groupé de gestion
+//    remet « Certificat » à zéro sans nouvelle inscription : l'engagement de la
+//    saison passée ne doit pas relancer l'adhérent ;
+//  - fiche « Actif » avec e-mail seulement (comme les autres relances) ;
+//  - cadence par JOUR calendaire (pas par heures écoulées) : le cron tourne à
+//    heure fixe, une comparaison à la seconde près décalerait chaque rappel d'un
+//    jour une fois sur deux ;
+//  - un lancement manuel le jour même d'un envoi ne double jamais le rappel.
+export const CERTIFICAT_RAPPEL_DEFAULT_INTERVAL_DAYS = 7;
+const CERTIFICAT_RAPPEL_MAX_INTERVAL_DAYS = 60;
+
+// Même découpage de saison que le front (juillet → juin) : « 2026-2027 ».
+export function seasonLabelFromDate(value: string | null | undefined): string {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  const y = d.getUTCFullYear();
+  const start = d.getUTCMonth() + 1 >= 7 ? y : y - 1;
+  return `${start}-${start + 1}`;
+}
+
+// Délai en jours lu dans club_info ; toute valeur absente/illisible/hors bornes
+// retombe sur le défaut plutôt que de bloquer (0 = spam quotidien) ou d'arrêter les rappels.
+export function parseCertificatRappelIntervalDays(raw: unknown): number {
+  const n = Number(String(raw ?? '').trim());
+  if (!Number.isInteger(n) || n < 1 || n > CERTIFICAT_RAPPEL_MAX_INTERVAL_DAYS) return CERTIFICAT_RAPPEL_DEFAULT_INTERVAL_DAYS;
+  return n;
+}
+
+export interface CertificatEngagement { registrationId: string; engagedAt: string; mineur: boolean }
+
+// Dit si UNE inscription porte un engagement valable pour la saison de la fiche.
+// Fonction pure : aucun accès base.
+export function readCertificatEngagement(
+  reg: { id: string; dossier_json: unknown; mineur?: unknown; submitted_at?: string | null; created_at?: string | null; exercice_date_fin?: string | null } | null | undefined,
+  adherent: { date_fin_adhesion?: string | null; date_inscription?: string | null },
+): CertificatEngagement | null {
+  if (!reg) return null;
+  let dossier: any = null;
+  if (reg.dossier_json && typeof reg.dossier_json === 'object') dossier = reg.dossier_json;
+  else if (typeof reg.dossier_json === 'string' && reg.dossier_json.trim()) {
+    try { dossier = JSON.parse(reg.dossier_json); } catch { dossier = null; }
+  }
+  if (!dossier || dossier.computedTotals?.certificateDeferred !== true) return null;
+
+  const adherentSeason = seasonLabelFromDate(adherent.date_fin_adhesion || adherent.date_inscription);
+  const registrationSeason = seasonLabelFromDate(reg.exercice_date_fin || reg.submitted_at || reg.created_at);
+  if (!adherentSeason || adherentSeason !== registrationSeason) return null;
+
+  const engagedAt = String(dossier.health?.certificateCommitmentAt || reg.submitted_at || reg.created_at || '');
+  if (!engagedAt || Number.isNaN(new Date(engagedAt).getTime())) return null;
+  return { registrationId: reg.id, engagedAt, mineur: Number(reg.mineur) === 1 };
+}
+
+function utcDayNumber(value: string | Date): number {
+  const d = value instanceof Date ? value : new Date(value);
+  return Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / 86_400_000);
+}
+
+// 1er rappel : `intervalDays` jours après l'engagement ; ensuite, `intervalDays`
+// jours après le dernier envoi.
+export function certificatEngagementRappelDue(engagedAt: string, lastReminderAt: string | null | undefined, now: Date, intervalDays: number): boolean {
+  const reference = lastReminderAt || engagedAt;
+  if (!reference || Number.isNaN(new Date(reference).getTime())) return false;
+  return utcDayNumber(now) - utcDayNumber(reference) >= intervalDays;
+}
+
+// Corps HTML du rappel. Fonction pure, comme buildAdhesionExpireeEmailHtml.
+// Le destinataire est l'e-mail de la fiche : pour un mineur, c'est celui du
+// responsable, d'où une formulation qui parle de l'enfant.
+export function buildCertificatEnAttenteEmailHtml(opts: { prenom: string; nom?: string; mineur: boolean; engagementFr: string; portalUrl: string }): string {
+  const portal = String(opts.portalUrl || DEFAULT_MEMBER_PORTAL_URL).replace(/\/+$/, '');
+  const prenom = escapeHtmlLite(opts.prenom || '');
+  const identite = escapeHtmlLite(`${opts.prenom || ''} ${opts.nom || ''}`.trim());
+  const intro = opts.mineur
+    ? `<p>Bonjour,</p>
+      <p>Lors de l'inscription de <strong>${identite}</strong> au club (le ${escapeHtmlLite(opts.engagementFr)}), vous vous êtes engagé(e) à fournir son certificat médical au plus vite. Nous ne l'avons pas encore reçu et validé.</p>`
+    : `<p>Bonjour ${prenom},</p>
+      <p>Lors de votre inscription au club (le ${escapeHtmlLite(opts.engagementFr)}), vous vous êtes engagé(e) à fournir votre certificat médical au plus vite. Nous ne l'avons pas encore reçu et validé.</p>`;
+  return `
+      ${intro}
+      <p><strong>À défaut, l'accès aux entraînements ${opts.mineur ? 'lui ' : 'vous '}sera refusé.</strong></p>
+      <p>Le plus simple : déposez-le depuis l'espace membre.</p>
+      <p><a href="${portal}" style="display:inline-block;padding:10px 18px;background:#a23521;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:bold">Déposer le certificat médical</a></p>
+      <p style="font-size:13px;color:#555">Première visite ? Activez d'abord votre espace avec cette même adresse e-mail :
+      <a href="${portal}/activer">${portal}/activer</a>.</p>
+      <p>Vous pouvez aussi le remettre directement à un membre du bureau.</p>
+      <p style="font-size:13px;color:#555">Si vous l'avez déjà transmis, merci de ne pas tenir compte de ce message : il reste à valider par le bureau. Ce rappel s'arrête automatiquement dès que le certificat est validé.</p>
+      <p>Sportivement,<br>AFFBC</p>`;
+}
+
+export async function checkCertificatsEnAttente(env: Env): Promise<{ checked: number; sent: number; skipped: number; errors: string[] }> {
+  const errors: string[] = [];
+  let sent = 0;
+  let skipped = 0;
+
+  const intervalRow = await env.DB.prepare(
+    `SELECT valeur FROM club_info WHERE cle = 'certificat_rappel_intervalle_jours'`
+  ).first<{ valeur: string }>();
+  const intervalDays = parseCertificatRappelIntervalDays(intervalRow?.valeur);
+
+  // Présélection (LIKE) sur le JSON compact écrit par `inscription` (JSON.stringify) :
+  // elle évite de parcourir tous les dossiers sans engagement. La décision finale
+  // reste prise en JS sur le JSON parsé (saison, inscription la plus récente).
+  const { results } = await env.DB.prepare(
+    `SELECT DISTINCT a.id, a.prenom, a.nom, a.email, a.date_fin_adhesion, a.date_inscription
+     FROM adherents a
+     JOIN inscriptions_publiques r ON r.adherent_id = a.id
+     WHERE a.statut = 'Actif'
+       AND COALESCE(a.certificat, 0) = 0
+       AND a.email IS NOT NULL AND a.email != ''
+       AND r.dossier_json LIKE '%"certificateDeferred":true%'`
+  ).all<{ id: string; prenom: string; nom: string; email: string; date_fin_adhesion: string | null; date_inscription: string | null }>();
+
+  const now = new Date();
+  for (const row of results || []) {
+    // Même choix que le front (registrationIndex) : la dernière inscription de la fiche.
+    const reg = await env.DB.prepare(
+      `SELECT r.id, r.dossier_json, r.mineur, r.submitted_at, r.created_at, e.date_fin AS exercice_date_fin
+       FROM inscriptions_publiques r
+       LEFT JOIN exercices e ON e.id = r.exercice_id
+       WHERE r.adherent_id = ?
+       ORDER BY COALESCE(r.updated_at, r.created_at) DESC
+       LIMIT 1`
+    ).bind(row.id).first<{ id: string; dossier_json: string; mineur: number; submitted_at: string | null; created_at: string | null; exercice_date_fin: string | null }>();
+
+    const engagement = readCertificatEngagement(reg, row);
+    if (!engagement) { skipped++; continue; }
+
+    const last = await env.DB.prepare(
+      `SELECT MAX(envoye_at) AS last FROM certificat_engagement_rappels WHERE adherent_id = ? AND registration_id = ?`
+    ).bind(row.id, engagement.registrationId).first<{ last: string | null }>();
+    if (!certificatEngagementRappelDue(engagement.engagedAt, last?.last, now, intervalDays)) { skipped++; continue; }
+
+    const html = buildCertificatEnAttenteEmailHtml({
+      prenom: row.prenom || '',
+      nom: row.nom || '',
+      mineur: engagement.mineur,
+      engagementFr: new Date(engagement.engagedAt).toLocaleDateString('fr-FR'),
+      portalUrl: env.MEMBER_PORTAL_URL || DEFAULT_MEMBER_PORTAL_URL,
+    });
+
+    const result = await sendBrevoEmail(env, {
+      to: [{ email: row.email, name: `${row.prenom} ${row.nom}` }],
+      subject: `Certificat médical à fournir — ${row.prenom} ${row.nom}`,
+      html,
+    });
+
+    if (result.ok) {
+      sent++;
+      await env.DB.prepare(
+        `INSERT INTO certificat_engagement_rappels (id, adherent_id, registration_id) VALUES (?, ?, ?)`
+      ).bind(crypto.randomUUID(), row.id, engagement.registrationId).run();
+    } else {
+      errors.push(`${row.prenom} ${row.nom} (${row.email}) : ${result.error}`);
+    }
+  }
+
+  return { checked: results?.length || 0, sent, skipped, errors };
+}
+
 // ── Relance automatique des prêts de matériel en retard ─────────────────────
 // Même principe que checkCertificatsExpirants : un prêt dont la date de
 // retour prévue est dépassée et qui n'a pas encore été rendu déclenche une
@@ -4459,6 +4638,14 @@ if (path.startsWith("/api/") && !publicApiRoutes.has(path)) {
         return json({ data: result, error: null });
     }
 
+    // POST /api/admin/certificats/relancer-engagements — équivalent manuel du cron
+    // de rappel des certificats promis à l'inscription (cf. checkCertificatsEnAttente).
+    // Respecte la même cadence : relancé le jour d'un envoi, il n'envoie rien de plus.
+    if (method === 'POST' && path === '/api/admin/certificats/relancer-engagements') {
+        const result = await runTrackedAutomation(env, 'certificats_engagement', 'Rappels certificats promis', 'manual', () => checkCertificatsEnAttente(env));
+        return json({ data: result, error: null });
+    }
+
     // POST /api/admin/factures/relancer-impayes — équivalent manuel du cron
     // quotidien de relance des factures impayées (cf. checkFacturesEnRetard).
     if (method === 'POST' && path === '/api/admin/factures/relancer-impayes') {
@@ -4716,6 +4903,14 @@ export default {
       runTrackedAutomation(env, 'certificats', 'Rappels certificats', 'cron', () => checkCertificatsExpirants(env)).then(
         (r) => console.log('[cron:certificats]', JSON.stringify(r)),
         (e) => console.error('[cron:certificats] échec', e instanceof Error ? e.stack || e.message : String(e)),
+      ),
+    );
+    // Rappels récurrents des certificats médicaux promis à l'inscription (case
+    // d'engagement) jusqu'à validation en gestion (cf. checkCertificatsEnAttente).
+    ctx.waitUntil(
+      runTrackedAutomation(env, 'certificats_engagement', 'Rappels certificats promis', 'cron', () => checkCertificatsEnAttente(env)).then(
+        (r) => console.log('[cron:certificats-engagement]', JSON.stringify(r)),
+        (e) => console.error('[cron:certificats-engagement] échec', e instanceof Error ? e.stack || e.message : String(e)),
       ),
     );
     // Signalement quotidien au bureau des demandes RGPD devenues éligibles

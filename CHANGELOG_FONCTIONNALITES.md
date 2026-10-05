@@ -4,6 +4,40 @@ Ajoutées sur la base du projet existant, sans rien retirer. `tsc --noEmit`,
 les 31 tests existants (`vitest run`) et `wrangler deploy --dry-run` sont
 propres après ajout.
 
+## Certificat médical promis à l'inscription + rappels automatiques — 04/10/2026
+
+Quand le certificat est obligatoire (mineur, ou au moins un « oui » au questionnaire de santé),
+l'adhérent qui ne l'a pas sous la main peut désormais cocher **« Je m'engage à fournir le
+certificat médical au plus vite, à défaut, l'accès aux entraînements me sera refusé »** et
+poursuivre son inscription sans pièce jointe (repo `inscription`, étape Santé). Côté `gestion` :
+
+- **Rappel e-mail automatique** (`checkCertificatsEnAttente`, ajouté au cron quotidien) : envoyé
+  à l'adresse de la fiche **7 jours après l'engagement, puis tous les 7 jours**, tant que la case
+  « Certificat médical fourni / validé » de la fiche n'est pas cochée. Pour un mineur, le message
+  parle de l'enfant (l'adresse est celle du responsable). Il renvoie vers l'espace membre pour
+  déposer le certificat. Le délai se règle dans `club_info.certificat_rappel_intervalle_jours`
+  (défaut 7, entier de 1 à 60 ; toute autre valeur retombe sur 7).
+- **Garde-fous** : fiche « Actif » avec e-mail uniquement ; seule l'inscription la plus récente de
+  la fiche compte, et seulement si elle est de la saison de la fiche (le renouvellement groupé
+  remet « Certificat » à zéro sans nouvelle inscription : l'engagement d'une saison passée ne
+  relance personne) ; cadence par jour calendaire ; jamais deux envois le même jour.
+- **Migration `0037_certificat_engagement_rappels.sql`** : une table `certificat_engagement_rappels`
+  (un enregistrement par envoi, rattaché à l'inscription) et la clé `club_info` ci-dessus. Aucune
+  colonne ajoutée à `adherents` : l'engagement est lu dans `inscriptions_publiques.dossier_json`
+  (`computedTotals.certificateDeferred`, `health.certificateCommitmentAt`). Sans cette migration,
+  seul le cron échoue (visible dans Automatisations) ; les inscriptions ne sont jamais impactées.
+- **Fiche adhérent** : l'état reste « ✗ Manquant » (compteurs et alertes inchangés) ; l'infobulle
+  précise que l'adhérent s'est engagé, à quelle date, et qu'un rappel automatique est en cours.
+- **Automatisations** : nouvelle ligne « Rappels certificats promis », avec bouton **Lancer**
+  (`POST /api/admin/certificats/relancer-engagements`, même cadence que le cron).
+- `public/index.html` : cache-busting `app.js?v=20261004a`. `app.min.js` non régénéré
+  (non chargé par `index.html`).
+
+À savoir : le dépôt d'un certificat par l'adhérent depuis l'espace membre coche lui-même
+« Certificat » (comportement existant, inchangé) : les rappels s'arrêtent donc dès ce dépôt, sans
+attendre la vérification du bureau. Rien n'empêche techniquement l'accès aux entraînements :
+le refus reste à appliquer par le bureau.
+
 ## Accès CSE Thalès quand les inscriptions sont fermées — 30/09/2026
 
 Les membres du CSE Thalès doivent pouvoir s'inscrire toute l'année, même quand les

@@ -1352,6 +1352,9 @@ function adherentCertificatInfo(a){
   }
   if(required===null&&mineur===true){ required=true; source='age'; }
   const hasDocument=useReg&&getRegistrationDocuments(reg).some(d=>d.key==='medicalCertificate');
+  // Case d'engagement cochée à l'inscription (« je m'engage à fournir le certificat au plus vite »).
+  const engagement=(useReg&&dossier?.computedTotals?.certificateDeferred===true)
+    ?{at:dossier?.health?.certificateCommitmentAt||reg.submitted_at||reg.created_at||''}:null;
 
   let state;
   if(required===false) state='non_requis';
@@ -1370,11 +1373,13 @@ function adherentCertificatInfo(a){
     non_requis:'Certificat non exigé pour ce dossier (adulte, questionnaire de santé sans réponse « oui »).',
     fourni:required===true?`Certificat obligatoire (${why}) : fourni et validé.`:'Certificat coché comme fourni.',
     a_valider:`Certificat obligatoire (${why}) : pièce reçue à l’inscription, à vérifier puis à cocher dans la fiche.`,
-    manquant:`Certificat obligatoire (${why}) : aucune pièce reçue, à réclamer à l’adhérent.`,
+    manquant:engagement
+      ?`Certificat obligatoire (${why}) : aucune pièce reçue. L’adhérent s’est engagé à le fournir au plus vite${engagement.at?` (case cochée à l’inscription du ${fd(engagement.at)})`:''}, à défaut l’accès aux entraînements est refusé. Un rappel e-mail automatique part tant que la case « Certificat » n’est pas cochée dans la fiche.`
+      :`Certificat obligatoire (${why}) : aucune pièce reçue, à réclamer à l’adhérent.`,
     a_fournir:'Certificat non coché. Pas de questionnaire d’inscription en ligne pour cette saison : impossible de savoir s’il est exigé.',
   };
   const meta=CERT_STATES[state];
-  return {state,required,mineur,reasons,reasonCodes,qsYes,qsAnswered,hasDocument,source,resolved:meta.resolved,label:meta.label,tone:meta.tone,tip:tips[state]};
+  return {state,required,mineur,reasons,reasonCodes,qsYes,qsAnswered,hasDocument,engagement,source,resolved:meta.resolved,label:meta.label,tone:meta.tone,tip:tips[state]};
 }
 
 // ── Droit à l'image ─────────────────────────────────────────────────────────
@@ -7693,6 +7698,7 @@ function automationSummary(entry){
 async function runAutomationManual(kind){
   const cfg={
     certificats:{path:'/admin/certificats/verifier',label:'Vérification des certificats'},
+    certificats_engagement:{path:'/admin/certificats/relancer-engagements',label:'Rappels certificats promis à l’inscription'},
     factures_retard:{path:'/admin/factures/relancer-impayes',label:'Relance des factures impayées'},
     adhesions:{path:'/admin/adhesions/relancer',label:'Rappels renouvellement adhésion'},
     backup:{path:'/admin/backup/run',label:'Sauvegarde complète'},
@@ -7713,6 +7719,7 @@ function vAutomations(){
   if(UI.automationStatus.error) return `<div class="empty">${esc(UI.automationStatus.error)}</div>`;
   const expected=[
     {key:'certificats',label:'Rappels certificats',manual:true},
+    {key:'certificats_engagement',label:'Rappels certificats promis',manual:true},
     {key:'factures_retard',label:'Relances factures impayées',manual:true},
     {key:'adhesions',label:'Rappels renouvellement adhésion',manual:true},
     {key:'materiel_retard',label:'Relances matériel en retard'},
