@@ -252,7 +252,9 @@ const UI = {
   invKind:'facture',
   glFilter:'',
   glClassFilter:'',
-  rapprMultiSel:{},
+  rapprSearch:'',
+  rapprStatus:'',
+  rapprTxSel:{},
   feedbackCampaignId:null,
 };
 let IMP = {
@@ -1821,6 +1823,7 @@ async function doLogout(){
   await clearSession();
   resetLoadedData();
   UI.currentUser=null;
+  rapprReset();
   document.getElementById('app').style.display='none';
   showLoginScreen();
   notify('success','Vous avez été déconnecté.','Déconnexion');
@@ -1998,6 +2001,7 @@ function render(){
   c.innerHTML=(map[UI.tab]||vAdh)();
   renderModal();
   updLogo();
+  rapprUpdateSelBar();
   if(UI.tab==='diplomes') refreshDiplomePreviewCanvas();
 }
 
@@ -4515,12 +4519,197 @@ function vBankImport(){
   </div>`;
 }
 
+// ─── Rapprochement : état de vue (cache de suggestions, sélection) ────────
+// Recalculés à chaque vRappr() (rendu complet). Les rafraîchissements partiels
+// (recherche, filtre, cases à cocher) les réutilisent pour ne pas relancer le
+// scoring sur toutes les lignes à chaque frappe, et pour ne pas perdre le
+// focus du champ de recherche (render() remplace tout le contenu de l'onglet).
+let RAPPR_CONSUMED=null;
+let RAPPR_SUGG=new Map();
+let RAPPR_VISIBLE_IDS=[];
+let RAPPR_LAST_TX=null;
+
+function rapprAllTransactions(){
+  return D.comptes.flatMap(c=>(c.transactions||[]).map(t=>({...t,cname:c.nom}))).sort((a,b)=>compareFrDates(b.date_op,a.date_op));
+}
+
+// Meilleure écriture suggérée pour une transaction, calculée une seule fois par rendu.
+function rapprSugg(t){
+  if(!RAPPR_CONSUMED) RAPPR_CONSUMED=consumedPieces();
+  if(!RAPPR_SUGG.has(t.id)) RAPPR_SUGG.set(t.id,bestRapprochementEntry(t,RAPPR_CONSUMED));
+  return RAPPR_SUGG.get(t.id);
+}
+
+function rapprFilterTransactions(all){
+  const q=UI.rapprSearch||'';
+  const st=UI.rapprStatus||'';
+  return all.filter(t=>{
+    if(st==='attente'&&t.rapproche) return false;
+    if(st==='rapproche'&&!t.rapproche) return false;
+    return rapprMatchesQuery(q,{
+      text:`${t.libelle||''} ${t.cname||''} ${t.ecriture_pieces_json||t.ecriture_piece||''}`,
+      amounts:[t.debit,t.credit],
+      dates:[t.date_op,t.date_valeur]
+    });
+  });
+}
+
+function rapprRowHtml(t,optionsHtml){
+  const selMap=UI.rapprTxSel||{};
+  const result=!t.rapproche?rapprSugg(t):null;
+  const confidence=result?Math.round((result.score/5)*100):0;
+  const confBadge=result?(result.auto?`<span class="badge bok">Haute ${confidence}%</span>`:`<span class="badge bwarn">Moyenne ${confidence}%</span>`):`<span class="badge bgray">—</span>`;
+  let piecesLiees=[];
+  if(t.rapproche){
+    if(t.ecriture_pieces_json){try{piecesLiees=JSON.parse(t.ecriture_pieces_json);}catch(e){}}
+    if(!piecesLiees.length&&t.ecriture_piece)piecesLiees=[t.ecriture_piece];
+  }
+  const suggested=result&&result.entry?(result.entry.piece||String(result.entry.id).slice(0,8)):'';
+  const opts=suggested?optionsHtml.replace(`value="${esc(suggested)}"`,m=>`${m} selected`):optionsHtml;
+  const ecritureCell=t.rapproche
+    ?`<div>${piecesLiees.map(p=>`<span class="badge bok" style="margin-right:3px;margin-bottom:3px">${esc(p)}</span>`).join('')}${piecesLiees.length>1?`<div style="font-size:10px;color:var(--txt2);margin-top:2px">${piecesLiees.length} pièces liées</div>`:''}</div>`
+    :`<div style="font-size:11px"><select style="font-size:11px;padding:3px 6px;width:auto;max-width:240px" id="ecr-${esc(t.id)}">
+        <option value="">-- Pièce unique --</option>
+        ${opts}
+      </select></div>`;
+  const actionCell=t.rapproche
+    ?`<div style="display:flex;gap:4px;flex-wrap:wrap">
+        <button class="btn sm bwarn" onclick="modifierRapprochement('${t.id}')" title="Choisir une autre écriture">✎ Corriger</button>
+        <button class="btn sm" style="background:var(--red);color:#fff" onclick="annulerRapprochement('${t.id}')" title="Annuler le rapprochement">✕</button>
+      </div>`
+    :`<div style="display:flex;gap:4px;flex-wrap:wrap">
+        <button class="btn sm" onclick="rapprocher('${t.id}')">✓ Valider</button>
+        <button class="btn sm gold" onclick="openRapprMulti(['${t.id}'])" title="Rapprocher cette opération à plusieurs écritures (remise de chèques, virement groupé…)">🔗 Multi</button>
+      </div>`;
+  const checkCell=t.rapproche
+    ?`<td class="rappr-cbcell"></td>`
+    :`<td class="rappr-cbcell"><input type="checkbox" class="rappr-cb rappr-tx-cb" data-id="${esc(t.id)}" ${selMap[t.id]?'checked':''} onclick="rapprTxClick(event,'${esc(t.id)}')" aria-label="Sélectionner cette opération"></td>`;
+  return`<tr class="${!t.rapproche&&selMap[t.id]?'rappr-row-sel':''}">
+    ${checkCell}
+    <td>${fd(frDateToISO(t.date_op)||t.date_op)||''}</td>
+    <td>${esc(t.libelle||'')}</td>
+    <td style="font-size:11px">${esc(t.cname||'')}</td>
+    <td style="color:var(--red);text-align:right">${+t.debit>0?(+t.debit).toFixed(2)+' €':'-'}</td>
+    <td style="color:#1e7e34;text-align:right">${+t.credit>0?(+t.credit).toFixed(2)+' €':'-'}</td>
+    <td>${ecritureCell}</td>
+    <td>${t.rapproche?'':confBadge}</td>
+    <td>${t.rapproche?`<span class="badge bok">✓ Rapprochée</span>`:`<span class="badge bwarn">En attente</span>`}</td>
+    <td>${actionCell}</td>
+    </tr>`;
+}
+
+// Tableau + compteur : seule cette partie est régénérée quand on tape dans la
+// recherche ou qu'on change le filtre (le champ de saisie reste intact).
+function rapprBodyHtml(all){
+  if(all.length===0) return `<div class="empty">Importez d'abord un relevé bancaire</div>`;
+  const rowsData=rapprFilterTransactions(all);
+  RAPPR_VISIBLE_IDS=rowsData.filter(t=>!t.rapproche).map(t=>t.id);
+  const selMap=UI.rapprTxSel||{};
+  const allChecked=RAPPR_VISIBLE_IDS.length>0&&RAPPR_VISIBLE_IDS.every(id=>selMap[id]);
+  const filtered=!!((UI.rapprSearch||'').trim()||UI.rapprStatus);
+  // Options du menu « Pièce unique » construites une seule fois pour toutes les lignes.
+  const optionsHtml=D.journal.map(j=>{const pk=j.piece||j.id.slice(0,8);return`<option value="${esc(pk)}">${esc(j.piece||'')} ${esc((j.libelle||'').slice(0,20))}</option>`;}).join('');
+  const rows=rowsData.map(t=>rapprRowHtml(t,optionsHtml)).join('');
+  return`${filtered?`<div style="font-size:12px;color:var(--txt2);margin-bottom:6px">${rowsData.length}/${all.length} opération(s) affichée(s)</div>`:''}
+  <div class="wrap"><table>
+  <thead><tr><th class="rappr-cbcell"><input type="checkbox" class="rappr-cb" id="rappr-cb-all" ${allChecked?'checked':''} onchange="rapprToggleAllTx(this.checked)" title="Cocher / décocher toutes les opérations en attente affichées" aria-label="Tout sélectionner"></th><th>Date</th><th>Libellé</th><th>Compte</th><th>Débit</th><th>Crédit</th><th>Écriture(s)</th><th>Confiance</th><th>Statut</th><th>Actions</th></tr></thead>
+  <tbody>${rows||`<tr><td colspan="10" class="empty">Aucune opération pour ce filtre</td></tr>`}</tbody>
+  </table></div>`;
+}
+
+function refreshRapprBody(){
+  const host=document.getElementById('rappr-body');
+  if(!host){ render(); return; }
+  host.innerHTML=rapprBodyHtml(rapprAllTransactions());
+  rapprUpdateSelBar();
+}
+
+function rapprSetSearch(v){ UI.rapprSearch=v; refreshRapprBody(); }
+function rapprSetStatus(v){ UI.rapprStatus=v; refreshRapprBody(); }
+function rapprResetFilters(){ UI.rapprSearch=''; UI.rapprStatus=''; render(); }
+
+// ─── Sélection de plusieurs opérations bancaires ──────────────────────────
+// Opérations cochées encore en attente (les ids obsolètes sont retirés au passage).
+function rapprSelectedPendingTx(){
+  const sel=UI.rapprTxSel||(UI.rapprTxSel={});
+  const byId=new Map(D.comptes.flatMap(c=>c.transactions||[]).map(t=>[t.id,t]));
+  const out=[];
+  for(const id of Object.keys(sel)){
+    const t=byId.get(id);
+    if(t&&!t.rapproche) out.push(t); else delete sel[id];
+  }
+  return out.sort((a,b)=>compareFrDates(b.date_op,a.date_op));
+}
+
+// Coche/décoche une ligne ; Maj + clic coche/décoche toute la plage depuis la dernière ligne cliquée.
+function rapprTxClick(ev,id){
+  const sel=UI.rapprTxSel||(UI.rapprTxSel={});
+  const on=!!(ev&&ev.target&&ev.target.checked);
+  const ids=RAPPR_VISIBLE_IDS;
+  if(ev&&ev.shiftKey&&RAPPR_LAST_TX&&ids.includes(RAPPR_LAST_TX)&&ids.includes(id)){
+    const a=ids.indexOf(RAPPR_LAST_TX),b=ids.indexOf(id);
+    ids.slice(Math.min(a,b),Math.max(a,b)+1).forEach(x=>{ if(on) sel[x]=true; else delete sel[x]; });
+  }else{
+    if(on) sel[id]=true; else delete sel[id];
+  }
+  RAPPR_LAST_TX=id;
+  rapprSyncTxSelectionDom();
+}
+
+function rapprToggleAllTx(checked){
+  const sel=UI.rapprTxSel||(UI.rapprTxSel={});
+  RAPPR_VISIBLE_IDS.forEach(id=>{ if(checked) sel[id]=true; else delete sel[id]; });
+  rapprSyncTxSelectionDom();
+}
+
+function rapprClearTxSel(){
+  UI.rapprTxSel={};
+  rapprSyncTxSelectionDom();
+}
+
+function rapprSyncTxSelectionDom(){
+  const sel=UI.rapprTxSel||{};
+  document.querySelectorAll('#rappr-body input.rappr-tx-cb').forEach(cb=>{
+    const on=!!sel[cb.dataset.id];
+    cb.checked=on;
+    const tr=cb.closest('tr'); if(tr) tr.classList.toggle('rappr-row-sel',on);
+  });
+  const head=document.getElementById('rappr-cb-all');
+  if(head) head.checked=RAPPR_VISIBLE_IDS.length>0&&RAPPR_VISIBLE_IDS.every(id=>sel[id]);
+  rapprUpdateSelBar();
+}
+
+// Barre flottante « N opérations sélectionnées · total · Imputer la sélection ».
+// Posée sur document.body (et non dans #app, dont le backdrop-filter piégerait
+// un élément fixed) ; retirée dès qu'on quitte l'écran Rapprochement.
+function rapprUpdateSelBar(){
+  let bar=document.getElementById('rappr-selbar');
+  const onScreen=!!UI.currentUser&&!!document.getElementById('rappr-body');
+  const txs=onScreen?rapprSelectedPendingTx():[];
+  if(!txs.length){ if(bar) bar.remove(); return; }
+  const total=txs.reduce((s,t)=>s+(+t.credit||0)-(+t.debit||0),0);
+  if(!bar){ bar=document.createElement('div'); bar.id='rappr-selbar'; bar.className='rappr-selbar'; document.body.appendChild(bar); }
+  bar.innerHTML=`<span><strong>${txs.length}</strong> opération(s) sélectionnée(s)</span>
+    <span>Total <strong>${rapprSignedEuro(total)}</strong></span>
+    <button class="btn sm gold" onclick="openRapprMulti()">🔗 Imputer la sélection…</button>
+    <button class="btn sm" onclick="rapprClearTxSel()">Désélectionner</button>`;
+}
+
+// Nettoyage à la déconnexion : barre, fenêtre d'imputation et sélection.
+function rapprReset(){
+  UI.rapprTxSel={};
+  if(typeof closeRapprMulti==='function') closeRapprMulti();
+  const bar=document.getElementById('rappr-selbar'); if(bar) bar.remove();
+}
+
 function vRappr(){
-  const all=D.comptes.flatMap(c=>(c.transactions||[]).map(t=>({...t,cname:c.nom}))).sort((a,b)=>compareFrDates(b.date_op,a.date_op));
+  RAPPR_CONSUMED=consumedPieces();
+  RAPPR_SUGG=new Map();
+  const all=rapprAllTransactions();
   const nonR=all.filter(t=>!t.rapproche);
   const doneR=all.filter(t=>t.rapproche);
-  const autoCount=nonR.filter(t=>{ const r=bestRapprochementEntry(t); return r?.auto; }).length;
-  const suggestCount=nonR.filter(t=>{ const r=bestRapprochementEntry(t); return r && !r.auto; }).length;
+  const autoCount=nonR.filter(t=>{ const r=rapprSugg(t); return r&&r.auto; }).length;
+  const suggestCount=nonR.filter(t=>{ const r=rapprSugg(t); return r&&!r.auto; }).length;
   const grouped=findGroupedRapprochement(all);
 
   const groupPanel=grouped.length?`
@@ -4542,55 +4731,6 @@ function vRappr(){
     </div>`).join('')}
   </div>`:'';
 
-  const rows=all.map((t,i)=>{
-    const result=!t.rapproche?bestRapprochementEntry(t):null;
-    const confidence=result?Math.round((result.score/5)*100):0;
-    const confBadge=result?(result.auto?`<span class="badge bok">Haute ${confidence}%</span>`:`<span class="badge bwarn">Moyenne ${confidence}%</span>`):`<span class="badge bgray">—</span>`;
-    let piecesLiees=[];
-    if(t.rapproche){
-      if(t.ecriture_pieces_json){try{piecesLiees=JSON.parse(t.ecriture_pieces_json);}catch(e){}}
-      if(!piecesLiees.length&&t.ecriture_piece)piecesLiees=[t.ecriture_piece];
-    }
-    const multiSel=UI.rapprMultiSel[t.id]||[];
-    const ecritureCell=t.rapproche
-      ?`<div>${piecesLiees.map(p=>`<span class="badge bok" style="margin-right:3px;margin-bottom:3px">${esc(p)}</span>`).join('')}${piecesLiees.length>1?`<div style="font-size:10px;color:var(--txt2);margin-top:2px">${piecesLiees.length} pièces liées</div>`:''}</div>`
-      :`<div style="font-size:11px">
-        <div style="margin-bottom:4px">
-        <select style="font-size:11px;padding:3px 6px;width:auto" id="ecr-${i}">
-          <option value="">-- Pièce unique --</option>
-          ${D.journal.map(j=>`<option value="${esc(j.piece||j.id.slice(0,8))}" ${suggestRapprochementPiece(t)===(j.piece||j.id.slice(0,8))?'selected':''}>${esc(j.piece||'')} ${esc((j.libelle||'').slice(0,20))}</option>`).join('')}
-        </select>
-        </div>
-        <details style="margin-top:4px">
-        <summary style="font-size:10px;cursor:pointer;color:var(--txt2)">🔗 Multi-rapprochement (remise chèques / virement groupé)</summary>
-        <div style="margin-top:6px;max-height:140px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;padding:4px">
-        ${D.journal.map(j=>{const pk=j.piece||j.id.slice(0,8);const checked=multiSel.includes(pk);return`<label style="display:flex;align-items:center;gap:6px;padding:2px 4px;font-size:11px;cursor:pointer;${checked?'background:rgba(30,126,52,.08);border-radius:3px':''}"><input type="checkbox" ${checked?'checked':''} onchange="toggleMultiSel('${t.id}','${esc(pk)}')">${esc(pk)} — ${esc((j.libelle||'').slice(0,22))} (${((+j.credit||0)-(+j.debit||0)).toFixed(2)} €)</label>`;}).join('')}
-        </div>
-        ${multiSel.length?`<div style="margin-top:6px;font-size:11px;color:#1e7e34">${multiSel.length} pièce(s) cochée(s)</div>`:''}
-        </details>
-      </div>`;
-    const actionCell=t.rapproche
-      ?`<div style="display:flex;gap:4px;flex-wrap:wrap">
-          <button class="btn sm bwarn" onclick="modifierRapprochement('${t.id}')" title="Choisir une autre écriture">✎ Corriger</button>
-          <button class="btn sm" style="background:var(--red);color:#fff" onclick="annulerRapprochement('${t.id}')" title="Annuler le rapprochement">✕</button>
-        </div>`
-      :`<div style="display:flex;gap:4px;flex-wrap:wrap">
-          <button class="btn sm" onclick="rapprocher('${t.id}',${i})">✓ Valider</button>
-          ${multiSel.length?`<button class="btn sm primary" onclick="rapprocherMulti('${t.id}')">🔗 Multi (${multiSel.length})</button>`:''}
-        </div>`;
-    return`<tr>
-    <td>${fd(frDateToISO(t.date_op)||t.date_op)||''}</td>
-    <td>${esc(t.libelle||'')}</td>
-    <td style="font-size:11px">${esc(t.cname||'')}</td>
-    <td style="color:var(--red);text-align:right">${+t.debit>0?(+t.debit).toFixed(2)+' €':'-'}</td>
-    <td style="color:#1e7e34;text-align:right">${+t.credit>0?(+t.credit).toFixed(2)+' €':'-'}</td>
-    <td>${ecritureCell}</td>
-    <td>${t.rapproche?'':confBadge}</td>
-    <td>${t.rapproche?`<span class="badge bok">✓ Rapprochée</span>`:`<span class="badge bwarn">En attente</span>`}</td>
-    <td>${actionCell}</td>
-    </tr>`;
-  }).join('');
-
   return`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
   <div>
   <strong>${nonR.length} en attente · ${doneR.length} rapprochée(s)</strong>
@@ -4602,11 +4742,17 @@ function vRappr(){
   </div>
   </div>
   ${groupPanel}
-  ${all.length===0?`<div class="empty">Importez d'abord un relevé bancaire</div>`:`
-  <div class="wrap"><table>
-  <thead><tr><th>Date</th><th>Libellé</th><th>Compte</th><th>Débit</th><th>Crédit</th><th>Écriture(s)</th><th>Confiance</th><th>Statut</th><th>Actions</th></tr></thead>
-  <tbody>${rows}</tbody>
-  </table></div>`}`;
+  ${all.length===0?'':`<div class="toolbar" style="margin-bottom:8px">
+  <input id="rappr-q" style="flex:1;min-width:220px" placeholder="🔍 Rechercher une opération : nom / libellé, montant, date, compte…" value="${esc(UI.rapprSearch||'')}" oninput="rapprSetSearch(this.value)" autocomplete="off">
+  <select style="width:auto" onchange="rapprSetStatus(this.value)">
+  <option value="" ${!UI.rapprStatus?'selected':''}>Toutes</option>
+  <option value="attente" ${UI.rapprStatus==='attente'?'selected':''}>En attente</option>
+  <option value="rapproche" ${UI.rapprStatus==='rapproche'?'selected':''}>Rapprochées</option>
+  </select>
+  <button class="btn" onclick="rapprResetFilters()">Réinitialiser</button>
+  </div>
+  <p class="rappr-hint">Cochez plusieurs opérations en attente (<strong>Maj + clic</strong> pour une plage, case d'en-tête pour tout cocher), puis « Imputer la sélection » pour les rapprocher en une fois à plusieurs écritures.</p>`}
+  <div id="rappr-body">${rapprBodyHtml(all)}</div>`;
 }
 function vEcr512(){
   const e=D.journal.filter(j=>j.compte&&j.compte.startsWith('512'));
@@ -10172,8 +10318,8 @@ function cancelBankImport(){
   closeModal();
 }
 
-async function rapprocher(id,i){
-  const ecr=document.getElementById(`ecr-${i}`);
+async function rapprocher(id){
+  const ecr=document.getElementById(`ecr-${id}`);
   const piece=ecr?ecr.value:'';
   if(!piece){ notify('warn','Sélectionnez une écriture avant de rapprocher.','Rapprochement'); return; }
   await SB.from('transactions').update({rapproche:true,ecriture_piece:piece,ecriture_pieces_json:JSON.stringify([piece])}).eq('id',id);
@@ -10182,20 +10328,8 @@ async function rapprocher(id,i){
   render();
 }
 
-// Rapprochement multi-pièces : une transaction bancaire ↔ N écritures comptables
-// Cas typiques : remise de chèques groupée, virement regroupant plusieurs cotisations
-async function rapprocherMulti(id){
-  const sel=UI.rapprMultiSel[id]||[];
-  if(!sel.length){ notify('warn','Sélectionnez au moins une écriture.','Multi-rapprochement'); return; }
-  const piecesJson=JSON.stringify(sel);
-  const firstPiece=sel[0];
-  await SB.from('transactions').update({rapproche:true,ecriture_piece:firstPiece,ecriture_pieces_json:piecesJson}).eq('id',id);
-  const t=D.comptes.flatMap(c=>c.transactions||[]).find(x=>x.id===id);
-  if(t){t.rapproche=true;t.ecriture_piece=firstPiece;t.ecriture_pieces_json=piecesJson;}
-  delete UI.rapprMultiSel[id];
-  notify('success',`Transaction rapprochée avec ${sel.length} écriture(s).`,'Multi-rapprochement');
-  render();
-}
+// Rapprochement multi-pièces (une ou plusieurs transactions ↔ N écritures) :
+// voir openRapprMulti() / rapprMultiConfirm() plus bas.
 
 // Rapprochement groupé validé depuis le panneau de suggestion
 async function validerGroupeRapprochement(transactionIds, piece){
@@ -10210,14 +10344,6 @@ async function validerGroupeRapprochement(transactionIds, piece){
   render();
 }
 
-function toggleMultiSel(tid, piece){
-  if(!UI.rapprMultiSel[tid]) UI.rapprMultiSel[tid]=[];
-  const idx=UI.rapprMultiSel[tid].indexOf(piece);
-  if(idx>=0) UI.rapprMultiSel[tid].splice(idx,1);
-  else UI.rapprMultiSel[tid].push(piece);
-  render();
-}
-
 async function modifierRapprochement(id){
   if(!await confirmModal('Modifier le rapprochement de cette transaction ? Elle repassera en attente et vous pourrez choisir une nouvelle écriture.')) return;
   await SB.from('transactions').update({rapproche:false,ecriture_piece:null,ecriture_pieces_json:null}).eq('id',id);
@@ -10226,6 +10352,282 @@ async function modifierRapprochement(id){
   notify('info','Transaction repassée en attente — choisissez la bonne écriture.','Rapprochement');
   render();
 }
+// ═══════════════════════════════════════════════════════════════════════
+// Rapprochement : recherche, sélection multiple et imputation multi-opérations
+// ═══════════════════════════════════════════════════════════════════════
+
+function rapprNorm(s){
+  return (s==null?'':String(s)).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+}
+
+// Recherche multi-mots (ET) : chaque mot doit correspondre au texte (insensible
+// à la casse et aux accents), à un montant (début du montant : « 45 » trouve
+// 45,00 et 45,50 mais pas 145,00 ; « 45,5 » trouve 45,50) ou à une date
+// (« 05/10 », « 10/2026 », « 2026-10 »).
+// fields = { text, amounts:[...], dates:[...] }
+function rapprMatchesQuery(query,fields){
+  const q=rapprNorm(query)
+    .replace(/€/g,' ')
+    .replace(/(\d)[\u00a0\u202f](?=\d{3}(?!\d))/g,'$1'); // « 1 250,00 » collé depuis l'appli → « 1250,00 »
+  const tokens=q.split(/\s+/).filter(Boolean);
+  if(!tokens.length) return true;
+  const text=rapprNorm((fields&&fields.text)||'');
+  const amounts=((fields&&fields.amounts)||[]).map(a=>Math.abs(+a||0)).filter(a=>a>0).map(a=>a.toFixed(2));
+  const dates=((fields&&fields.dates)||[]).filter(Boolean).flatMap(d=>[fd(d),frDateToISO(d)||String(d)]).filter(Boolean);
+  return tokens.every(tok=>{
+    if(/^[+-]?\d+(?:[.,]\d*)?$/.test(tok)){
+      const num=tok.replace(/^[+-]/,'').replace(',','.');
+      if(amounts.some(a=>a.startsWith(num))) return true;
+      // Un nombre court (< 4 chiffres) ne cherche que dans les montants ; au-delà
+      // (référence, année) on le cherche aussi dans le libellé.
+      return tok.replace(/\D/g,'').length>=4&&text.includes(tok);
+    }
+    if(tok.includes('/')||/^\d{4}-\d{2}/.test(tok)){
+      if(dates.some(d=>d.includes(tok))) return true;
+    }
+    return text.includes(tok);
+  });
+}
+
+function rapprSignedEuro(v){
+  const n=Math.round((+v||0)*100)/100;
+  return (n>0?'+':n<0?'−':'')+euro(Math.abs(n));
+}
+
+// Montant d'une ligne du journal « vu de la banque » : positif = argent entré.
+// Compte 512 : débit = encaissement. Autres comptes (ex. 706, 6xx) : l'inverse.
+function rapprBankSenseAmount(j){
+  const d=+j.debit||0,c=+j.credit||0;
+  return (j.compte||'').startsWith('512')?d-c:c-d;
+}
+
+// Écritures proposées à l'imputation : par défaut, lignes du compte 512 Banque
+// pas encore liées à une opération rapprochée (c'est exactement l'« en attente
+// de relevé » de pendingBankPieces). Une pièce = une entrée, même si elle
+// comporte plusieurs lignes. includeAllAccounts élargit à toutes les écritures.
+function rapprPieceCandidates(opts){
+  const includeAll=!!(opts&&opts.includeAllAccounts);
+  const consumed=(opts&&opts.consumed)||consumedPieces();
+  const byKey=new Map();
+  for(const j of D.journal){
+    if(!j.piece&&!j.id) continue;
+    if(!includeAll&&!(j.compte||'').startsWith('512')) continue;
+    const key=j.piece||String(j.id).slice(0,8);
+    if(consumed.has(key)) continue;
+    let g=byKey.get(key);
+    if(!g){ g={piece:key,date_op:j.date_op,libelle:j.libelle||'',compte:j.compte||'',amount:0}; byKey.set(key,g); }
+    g.amount+=rapprBankSenseAmount(j);
+  }
+  return [...byKey.values()].sort((a,b)=>compareFrDates(b.date_op,a.date_op)||a.piece.localeCompare(b.piece));
+}
+
+// Équilibre entre le total des opérations bancaires et celui des écritures cochées.
+function rapprMultiBalance(txs,pieces){
+  const r2=x=>Math.round(x*100)/100;
+  const txTotal=r2(txs.reduce((s,t)=>s+(+t.credit||0)-(+t.debit||0),0));
+  const selTotal=r2(pieces.reduce((s,p)=>s+(+p.amount||0),0));
+  const diff=r2(selTotal-txTotal);
+  return {txTotal,selTotal,diff,balanced:Math.abs(diff)<0.01};
+}
+
+// ─── Fenêtre « Imputation multi-opérations » ──────────────────────────────
+// Une ou plusieurs opérations bancaires ↔ une ou plusieurs écritures. Chaque
+// opération reçoit la liste complète des écritures cochées (même principe que
+// validerGroupeRapprochement, qui lie N transactions à une pièce).
+// Fenêtre autonome posée sur document.body avec sa propre classe : renderModal()
+// retire tout `.modal-bg` à chaque render(), ce qui fermerait la fenêtre en
+// pleine saisie ; et confirmModal (dans #app) passerait derrière elle, d'où
+// l'avertissement d'écart affiché directement dans la fenêtre.
+const RAPPR_MULTI={open:false,txIds:[],sel:new Set(),query:'',allAccounts:false,onlySelected:false,base:[],visible:[],last:null,busy:false};
+const RAPPR_MULTI_MAX_ROWS=400;
+
+function rapprMultiTxs(){
+  const byId=new Map(D.comptes.flatMap(c=>c.transactions||[]).map(t=>[t.id,t]));
+  return RAPPR_MULTI.txIds.map(id=>byId.get(id)).filter(t=>t&&!t.rapproche);
+}
+
+function openRapprMulti(txIds){
+  let txs;
+  if(Array.isArray(txIds)&&txIds.length){
+    const byId=new Map(D.comptes.flatMap(c=>c.transactions||[]).map(t=>[t.id,t]));
+    txs=txIds.map(id=>byId.get(id)).filter(t=>t&&!t.rapproche);
+  }else{
+    txs=rapprSelectedPendingTx();
+  }
+  if(!txs.length){ notify('warn','Cochez au moins une opération en attente.','Imputation multi-opérations'); return; }
+  closeRapprMulti();
+  Object.assign(RAPPR_MULTI,{open:true,txIds:txs.map(t=>t.id),sel:new Set(),query:'',allAccounts:false,onlySelected:false,base:[],visible:[],last:null,busy:false});
+  const div=document.createElement('div');
+  div.className='rappr-bg';
+  div.id='rappr-multi-bg';
+  div.innerHTML=rapprMultiShell(txs);
+  document.body.appendChild(div);
+  document.addEventListener('keydown',rapprMultiKey,true);
+  rapprMultiLoadBase();
+  rapprMultiRenderRows();
+  setTimeout(()=>{ const q=document.getElementById('rappr-multi-q'); if(q) q.focus(); },30);
+}
+
+function closeRapprMulti(){
+  const bg=document.getElementById('rappr-multi-bg');
+  if(bg) bg.remove();
+  document.removeEventListener('keydown',rapprMultiKey,true);
+  RAPPR_MULTI.open=false;
+  RAPPR_MULTI.busy=false;
+}
+
+function rapprMultiKey(e){
+  if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); closeRapprMulti(); }
+}
+
+function rapprMultiShell(txs){
+  const txRows=txs.map(t=>{
+    const net=(+t.credit||0)-(+t.debit||0);
+    return`<div class="rappr-multi-tx"><span>${esc(fd(frDateToISO(t.date_op)||t.date_op)||'')}</span><span>${esc(t.libelle||'')}</span><strong class="${net>=0?'rappr-pos':'rappr-neg'}">${rapprSignedEuro(net)}</strong></div>`;
+  }).join('');
+  return`<div class="modal rappr-multi" role="dialog" aria-modal="true" aria-labelledby="rappr-multi-title">
+  <h2 id="rappr-multi-title">🔗 Imputation multi-opérations</h2>
+  <div class="stit" style="margin-top:0">${txs.length>1?`${txs.length} opérations bancaires`:'Opération bancaire'}</div>
+  <div class="rappr-multi-txs">${txRows}</div>
+  <div class="stit">Écritures à rapprocher</div>
+  <div class="toolbar rappr-multi-tools">
+  <input id="rappr-multi-q" style="flex:1;min-width:200px" placeholder="🔍 Nom, libellé, pièce, montant (ex. 45 ou 45,50), date…" oninput="rapprMultiSearch(this.value)" autocomplete="off">
+  <label class="rappr-chk"><input type="checkbox" onchange="rapprMultiSetOnlySelected(this.checked)"> Cochées seulement</label>
+  <label class="rappr-chk" title="Par défaut : écritures du compte 512 Banque pas encore rapprochées"><input type="checkbox" onchange="rapprMultiSetAllAccounts(this.checked)"> Tous les comptes</label>
+  </div>
+  <div class="rappr-multi-scroll" id="rappr-multi-scroll"><table>
+  <thead><tr><th class="rappr-cbcell"><input type="checkbox" class="rappr-cb" id="rappr-multi-all" onchange="rapprMultiToggleAll(this.checked)" title="Cocher / décocher toutes les écritures affichées" aria-label="Tout cocher"></th><th>Date</th><th>Pièce</th><th>Libellé</th><th style="text-align:right">Montant</th></tr></thead>
+  <tbody id="rappr-multi-rows"></tbody>
+  </table></div>
+  <div id="rappr-multi-note" class="rappr-hint" style="margin-top:6px"></div>
+  <div id="rappr-multi-foot"></div>
+  </div>`;
+}
+
+function rapprMultiLoadBase(){
+  const M=RAPPR_MULTI;
+  M.base=rapprPieceCandidates({includeAllAccounts:M.allAccounts});
+  const keys=new Set(M.base.map(c=>c.piece));
+  M.sel.forEach(k=>{ if(!keys.has(k)) M.sel.delete(k); }); // pièce plus proposée (ex. retour au seul compte 512)
+}
+
+function rapprMultiRenderRows(){
+  const M=RAPPR_MULTI;
+  if(!M.open) return;
+  let list=M.base.filter(c=>rapprMatchesQuery(M.query,{text:`${c.piece} ${c.libelle} ${c.compte}`,amounts:[c.amount],dates:[c.date_op]}));
+  if(M.onlySelected) list=list.filter(c=>M.sel.has(c.piece));
+  M.visible=list.slice(0,RAPPR_MULTI_MAX_ROWS);
+  M.last=null;
+  const tbody=document.getElementById('rappr-multi-rows');
+  if(tbody){
+    tbody.innerHTML=M.visible.length?M.visible.map((c,i)=>{
+      const on=M.sel.has(c.piece);
+      return`<tr data-i="${i}" class="${on?'rappr-row-sel':''}" onclick="rapprMultiRowClick(event,${i})">
+      <td class="rappr-cbcell"><input type="checkbox" class="rappr-cb" ${on?'checked':''} tabindex="-1" aria-label="Cocher ${esc(c.piece)}"></td>
+      <td>${esc(fd(frDateToISO(c.date_op)||c.date_op)||'')}</td>
+      <td style="font-size:11px">${esc(c.piece)}</td>
+      <td>${esc(c.libelle)}</td>
+      <td style="text-align:right;white-space:nowrap" class="${c.amount>=0?'rappr-pos':'rappr-neg'}">${rapprSignedEuro(c.amount)}</td>
+      </tr>`;
+    }).join(''):`<tr><td colspan="5" class="empty">${M.base.length?'Aucune écriture ne correspond à la recherche':'Aucune écriture en attente de rapprochement'}</td></tr>`;
+  }
+  const note=document.getElementById('rappr-multi-note');
+  if(note){
+    const more=list.length-M.visible.length;
+    note.textContent=more>0?`${M.visible.length} écritures affichées sur ${list.length} — affinez la recherche pour voir les autres.`:`${list.length} écriture(s) proposée(s)${M.allAccounts?'':' (compte 512 Banque, non rapprochées)'}. Clic sur une ligne pour cocher, Maj + clic pour une plage.`;
+  }
+  rapprMultiSyncDom();
+}
+
+function rapprMultiSearch(v){ RAPPR_MULTI.query=v; rapprMultiRenderRows(); }
+function rapprMultiSetOnlySelected(on){ RAPPR_MULTI.onlySelected=!!on; rapprMultiRenderRows(); }
+function rapprMultiSetAllAccounts(on){ RAPPR_MULTI.allAccounts=!!on; rapprMultiLoadBase(); rapprMultiRenderRows(); }
+
+// Clic sur une ligne : coche/décoche ; Maj + clic : toute la plage depuis la dernière ligne cliquée.
+function rapprMultiRowClick(ev,i){
+  const M=RAPPR_MULTI;
+  const c=M.visible[i]; if(!c) return;
+  const on=!M.sel.has(c.piece);
+  if(ev&&ev.shiftKey&&M.last!==null&&M.visible[M.last]){
+    const a=Math.min(M.last,i),b=Math.max(M.last,i);
+    for(let k=a;k<=b;k++){ const p=M.visible[k].piece; if(on) M.sel.add(p); else M.sel.delete(p); }
+  }else{
+    if(on) M.sel.add(c.piece); else M.sel.delete(c.piece);
+  }
+  M.last=i;
+  rapprMultiSyncDom();
+}
+
+function rapprMultiToggleAll(checked){
+  const M=RAPPR_MULTI;
+  M.visible.forEach(c=>{ if(checked) M.sel.add(c.piece); else M.sel.delete(c.piece); });
+  rapprMultiSyncDom();
+}
+
+// Met à jour cases, surlignage, case d'en-tête et pied de fenêtre sans reconstruire la liste
+// (la position de défilement et le champ de recherche restent intacts).
+function rapprMultiSyncDom(){
+  const M=RAPPR_MULTI;
+  document.querySelectorAll('#rappr-multi-rows tr[data-i]').forEach(tr=>{
+    const c=M.visible[+tr.dataset.i];
+    const on=!!c&&M.sel.has(c.piece);
+    tr.classList.toggle('rappr-row-sel',on);
+    const cb=tr.querySelector('input'); if(cb) cb.checked=on;
+  });
+  const all=document.getElementById('rappr-multi-all');
+  if(all) all.checked=M.visible.length>0&&M.visible.every(c=>M.sel.has(c.piece));
+  rapprMultiRenderFoot();
+}
+
+function rapprMultiRenderFoot(){
+  const M=RAPPR_MULTI;
+  const foot=document.getElementById('rappr-multi-foot');
+  if(!foot) return;
+  const txs=rapprMultiTxs();
+  const pieces=M.base.filter(c=>M.sel.has(c.piece));
+  const b=rapprMultiBalance(txs,pieces);
+  const nothing=!pieces.length;
+  const diffHtml=nothing
+    ?`<span style="color:var(--txt2)">Cochez les écritures correspondantes</span>`
+    :b.balanced
+      ?`<span class="rappr-pos">✓ Équilibré</span>`
+      :`<span class="rappr-neg">⚠ Écart : ${rapprSignedEuro(b.diff)}</span>`;
+  foot.innerHTML=`<div class="rappr-multi-foot">
+  <div><div class="rappr-foot-l">Opérations bancaires (${txs.length})</div><strong>${rapprSignedEuro(b.txTotal)}</strong></div>
+  <div><div class="rappr-foot-l">Écritures cochées (${pieces.length})</div><strong>${rapprSignedEuro(b.selTotal)}</strong></div>
+  <div>${diffHtml}</div>
+  </div>
+  ${txs.length>1&&pieces.length?`<div class="rappr-hint">Chaque opération sera liée à l'ensemble des écritures cochées.</div>`:''}
+  <div class="modal-act">
+  <button class="btn" onclick="closeRapprMulti()" ${M.busy?'disabled':''}>Annuler</button>
+  <button class="btn ${nothing||b.balanced?'primary':'gold'}" onclick="rapprMultiConfirm()" ${nothing||M.busy||!txs.length?'disabled':''}>${b.balanced||nothing?`✓ Imputer ${pieces.length||''} écriture(s)`:`⚠ Imputer malgré l'écart de ${rapprSignedEuro(b.diff)}`}</button>
+  </div>`;
+}
+
+async function rapprMultiConfirm(){
+  const M=RAPPR_MULTI;
+  if(!M.open||M.busy) return;
+  const txs=rapprMultiTxs();
+  const pieces=M.base.filter(c=>M.sel.has(c.piece)).map(c=>c.piece);
+  if(!txs.length||!pieces.length){ notify('warn','Sélectionnez au moins une écriture.','Imputation multi-opérations'); return; }
+  M.busy=true;
+  rapprMultiRenderFoot();
+  const piecesJson=JSON.stringify(pieces);
+  try{
+    const {error}=await SB.from('transactions').update({rapproche:true,ecriture_piece:pieces[0],ecriture_pieces_json:piecesJson}).in('id',txs.map(t=>t.id));
+    if(error) throw error;
+  }catch(e){
+    M.busy=false;
+    rapprMultiRenderFoot();
+    notify('error','Erreur lors de l\'imputation : '+((e&&e.message)||e),'Imputation multi-opérations');
+    return;
+  }
+  txs.forEach(t=>{ t.rapproche=true; t.ecriture_piece=pieces[0]; t.ecriture_pieces_json=piecesJson; if(UI.rapprTxSel) delete UI.rapprTxSel[t.id]; });
+  closeRapprMulti();
+  notify('success',`${txs.length} opération(s) rapprochée(s) avec ${pieces.length} écriture(s).`,'Imputation multi-opérations');
+  render();
+}
+
 // ─── Rapprochement — scoring multi-critères ───────────────────────────────
 // Score max = 5 points
 //   +2  montant identique à ±0.01 €
@@ -10413,7 +10815,7 @@ async function preselectRapprochements(){
       nbAuto++;
     } else {
       // Confiance moyenne → pré-sélection manuelle uniquement
-      const select = document.getElementById(`ecr-${index}`);
+      const select = document.getElementById(`ecr-${transaction.id}`);
       if(select){ select.value = piece; nbSuggest++; }
     }
   });

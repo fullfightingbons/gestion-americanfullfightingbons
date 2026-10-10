@@ -4,6 +4,41 @@ Ajoutées sur la base du projet existant, sans rien retirer. `tsc --noEmit`,
 les 31 tests existants (`vitest run`) et `wrangler deploy --dry-run` sont
 propres après ajout.
 
+## Rapprochement bancaire : recherche et sélection multiple — 10/10/2026
+
+Dans **Banque › Rapprochement**, imputer un virement groupé HelloAsso ou une remise de chèques sur
+plusieurs écritures se faisait ligne par ligne, dans une petite liste sans recherche. Désormais :
+
+- **Recherche des opérations bancaires** (barre au-dessus du tableau) : par nom / libellé, montant, date
+  ou compte, plusieurs mots possibles (« dupont 45 »). Insensible à la casse et aux accents ; un montant
+  se cherche par son début (« 45 » trouve 45,00 et 45,50, pas 145,00 ; « 45,5 » trouve 45,50) ; une date
+  par « 05/10 », « 10/2026 » ou « 2026-10 ». Filtre Toutes / En attente / Rapprochées. Le champ garde le
+  focus pendant la frappe (seul le tableau est rafraîchi).
+- **Sélection de plusieurs opérations** : une case par opération en attente, **Maj + clic** pour cocher une
+  plage, case d'en-tête pour tout cocher ce qui est affiché. Une barre flottante indique le nombre
+  d'opérations cochées et leur total, avec « 🔗 Imputer la sélection… ».
+- **Fenêtre « Imputation multi-opérations »** : liste des écritures **du compte 512 pas encore rapprochées**
+  (option « Tous les comptes » pour élargir), avec la même recherche (nom, pièce, montant, date), **clic sur
+  une ligne pour cocher, Maj + clic pour une plage**, « Cochées seulement », et le total des opérations
+  bancaires face au total des écritures cochées. Écart nul → « ✓ Équilibré » ; sinon le bouton devient
+  « ⚠ Imputer malgré l'écart de … » (frais bancaires, écriture oubliée…). Une seule requête enregistre
+  toutes les opérations ; chacune est liée à l'ensemble des écritures cochées (comme le regroupement
+  automatique existant). Échap ou Annuler ferme sans rien enregistrer.
+- Le bouton « 🔗 Multi » de chaque ligne ouvre la même fenêtre pour cette seule opération et remplace
+  l'ancienne liste à cocher (`rapprocherMulti` / `toggleMultiSel` supprimées).
+
+**Correctifs au passage** (même écran) :
+- Les menus « Pièce unique » étaient repérés par la position de la ligne (`ecr-<index>`) : depuis le tri par
+  date, `preselectRapprochements()` visait la mauvaise ligne ; avec les filtres ce décalage aurait empiré.
+  Ils sont désormais repérés par l'id de la transaction (`ecr-<id>`).
+- Le score de suggestion était recalculé pour chaque option de chaque menu (coût en J² par ligne) : calculé
+  une fois par ligne, options construites une seule fois pour tout le tableau.
+
+Aucune migration, aucune nouvelle colonne : on réutilise `transactions.ecriture_piece` /
+`ecriture_pieces_json`. `public/index.html` : cache-busting `app.js?v=20261010a` et `styles.css?v=20261010a`.
+`app.min.js` régénéré. Nouveau fichier de tests `test/rapprochement.test.ts` (recherche, écritures
+proposées, équilibre) ; `tsc --noEmit` et les 247 tests passent.
+
 ## Renouvellement : certificat médical déjà validé réutilisé (3 ans) — 05/10/2026
 
 Au **renouvellement en ligne** (repo `inscription`), l'adhérent dont le certificat médical a déjà été
