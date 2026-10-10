@@ -4,6 +4,22 @@ Ajoutées sur la base du projet existant, sans rien retirer. `tsc --noEmit`,
 les 31 tests existants (`vitest run`) et `wrangler deploy --dry-run` sont
 propres après ajout.
 
+## Journal : boutons rapides « Compte courant → Épargne » et « Épargne → Compte courant » — 11/10/2026
+
+Deux nouveaux boutons dans les écritures types du **Journal comptable** (après « Remboursement adhérent »),
+droit d'écriture comptabilité requis comme les autres.
+- **⚡ Compte courant → Épargne** (`transfert_vers_epargne`) : **5121 - Livret d épargne** au débit /
+  **512 - Banque** au crédit. Libellé par défaut « Transfert vers épargne ».
+- **⚡ Épargne → Compte courant** (`transfert_depuis_epargne`) : **512 - Banque** au débit /
+  **5121 - Livret d épargne** au crédit. Libellé par défaut « Transfert depuis épargne ».
+- Mouvements internes de trésorerie : aucun effet sur le résultat. `5121` est ajouté au plan comptable
+  **juste après 512** ; c'est une subdivision de 512, donc le total « Banque » du bilan et du tableau de bord
+  ne bouge pas, la vue « 512 » l'inclut, et les deux lignes (pièces `-L1` et `-L2`) se rapprochent chacune de
+  leur relevé (compte courant et livret).
+- Les modèles peuvent désormais porter un champ `hint`, affiché dans la bannière de la fenêtre.
+
+Aucune migration. `app.min.js` régénéré, `app.js?v=20261011b`. 9 tests ajoutés (`test/rapprochement.test.ts`).
+
 ## Ventes « Payée » + fiabilité des suggestions de rapprochement — 10/10/2026
 
 **Ventes : impossible de passer une vente en « Payée ».** Le bouton envoyait en une seule requête le

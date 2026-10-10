@@ -109,6 +109,7 @@ const PLAN = [
 '471 - Comptes d attente',
 '4870 - Produits constatés d avance',
 '512 - Banque',
+'5121 - Livret d épargne',
 '518 - Intérêts courus à payer et à recevoir',
 '5300 - Caisse',
 '6051 - Achats de matériels et équipements sportifs',
@@ -5189,6 +5190,8 @@ function vJournal(){
   ${canWrite?`<button class="btn" onclick="openEcritureType('vente_equipement')" title="Écriture type vente de vêtements / équipements (707)">⚡ Vente équipement</button>`:''}
   ${canWrite?`<button class="btn" onclick="openEcritureType('don')" title="Écriture type don reçu, distinct des subventions (754)">⚡ Don</button>`:''}
   ${canWrite?`<button class="btn" onclick="openEcritureType('remboursement_adherent')" title="Écriture type remboursement à un adhérent — pré-rempli pour le trop-perçu kit/tenue (707), à ajuster selon ce qui est remboursé">⚡ Remboursement adhérent</button>`:''}
+  ${canWrite?`<button class="btn" onclick="openEcritureType('transfert_vers_epargne')" title="Écriture type virement du compte courant vers le livret d'épargne (5121 débit / 512 crédit) — sans effet sur le résultat">⚡ Compte courant → Épargne</button>`:''}
+  ${canWrite?`<button class="btn" onclick="openEcritureType('transfert_depuis_epargne')" title="Écriture type virement du livret d'épargne vers le compte courant (512 débit / 5121 crédit) — sans effet sur le résultat">⚡ Épargne → Compte courant</button>`:''}
   <button class="btn" onclick="openEquilibreAssistant()">Assistant déséquilibres${issues.length?` (${issues.length})`:''}</button>
   ${canWrite&&issues.length?`<button class="btn gold" onclick="regulariserEquilibreExo()">Équilibrer l'exercice</button>`:''}
   </div>
@@ -8368,7 +8371,7 @@ function renderModal(){
     const sens0=e._lignesType?.[0]?.sens||'debit';
     const sens1=e._lignesType?.[1]?.sens||'credit';
     const sensTag=s=>s==='debit'?`<span style="color:var(--red);font-weight:600;font-size:11px">→ débit</span>`:`<span style="color:#1e7e34;font-weight:600;font-size:11px">→ crédit</span>`;
-    const typeBanner=isType?`<div id="ecr-type-hint" style="margin-bottom:14px;padding:10px 14px;background:#e8f4ea;border-radius:10px;border:1px solid #b2d8b5;font-size:12px;color:#1e7e34;display:flex;gap:8px;align-items:center"><span>⚡</span><span><strong>${esc(e._typeLabel||'Écriture type')}</strong> — le sens (débit/crédit) est fixé par ce modèle, seul le montant est à saisir.</span></div>`:'';
+    const typeBanner=isType?`<div id="ecr-type-hint" style="margin-bottom:14px;padding:10px 14px;background:#e8f4ea;border-radius:10px;border:1px solid #b2d8b5;font-size:12px;color:#1e7e34;display:flex;gap:8px;align-items:center"><span>⚡</span><span><strong>${esc(e._typeLabel||'Écriture type')}</strong> — le sens (débit/crédit) est fixé par ce modèle, seul le montant est à saisir.${e._typeHint?`<br>${esc(e._typeHint)}`:''}</span></div>`:'';
     const montantField=isType
       ?`<div class="fg"><label>Montant (€)</label><input id="e-mnt" type="number" value="${e.montant||0}" min="0" step="0.01"></div>`
       :`<div class="fg"><label>Débit (€)</label><input id="e-deb" type="number" value="${e.debit||0}" min="0" step="0.01"></div>
@@ -8806,6 +8809,28 @@ const ECRITURE_TYPES={
       {compte:'754 - Dons manuels',libelle:'Don reçu',sens:'credit'},
     ]
   },
+  // Transferts d'épargne : mouvements internes de trésorerie, sans effet sur le résultat.
+  // 5121 est une subdivision de 512 : le total « Banque » du bilan et du tableau de bord
+  // ne bouge pas, la vue « 512 » l'inclut, et les deux lignes (pièces -L1 et -L2,
+  // distinctes) se rapprochent chacune de leur relevé (compte courant et livret).
+  transfert_vers_epargne:{
+    label:'Transfert vers épargne',
+    montant:0,
+    hint:'Virement du compte courant vers le livret : 5121 débité, 512 crédité.',
+    lignes:[
+      {compte:'5121 - Livret d épargne',libelle:'Transfert vers épargne',sens:'debit'},
+      {compte:'512 - Banque',libelle:'Transfert vers épargne',sens:'credit'},
+    ]
+  },
+  transfert_depuis_epargne:{
+    label:'Transfert depuis épargne',
+    montant:0,
+    hint:'Virement du livret vers le compte courant : 512 débité, 5121 crédité.',
+    lignes:[
+      {compte:'512 - Banque',libelle:'Transfert depuis épargne',sens:'debit'},
+      {compte:'5121 - Livret d épargne',libelle:'Transfert depuis épargne',sens:'credit'},
+    ]
+  },
   remboursement_adherent:{
     label:'Remboursement adhérent',
     montant:0,
@@ -8837,6 +8862,7 @@ function openEcritureType(type){
   UI.editObj={
     _isType:type,
     _typeLabel:tpl.label,
+    _typeHint:tpl.hint||'',
     _lignesType:tpl.lignes,
     date_op:td(),
     exercice_id:D.currentExo?.id||null,

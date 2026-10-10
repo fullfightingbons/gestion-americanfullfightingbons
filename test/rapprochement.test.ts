@@ -513,3 +513,109 @@ describe("une écriture rapprochée disparaît des écritures en attente (anti-d
     expect(out.rapproche).toBe(false);
   });
 });
+
+describe("écritures types « Transfert d'épargne » (deux sens)", () => {
+  it("le plan comptable contient 5121 après 512 (findPlanCompte('512') retrouve toujours « 512 - Banque »)", () => {
+    const out = JSON.parse(
+      loadAppAndRun(`capture(JSON.stringify({
+        i512: PLAN.indexOf('512 - Banque'),
+        i5121: PLAN.indexOf('5121 - Livret d épargne'),
+        found: findPlanCompte('512'),
+      }));`)
+    );
+    expect(out.i5121).toBe(out.i512 + 1);
+    expect(out.found).toBe("512 - Banque");
+  });
+
+  it("compte courant → épargne : 5121 au débit, 512 au crédit ; épargne → compte courant : l'inverse", () => {
+    const t = JSON.parse(
+      loadAppAndRun(`capture(JSON.stringify({vers: ECRITURE_TYPES.transfert_vers_epargne, depuis: ECRITURE_TYPES.transfert_depuis_epargne}));`)
+    );
+    expect(t.vers.lignes).toEqual([
+      expect.objectContaining({ compte: "5121 - Livret d épargne", sens: "debit" }),
+      expect.objectContaining({ compte: "512 - Banque", sens: "credit" }),
+    ]);
+    expect(t.depuis.lignes).toEqual([
+      expect.objectContaining({ compte: "512 - Banque", sens: "debit" }),
+      expect.objectContaining({ compte: "5121 - Livret d épargne", sens: "credit" }),
+    ]);
+  });
+
+  it("l'ancien modèle unique n'existe plus", () => {
+    expect(loadAppAndRun(`capture(String('transfert_epargne' in ECRITURE_TYPES));`)).toBe("false");
+  });
+
+  it("openEcritureType() préremplit la modale dans chaque sens", () => {
+    const open = (type: string) =>
+      JSON.parse(
+        loadAppAndRun(`
+          requireWritePerm = () => true; renderModal = () => {}; setTimeout = () => 0;
+          openEcritureType(${JSON.stringify(type)});
+          capture(JSON.stringify(UI.editObj));`)
+      );
+    const vers = open("transfert_vers_epargne");
+    expect([vers.compte, vers.contrepartie, vers.libelle]).toEqual(["5121 - Livret d épargne", "512 - Banque", "Transfert vers épargne"]);
+    expect(vers._typeHint).toContain("compte courant vers le livret");
+    const depuis = open("transfert_depuis_epargne");
+    expect([depuis.compte, depuis.contrepartie, depuis.libelle]).toEqual(["512 - Banque", "5121 - Livret d épargne", "Transfert depuis épargne"]);
+    expect(depuis._typeHint).toContain("livret vers le compte courant");
+  });
+
+  it("le journal affiche les deux boutons rapides pour qui a le droit d'écriture, et aucun sinon", () => {
+    const html = loadAppAndRun(`hasPerm = () => true; D.journal = []; capture(vJournal());`);
+    expect(html).toContain("openEcritureType('transfert_vers_epargne')");
+    expect(html).toContain("⚡ Compte courant → Épargne");
+    expect(html).toContain("openEcritureType('transfert_depuis_epargne')");
+    expect(html).toContain("⚡ Épargne → Compte courant");
+    const sans = loadAppAndRun(`hasPerm = () => false; D.journal = []; capture(vJournal());`);
+    expect(sans).not.toContain("epargne')");
+  });
+
+  it("rapprochement : les deux lignes du transfert se rapprochent chacune de leur relevé (compte courant −, livret +)", () => {
+    const out = JSON.parse(
+      loadAppAndRun(`
+        D.journal = [
+          {id:'e1', piece:'MAN-1-L1', compte:'5121 - Livret d épargne', debit:500, credit:0, date_op:'2026-10-08', libelle:'Transfert vers épargne'},
+          {id:'e2', piece:'MAN-1-L2', compte:'512 - Banque', debit:0, credit:500, date_op:'2026-10-08', libelle:'Contrepartie - Transfert vers épargne'},
+        ];
+        D.comptes = [];
+        const best = (tx) => { const r = bestRapprochementEntry(tx); return r ? r.entry.piece : null; };
+        capture(JSON.stringify({
+          cc:     best({id:'t1', date_op:'2026-10-08', libelle:'VIR EPARGNE', debit:500, credit:0}),
+          livret: best({id:'t2', date_op:'2026-10-08', libelle:'VIR COMPTE COURANT', debit:0, credit:500}),
+        }));`)
+    );
+    expect(out).toEqual({ cc: "MAN-1-L2", livret: "MAN-1-L1" });
+  });
+});
+
+describe("écritures types « Transfert d'épargne » — enregistrement", () => {
+  const save = (type: string) =>
+    loadAppAndRunAsync(`
+      requireWritePerm = () => true; requireExerciceActif = () => true; renderModal = () => {}; setTimeout = () => 0;
+      closeModal = () => {}; render = () => {};
+      D.journal = []; D.currentExo = { id: 'exo1' };
+      let rows = null;
+      insertJournalRows = async (r) => { rows = r; };
+      openEcritureType(${JSON.stringify(type)});
+      // Comptes tels que préremplis par la modale (aucune modification de l'utilisateur).
+      const vals = { 'e-lib': UI.editObj.libelle, 'e-dat': '2026-10-08', 'e-pie': 'EPA-1', 'e-cpt': UI.editObj.compte, 'e-cpt-ctr': UI.editObj.contrepartie, 'e-mnt': '500' };
+      document.getElementById = (id) => (id in vals ? { value: vals[id] } : null);
+      await saveEcr();
+      capture(JSON.stringify(rows.map(r => [r.piece, r.compte, r.debit, r.credit])));
+    `).then((v) => JSON.parse(v));
+
+  it("compte courant → épargne : 5121 débité, 512 crédité, deux pièces distinctes, équilibré", async () => {
+    expect(await save("transfert_vers_epargne")).toEqual([
+      ["EPA-1-L1", "5121 - Livret d épargne", 500, 0],
+      ["EPA-1-L2", "512 - Banque", 0, 500],
+    ]);
+  });
+
+  it("épargne → compte courant : 512 débité, 5121 crédité, deux pièces distinctes, équilibré", async () => {
+    expect(await save("transfert_depuis_epargne")).toEqual([
+      ["EPA-1-L1", "512 - Banque", 500, 0],
+      ["EPA-1-L2", "5121 - Livret d épargne", 0, 500],
+    ]);
+  });
+});
