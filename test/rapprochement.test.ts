@@ -202,3 +202,262 @@ describe("rapprMultiBalance() — total des opérations bancaires vs écritures 
     expect(r.balanced).toBe(true);
   });
 });
+
+// ─── Suggestions de rapprochement : sens « vu de la banque », compte 512 uniquement ───
+
+// Variante asynchrone du bac à sable (pour les fonctions `async` comme setFactureStatus) :
+// `capture` résout la promesse renvoyée.
+function loadAppAndRunAsync(driverCode: string): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const noop = () => {};
+    const sandbox: Record<string, unknown> = {
+      console,
+      crypto: globalThis.crypto,
+      capture: (v: unknown) => resolve(v),
+    };
+    sandbox.document = {
+      addEventListener: noop,
+      removeEventListener: noop,
+      getElementById: () => null,
+      createElement: () => ({ style: {}, classList: { add: noop, remove: noop }, click: noop }),
+      body: { innerHTML: "" },
+    };
+    sandbox.window = sandbox;
+    sandbox.addEventListener = noop;
+    sandbox.removeEventListener = noop;
+    sandbox.navigator = {};
+    sandbox.location = { href: "" };
+    sandbox.localStorage = { getItem: () => null, setItem: noop, removeItem: noop };
+    sandbox.fetch = () => Promise.reject(new Error("fetch indisponible en test"));
+    vm.createContext(sandbox);
+    try {
+      vm.runInContext(
+        appJsSource + "\n;(async function(){\n" + driverCode + "\n})().catch(e => { throw e; });",
+        sandbox,
+        { filename: "app.js (sandbox test async)" }
+      );
+    } catch (e) {
+      reject(e);
+    }
+    setTimeout(() => reject(new Error("timeout du test asynchrone")), 4000);
+  });
+}
+
+describe("bestRapprochementEntry() — l'écriture proposée est la ligne 512, dans le bon sens", () => {
+  // Vente de 45 € encaissée par virement : 4 lignes de journal de même montant et même date.
+  const journal = `
+    D.journal = [
+      {id:'a1', piece:'VTE-1', compte:'411 - Adhérents et clients', debit:45, credit:0, date_op:'2026-10-05', libelle:'Vente Dupont maillot'},
+      {id:'a2', piece:'VTE-1-VTE', compte:'707 - Ventes vêtements et équipements', debit:0, credit:45, date_op:'2026-10-05', libelle:'Vente Dupont maillot'},
+      {id:'a3', piece:'PAY-1-BNQ', compte:'512 - Banque', debit:45, credit:0, date_op:'2026-10-05', libelle:'Encaissement Dupont maillot'},
+      {id:'a4', piece:'PAY-1-CLI', compte:'411 - Adhérents et clients', debit:0, credit:45, date_op:'2026-10-05', libelle:'Encaissement Dupont maillot'},
+    ];
+    D.comptes = [{nom:'CM', transactions:[]}];
+  `;
+  const best = (tx: unknown) =>
+    JSON.parse(
+      loadAppAndRun(`
+        ${journal}
+        const r = bestRapprochementEntry(${JSON.stringify(tx)});
+        capture(JSON.stringify(r ? {piece: r.entry.piece, auto: r.auto, score: r.score} : null));
+      `)
+    );
+
+  it("un encaissement (crédit bancaire) est rapproché de la ligne 512, pas des lignes 411/707 de la vente", () => {
+    const r = best({ id: 't1', date_op: '2026-10-05', libelle: 'VIR Dupont maillot', debit: 0, credit: 45 });
+    expect(r.piece).toBe("PAY-1-BNQ");
+    expect(r.auto).toBe(true);
+  });
+
+  it("un paiement (débit bancaire) de 45 € ne se rapproche pas d'un encaissement de 45 €", () => {
+    const r = best({ id: 't2', date_op: '2026-10-05', libelle: 'VIR Dupont maillot', debit: 45, credit: 0 });
+    expect(r).toBeNull();
+  });
+
+  it("deux écritures 512 aussi plausibles → suggestion non automatique (ambiguë)", () => {
+    const r = JSON.parse(
+      loadAppAndRun(`
+        D.journal = [
+          {id:'b1', piece:'COT-A', compte:'512 - Banque', debit:45, credit:0, date_op:'2026-10-05', libelle:'Cotisation'},
+          {id:'b2', piece:'COT-B', compte:'512 - Banque', debit:45, credit:0, date_op:'2026-10-05', libelle:'Cotisation'},
+        ];
+        D.comptes = [{nom:'CM', transactions:[]}];
+        const r = bestRapprochementEntry({id:'t3', date_op:'2026-10-05', libelle:'VIR divers', debit:0, credit:45});
+        capture(JSON.stringify({auto: r.auto, ambiguous: r.ambiguous}));
+      `)
+    );
+    expect(r).toEqual({ auto: false, ambiguous: true });
+  });
+
+  it("ne propose pas une pièce déjà rapprochée", () => {
+    const r = JSON.parse(
+      loadAppAndRun(`
+        ${journal}
+        D.comptes = [{nom:'CM', transactions:[{id:'t0', rapproche:true, ecriture_piece:'PAY-1-BNQ'}]}];
+        capture(JSON.stringify(bestRapprochementEntry({id:'t1', date_op:'2026-10-05', libelle:'VIR Dupont', debit:0, credit:45})));
+      `)
+    );
+    expect(r).toBeNull();
+  });
+});
+
+describe("findGroupedRapprochement() — regroupements bancaires", () => {
+  const group = (txs: unknown) =>
+    JSON.parse(
+      loadAppAndRun(`
+        D.journal = [
+          {id:'g1', piece:'HA-GRP', compte:'512 - Banque', debit:45, credit:0, date_op:'2026-10-05', libelle:'Virement HelloAsso'},
+          {id:'g2', piece:'HA-GRP-COT', compte:'7561 - Cotisations', debit:0, credit:45, date_op:'2026-10-05', libelle:'Cotisation'},
+        ];
+        D.comptes = [{nom:'CM', transactions:${JSON.stringify(txs)}}];
+        capture(JSON.stringify(findGroupedRapprochement(D.comptes[0].transactions).map(g => [g.piece, g.transactionIds.sort()])));
+      `)
+    );
+
+  it("regroupe des encaissements dont la somme correspond à la pièce 512", () => {
+    const out = group([
+      { id: 't1', credit: 30, debit: 0 },
+      { id: 't2', credit: 15, debit: 0 },
+    ]);
+    expect(out).toEqual([["HA-GRP", ["t1", "t2"]]]);
+  });
+
+  it("ne mélange pas un encaissement et un paiement (30 € reçus + 15 € payés ≠ 45 €)", () => {
+    const out = group([
+      { id: 't1', credit: 30, debit: 0 },
+      { id: 't2', credit: 0, debit: 15 },
+    ]);
+    expect(out).toEqual([]);
+  });
+
+  it("ne propose pas de regroupement vers une ligne qui n'est pas du compte 512", () => {
+    const out = JSON.parse(
+      loadAppAndRun(`
+        D.journal = [{id:'g9', piece:'VTE-9-VTE', compte:'707 - Ventes', debit:0, credit:45, date_op:'2026-10-05', libelle:'Vente'}];
+        D.comptes = [{nom:'CM', transactions:[{id:'t1', credit:30, debit:0},{id:'t2', credit:15, debit:0}]}];
+        capture(JSON.stringify(findGroupedRapprochement(D.comptes[0].transactions)));
+      `)
+    );
+    expect(out).toEqual([]);
+  });
+});
+
+describe("rapprPieceCandidates() — pièce équilibrée sur plusieurs comptes", () => {
+  it("« tous les comptes » ne compte plus 45 € deux fois (512 débit 45 + 7561 crédit 45 = 45, pas 90)", () => {
+    const out = JSON.parse(
+      loadAppAndRun(`
+        D.journal = [
+          {id:'x1', piece:'ENC-X', compte:'512 - Banque', debit:45, credit:0, date_op:'2026-10-05', libelle:'Encaissement'},
+          {id:'x2', piece:'ENC-X', compte:'7561 - Cotisations', debit:0, credit:45, date_op:'2026-10-05', libelle:'Cotisation'},
+        ];
+        D.comptes = [];
+        capture(JSON.stringify(rapprPieceCandidates({includeAllAccounts:true}).map(c => [c.piece, c.amount, c.compte])));
+      `)
+    );
+    expect(out).toEqual([["ENC-X", 45, "512 - Banque"]]);
+  });
+});
+
+// ─── Ventes : passage en « Payée » ───
+
+describe("setFactureStatus() — une vente doit pouvoir passer en « Payée » même si la base a dérivé", () => {
+  // `missing` = colonnes que la base « n'a pas » (l'UPDATE qui les contient échoue).
+  const run = (missing: string[], prompts: string[], facture = "{id:'f1', statut:'Émise', date_op:'2026-10-01', notes_paiement:''}") =>
+    loadAppAndRunAsync(`
+      hasPerm = () => true;
+      render = () => {};
+      notify = () => {};
+      alert = (m) => { alertMsg = m; };
+      var alertMsg = '';
+      const answers = ${JSON.stringify(prompts)};
+      window.prompt = () => answers.shift();
+      const calls = [];
+      D.factures = [${facture}];
+      SB = { from: () => ({ update: (patch) => ({ eq: async () => {
+        calls.push(Object.keys(patch));
+        const bad = ${JSON.stringify(missing)}.find(c => c in patch);
+        return bad ? { data: null, error: { message: 'Colonne absente : ' + bad } } : { data: [patch], error: null };
+      } }) }) };
+      await setFactureStatus('f1', 'Payée');
+      capture(JSON.stringify({ calls, statut: D.factures[0].statut, notes: D.factures[0].notes_paiement, date: D.factures[0].date_paiement || null, alertMsg }));
+    `).then((v) => JSON.parse(v));
+
+  it("cas nominal : statut, date et mode enregistrés en une seule requête", async () => {
+    const r = await run([], ["2026-10-09", "1"]);
+    expect(r.calls).toHaveLength(1);
+    expect(r.statut).toBe("Payée");
+    expect(r.date).toBe("2026-10-09");
+    expect(r.notes).toBe("Payée le 2026-10-09 — Virement");
+  });
+
+  it("colonne date_paiement absente en base : la vente passe quand même en Payée (date conservée dans notes_paiement)", async () => {
+    const r = await run(["date_paiement"], ["2026-10-09", "2"]);
+    expect(r.statut).toBe("Payée");
+    expect(r.alertMsg).toBe("");
+    expect(r.notes).toBe("Payée le 2026-10-09 — Chèque");
+    expect(r.calls).toHaveLength(2);
+  });
+
+  it("colonnes date_paiement ET notes_paiement absentes : le statut seul est enregistré", async () => {
+    const r = await run(["date_paiement", "notes_paiement"], ["2026-10-09", ""]);
+    expect(r.statut).toBe("Payée");
+    expect(r.alertMsg).toBe("");
+    expect(r.calls).toHaveLength(3);
+  });
+
+  it("accepte une date saisie en JJ/MM/AAAA", async () => {
+    const r = await run([], ["09/10/2026", "3"]);
+    expect(r.date).toBe("2026-10-09");
+  });
+
+  it("refuse une date illisible sans rien enregistrer", async () => {
+    const r = await run([], ["demain", "3"]);
+    expect(r.calls).toHaveLength(0);
+    expect(r.statut).toBe("Émise");
+    expect(r.alertMsg).toContain("Date de paiement non reconnue");
+  });
+
+  it("conserve l'historique des relances au lieu de l'écraser", async () => {
+    const r = await run([], ["2026-10-09", "1"], "{id:'f1', statut:'En retard', date_op:'2026-09-01', notes_paiement:'[Relance envoyée le 2026-09-20 à a@b.fr]'}");
+    expect(r.notes).toBe("[Relance envoyée le 2026-09-20 à a@b.fr]\nPayée le 2026-10-09 — Virement");
+  });
+
+  it("si même le statut ne peut pas être enregistré, l'erreur est affichée (et l'écran n'est pas modifié)", async () => {
+    const r = await run(["statut"], ["2026-10-09", "1"]);
+    expect(r.alertMsg).toContain("Erreur");
+    expect(r.statut).toBe("Émise");
+  });
+});
+
+describe("facturePaidDate()", () => {
+  const paid = (f: unknown) => loadAppAndRun(`capture(facturePaidDate(${JSON.stringify(f)}));`);
+  it("préfère la colonne date_paiement, sinon relit notes_paiement (dernière occurrence)", () => {
+    expect(paid({ date_paiement: "2026-10-09" })).toBe("2026-10-09");
+    expect(paid({ notes_paiement: "Payée le 2026-09-01 — CB\nPayée le 2026-10-09 — Virement" })).toBe("2026-10-09");
+    expect(paid({ notes_paiement: "[Relance envoyée]" })).toBe("");
+    expect(paid({})).toBe("");
+  });
+});
+
+describe("parseBankCsvAmount() — montants du CSV bancaire", () => {
+  const parse = (vals: string[]) =>
+    JSON.parse(loadAppAndRun(`capture(JSON.stringify(${JSON.stringify(vals)}.map(parseBankCsvAmount)));`));
+
+  it("lit les formats courants : 45,00 / -45,00 / vide", () => {
+    expect(parse(["45,00", "-45,00", "", "0,50", "-0,50"])).toEqual([45, 45, 0, 0.5, 0.5]);
+  });
+
+  it("ne tronque plus les montants ≥ 1 000 € (espace, espace insécable ou point de milliers)", () => {
+    expect(parse(["1 234,56", "1\u00a0234,56", "1\u202f234,56", "1.234,56", "-1 234,56", "1234,56"])).toEqual([
+      1234.56, 1234.56, 1234.56, 1234.56, 1234.56, 1234.56,
+    ]);
+  });
+
+  it("garde un point décimal quand il n'y a pas de virgule (1234.56)", () => {
+    expect(parse(["1234.56", "45.5"])).toEqual([1234.56, 45.5]);
+  });
+
+  it("ignore les valeurs illisibles au lieu de produire NaN", () => {
+    expect(parse(["abc", "—"])).toEqual([0, 0]);
+  });
+});

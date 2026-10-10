@@ -914,7 +914,15 @@ async function handleDbApi(request: Request, env: Env, table: string, ctx: Execu
 
     return err(`Opération inconnue: ${op}`, 400);
   } catch (e) {
-    console.error('[db:' + table + ']', e instanceof Error ? e.message : String(e));
+    const dbMessage = e instanceof Error ? e.message : String(e);
+    console.error('[db:' + table + ']', dbMessage);
+    // Dérive de schéma (colonne utilisée par le front mais absente de la base) :
+    // on nomme la colonne pour que l'erreur affichée à l'écran suffise à
+    // diagnostiquer, sans exposer le reste du message SQL.
+    const missingColumn = /no such column: ([\w.]+)/i.exec(dbMessage)?.[1] ?? /has no column named (\w+)/i.exec(dbMessage)?.[1];
+    if (missingColumn) {
+      return err(`Colonne absente de la base : ${table}.${missingColumn.replace(/^.*\./, '')} (migration manquante ?)`, 500);
+    }
     return err('Erreur base de données', 500);
   }
 }

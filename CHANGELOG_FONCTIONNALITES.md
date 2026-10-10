@@ -4,6 +4,49 @@ Ajoutées sur la base du projet existant, sans rien retirer. `tsc --noEmit`,
 les 31 tests existants (`vitest run`) et `wrangler deploy --dry-run` sont
 propres après ajout.
 
+## Ventes « Payée » + fiabilité des suggestions de rapprochement — 10/10/2026
+
+**Ventes : impossible de passer une vente en « Payée ».** Le bouton envoyait en une seule requête le
+statut **et** `date_paiement` (+ `notes_paiement`). `date_paiement` n'existe dans aucune migration (comme
+`notes_paiement`, `client_email`… cf. note de la migration `0024`) : si la colonne manque en production,
+tout l'UPDATE échouait (« Erreur base de données ») et le statut n'était jamais enregistré.
+- `setFactureStatus()` essaie désormais : statut + date + notes → statut + notes → statut seul. Le statut
+  passe donc toujours ; la date de paiement est conservée dans `notes_paiement` (« Payée le AAAA-MM-JJ — mode »)
+  et relue par `facturePaidDate()` pour l'affichage. Un avertissement le signale si tout n'a pas pu être enregistré.
+- La date acceptait n'importe quel texte : « 09/10/2026 » est maintenant converti, une date illisible est refusée.
+- `notes_paiement` n'écrase plus l'historique des relances (la ligne « Payée le… » est ajoutée) et est
+  renseigné même sans mode de règlement.
+- `src/index.ts` : une colonne manquante est nommée dans l'erreur renvoyée (« Colonne absente de la base :
+  factures.xxx (migration manquante ?) ») au lieu du message générique.
+
+**Rapprochement : écritures proposées erronées.**
+- Les suggestions parcouraient **toutes** les lignes du journal : un encaissement de 45 € pouvait être lié
+  à la ligne 411 ou 707 de la vente (même montant, même date) et la vraie ligne 512 restait « en attente
+  de relevé ». Seules les pièces du compte 512 sont maintenant proposées (comme dans « Imputation multi »).
+- Le test de sens était inversé pour le 512 (crédit bancaire ↔ crédit du journal). Tout est comparé « vu de la
+  banque » (+ entrée / − sortie) ; un sens opposé élimine le candidat.
+- Deux écritures aussi plausibles (cotisations au même tarif, même jour) : la suggestion n'est plus
+  rapprochée automatiquement, elle est marquée « Ambiguë » et laissée à la validation manuelle.
+- Regroupements : un encaissement et un paiement ne s'additionnent plus (30 € reçus + 15 € payés ≠ 45 €) ;
+  seules les pièces 512 sont candidates ; la recherche de combinaisons est bornée (pas de gel sur un gros relevé).
+- Menu « Pièce unique » : pièces 512 en attente d'abord, avec date, libellé et montant signé ; avant, toutes
+  les lignes du journal étaient mélangées avec un libellé tronqué à 20 caractères et sans montant.
+- « Valider » demande confirmation si le montant ou le sens de l'écriture choisie ne colle pas à l'opération.
+- Les mises à jour de `transactions` (valider, corriger, annuler, pré-sélection auto, groupé) vérifient
+  maintenant le retour de la base : avant, une erreur était ignorée et l'écran affichait « rapprochée »
+  alors que rien n'était enregistré.
+- « Tous les comptes » (imputation multi) ne compte plus deux fois une pièce équilibrée (512 débit 45 +
+  7561 crédit 45 = 45 €, pas 90 €).
+
+**Import CSV bancaire.** Les montants étaient lus par un simple `parseFloat` : « 1 234,56 » devenait 1 € et
+« 1.234,56 » 1,234 €, sans écran de vérification (l'import PDF en a un, pas le CSV). Nouveau
+`parseBankCsvAmount()` : espaces (y compris insécables) et points de milliers ignorés, signe retiré
+(le sens vient de la colonne), valeur illisible = 0. Les formats qui fonctionnaient (`45,00`, `-45,00`,
+`1234.56`) donnent le même résultat qu'avant.
+
+Aucune migration. `app.min.js` régénéré, `app.js?v=20261010c`. 20 tests ajoutés (`test/rapprochement.test.ts`) ;
+`tsc --noEmit`, les tests et `wrangler deploy --dry-run` passent.
+
 ## Rapprochement bancaire : recherche et sélection multiple — 10/10/2026
 
 Dans **Banque › Rapprochement**, imputer un virement groupé HelloAsso ou une remise de chèques sur

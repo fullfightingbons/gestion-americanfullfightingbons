@@ -4525,6 +4525,7 @@ function vBankImport(){
 // scoring sur toutes les lignes à chaque frappe, et pour ne pas perdre le
 // focus du champ de recherche (render() remplace tout le contenu de l'onglet).
 let RAPPR_CONSUMED=null;
+let RAPPR_POOL=null; // pièces 512 candidates (calculées une fois par rendu)
 let RAPPR_SUGG=new Map();
 let RAPPR_VISIBLE_IDS=[];
 let RAPPR_LAST_TX=null;
@@ -4536,7 +4537,8 @@ function rapprAllTransactions(){
 // Meilleure écriture suggérée pour une transaction, calculée une seule fois par rendu.
 function rapprSugg(t){
   if(!RAPPR_CONSUMED) RAPPR_CONSUMED=consumedPieces();
-  if(!RAPPR_SUGG.has(t.id)) RAPPR_SUGG.set(t.id,bestRapprochementEntry(t,RAPPR_CONSUMED));
+  if(!RAPPR_POOL) RAPPR_POOL=rapprPieceCandidates({consumed:RAPPR_CONSUMED});
+  if(!RAPPR_SUGG.has(t.id)) RAPPR_SUGG.set(t.id,bestRapprochementEntry(t,RAPPR_CONSUMED,RAPPR_POOL));
   return RAPPR_SUGG.get(t.id);
 }
 
@@ -4558,7 +4560,7 @@ function rapprRowHtml(t,optionsHtml){
   const selMap=UI.rapprTxSel||{};
   const result=!t.rapproche?rapprSugg(t):null;
   const confidence=result?Math.round((result.score/5)*100):0;
-  const confBadge=result?(result.auto?`<span class="badge bok">Haute ${confidence}%</span>`:`<span class="badge bwarn">Moyenne ${confidence}%</span>`):`<span class="badge bgray">—</span>`;
+  const confBadge=result?(result.auto?`<span class="badge bok">Haute ${confidence}%</span>`:`<span class="badge bwarn" ${result.ambiguous?'title="Plusieurs écritures aussi plausibles : à choisir manuellement"':''}>${result.ambiguous?'Ambiguë':'Moyenne'} ${confidence}%</span>`):`<span class="badge bgray">—</span>`;
   let piecesLiees=[];
   if(t.rapproche){
     if(t.ecriture_pieces_json){try{piecesLiees=JSON.parse(t.ecriture_pieces_json);}catch(e){}}
@@ -4608,7 +4610,16 @@ function rapprBodyHtml(all){
   const allChecked=RAPPR_VISIBLE_IDS.length>0&&RAPPR_VISIBLE_IDS.every(id=>selMap[id]);
   const filtered=!!((UI.rapprSearch||'').trim()||UI.rapprStatus);
   // Options du menu « Pièce unique » construites une seule fois pour toutes les lignes.
-  const optionsHtml=D.journal.map(j=>{const pk=j.piece||j.id.slice(0,8);return`<option value="${esc(pk)}">${esc(j.piece||'')} ${esc((j.libelle||'').slice(0,20))}</option>`;}).join('');
+  // Menu « Pièce unique » : d'abord les pièces du compte 512 encore en attente (date,
+  // pièce, libellé, montant vu de la banque), puis les autres écritures. Avant, toutes
+  // les lignes du journal étaient mélangées avec un libellé tronqué à 20 caractères et
+  // sans montant : impossible de distinguer la ligne 411, 707 ou 512 d'une même vente.
+  const pendingPieces=rapprPieceCandidates({consumed:RAPPR_CONSUMED||consumedPieces()});
+  const pendingKeys=new Set(pendingPieces.map(c=>c.piece));
+  const otherPieces=rapprPieceCandidates({includeAllAccounts:true,consumed:new Set()}).filter(c=>!pendingKeys.has(c.piece));
+  const optLabel=c=>`${fd(c.date_op)||''} · ${c.piece} · ${(c.libelle||'').slice(0,30)} · ${rapprSignedEuro(c.amount)}${c.compte&&!String(c.compte).startsWith('512')?' ['+String(c.compte).split(' ')[0]+']':''}`;
+  const optionsHtml=`<optgroup label="512 Banque — en attente de relevé">${pendingPieces.map(c=>`<option value="${esc(c.piece)}">${esc(optLabel(c))}</option>`).join('')}</optgroup>`
+    +(otherPieces.length?`<optgroup label="Autres écritures (autres comptes / déjà rapprochées)">${otherPieces.map(c=>`<option value="${esc(c.piece)}">${esc(optLabel(c))}</option>`).join('')}</optgroup>`:'');
   const rows=rowsData.map(t=>rapprRowHtml(t,optionsHtml)).join('');
   return`${filtered?`<div style="font-size:12px;color:var(--txt2);margin-bottom:6px">${rowsData.length}/${all.length} opération(s) affichée(s)</div>`:''}
   <div class="wrap"><table>
@@ -4704,6 +4715,7 @@ function rapprReset(){
 
 function vRappr(){
   RAPPR_CONSUMED=consumedPieces();
+  RAPPR_POOL=null;
   RAPPR_SUGG=new Map();
   const all=rapprAllTransactions();
   const nonR=all.filter(t=>!t.rapproche);
@@ -6284,7 +6296,7 @@ function vFacListe(){
     <td><strong style="font-weight:500">${f.numero}</strong></td>
     <td>${fd(f.date_op)}</td><td>${esc(f.destinataire||'')}</td><td>${esc(f.objet||'')}${renderFactureLineSummary(f)}</td>
     <td><strong>${tot.toFixed(2)} €</strong></td>
-    <td><span class="badge ${factureStatusBadge(f.statut)}">${f.statut}</span>${f.statut==='Payée'&&f.date_paiement?`<br><span style="font-size:10px;color:var(--txt2)">le ${fd(f.date_paiement)}</span>`:''}</td>
+    <td><span class="badge ${factureStatusBadge(f.statut)}">${f.statut}</span>${f.statut==='Payée'&&facturePaidDate(f)?`<br><span style="font-size:10px;color:var(--txt2)">le ${fd(facturePaidDate(f))}</span>`:''}</td>
     <td style="white-space:nowrap">
     <button class="btn sm" onclick="printFac('${f.id}')">🖨 Imprimer</button>
     ${f.client_email?`<button class="btn sm" style="margin-left:4px" onclick="sendFactureEmail('${f.id}')" title="Envoyer le document par email à ${esc(f.client_email)}">📧 Envoyer</button>`:''}
@@ -6551,21 +6563,50 @@ async function setFactureStatus(id,status){
   if(!requireWritePerm('perm_facturation')) return;
   const next=normalizeFactureStatus(status,td());
   const patch={statut:next,updated_at:new Date().toISOString()};
+  const current=D.factures.find(f=>f.id===id)||{};
+  // Variantes de l'enregistrement, de la plus complète à la plus simple. La base
+  // de production a dérivé des migrations versionnées (cf. migration 0024) : si
+  // une colonne annexe (date_paiement, notes_paiement) n'y existe pas, l'UPDATE
+  // entier échouait et la vente ne pouvait JAMAIS passer en « Payée ». Le statut
+  // lui-même (colonne d'origine) doit toujours pouvoir être enregistré.
+  let attempts=[patch];
   // Si marqué Payée : demander la date et le mode de règlement
   if(next==='Payée'){
-    const dateReg=window.prompt(`Date de paiement (laisser vide = aujourd'hui ${td()}) :`,td())||td();
+    const rawDate=(window.prompt(`Date de paiement (JJ/MM/AAAA ou AAAA-MM-JJ ; vide = aujourd'hui ${td()}) :`,td())||'').trim();
+    const dateReg=rawDate?frDateToISO(rawDate):td();
+    if(!dateReg) return alert('Date de paiement non reconnue. Utilisez JJ/MM/AAAA ou AAAA-MM-JJ.');
     const modeReg=window.prompt(`Mode de règlement :\n1 Virement\n2 Chèque\n3 Espèces\n4 CB\n5 HelloAsso\n6 Gratuit\n(saisir le numéro ou le nom)`)|| '';
     const modemap={'1':'Virement','2':'Chèque','3':'Espèces','4':'CB','5':'HelloAsso','6':'Gratuit'};
     const mode=modemap[modeReg.trim()]||modeReg.trim()||'';
-    if(mode) patch.notes_paiement=`Payée le ${dateReg}${mode?' — '+mode:''}`;
-    patch.date_paiement=dateReg;
+    // La date est toujours consignée (même sans mode) et l'historique existant
+    // (relances envoyées…) est conservé au lieu d'être écrasé.
+    const line=`Payée le ${dateReg}${mode?' — '+mode:''}`;
+    const notes_paiement=current.notes_paiement?`${current.notes_paiement}\n${line}`:line;
+    attempts=[
+      {...patch,date_paiement:dateReg,notes_paiement},
+      {...patch,notes_paiement},
+      patch,
+    ];
   }
-  const {error}=await SB.from('factures').update(patch).eq('id',id);
-  if(error) return alert('Erreur : '+error.message);
+  let saved=null,lastError=null;
+  for(const candidate of attempts){
+    const {error}=await SB.from('factures').update(candidate).eq('id',id);
+    if(!error){ saved=candidate; break; }
+    lastError=error;
+  }
+  if(!saved) return alert('Erreur : '+(lastError?.message||'enregistrement impossible'));
   const idx=D.factures.findIndex(f=>f.id===id);
-  if(idx>=0) D.factures[idx]={...D.factures[idx],...patch};
-  notify('success',`Vente passée en "${next}".`,'Ventes');
+  if(idx>=0) D.factures[idx]={...D.factures[idx],...saved};
+  if(saved!==attempts[0]) notify('warn','Vente passée en "Payée", mais la date/le mode de règlement n\'ont pas pu être enregistrés complètement (colonne absente de la base ?).','Ventes');
+  else notify('success',`Vente passée en "${next}".`,'Ventes');
   render();
+}
+// Date de paiement affichable : colonne dédiée si elle existe, sinon la ligne
+// « Payée le AAAA-MM-JJ » consignée dans notes_paiement.
+function facturePaidDate(f){
+  if(f?.date_paiement) return f.date_paiement;
+  const m=String(f?.notes_paiement||'').match(/Payée le (\d{4}-\d{2}-\d{2})/g);
+  return m&&m.length?m[m.length-1].slice(-10):'';
 }
 async function delFac(id){
   if(!await confirmModal('Supprimer ?'))return;
@@ -9877,6 +9918,18 @@ async function saveClub(){
 // ═══════════════════════════════════════════════════
 // BANQUE
 // ═══════════════════════════════════════════════════
+// Montant d'une colonne Débit/Crédit du CSV bancaire, toujours positif (le sens vient de
+// la colonne). L'ancien parseur faisait parseFloat() sur le texte brut : « 1 234,56 »
+// (séparateur de milliers) était lu 1 € et « 1.234,56 » était lu 1,234 €, sans aucun
+// écran de vérification pour le voir (contrairement à l'import PDF).
+function parseBankCsvAmount(v){
+  let s=String(v==null?'':v).replace(/[\s\u00a0\u202f]/g,'').replace(/^[+-]/,'');
+  if(!s) return 0;
+  if(s.includes(',')) s=s.replace(/\./g,'').replace(',','.'); // « 1.234,56 » → 1234.56
+  const n=parseFloat(s);
+  return Number.isFinite(n)?Math.abs(n):0;
+}
+
 async function importBankCSV(e){
   const file=e.target.files[0];if(!file)return;
   const cid=document.getElementById('cible-cpt')?.value;
@@ -9889,7 +9942,7 @@ async function importBankCSV(e){
     lines.slice(1).forEach(line=>{
       const cols=line.split(';').map(x=>x.trim().replace(/"/g,''));
       if(cols.length<4)return;
-      const row={compte_id:cid,date_op:cols[0],libelle:cols[1],debit:parseFloat((cols[2]||'0').replace(',','.').replace('-','0'))||0,credit:parseFloat((cols[3]||'0').replace(',','.').replace('-','0'))||0,rapproche:false,source_document:'credit_mutuel_csv',source_format:'csv'};
+      const row={compte_id:cid,date_op:cols[0],libelle:cols[1],debit:parseBankCsvAmount(cols[2]),credit:parseBankCsvAmount(cols[3]),rapproche:false,source_document:'credit_mutuel_csv',source_format:'csv'};
       const fp=transactionFingerprint(row);
       if(existing.has(fp)) return;
       existing.add(fp);
@@ -10318,13 +10371,33 @@ function cancelBankImport(){
   closeModal();
 }
 
+// Enregistre un (ou plusieurs) rapprochement(s) et VÉRIFIE le résultat. Avant, l'erreur
+// éventuelle était ignorée : l'écran affichait « rapprochée » alors que rien n'était
+// enregistré, et l'opération réapparaissait « en attente » au rechargement suivant.
+async function rapprPersist(ids,patch){
+  const q=SB.from('transactions').update(patch);
+  const {error}=Array.isArray(ids)?await q.in('id',ids):await q.eq('id',ids);
+  if(error){ notify('error','Rapprochement non enregistré : '+error.message,'Rapprochement'); return false; }
+  return true;
+}
+
 async function rapprocher(id){
   const ecr=document.getElementById(`ecr-${id}`);
   const piece=ecr?ecr.value:'';
   if(!piece){ notify('warn','Sélectionnez une écriture avant de rapprocher.','Rapprochement'); return; }
-  await SB.from('transactions').update({rapproche:true,ecriture_piece:piece,ecriture_pieces_json:JSON.stringify([piece])}).eq('id',id);
   const t=D.comptes.flatMap(c=>c.transactions||[]).find(x=>x.id===id);
-  if(t){t.rapproche=true;t.ecriture_piece=piece;t.ecriture_pieces_json=JSON.stringify([piece]);}
+  // Garde-fou : montant ou sens différent entre l'opération et l'écriture choisie.
+  const cand=rapprPieceCandidates({includeAllAccounts:true,consumed:new Set()}).find(c=>c.piece===piece);
+  if(t&&cand){
+    const txSigned=Math.round(((+t.credit||0)-(+t.debit||0))*100)/100;
+    if(Math.abs(txSigned-cand.amount)>=0.01){
+      const sens=(txSigned>0)!==(cand.amount>0)&&cand.amount!==0?' (sens opposé : entrée ↔ sortie)':'';
+      if(!await confirmModal(`L'opération bancaire (${rapprSignedEuro(txSigned)}) ne correspond pas à l'écriture ${piece} (${rapprSignedEuro(cand.amount)})${sens}.\n\nRapprocher quand même ?`)) return;
+    }
+  }
+  const piecesJson=JSON.stringify([piece]);
+  if(!await rapprPersist(id,{rapproche:true,ecriture_piece:piece,ecriture_pieces_json:piecesJson})) return;
+  if(t){t.rapproche=true;t.ecriture_piece=piece;t.ecriture_pieces_json=piecesJson;}
   render();
 }
 
@@ -10335,9 +10408,10 @@ async function rapprocher(id){
 async function validerGroupeRapprochement(transactionIds, piece){
   if(!await confirmModal(`Rapprocher les ${transactionIds.length} transactions avec la pièce ${piece} ?`)) return;
   const piecesJson=JSON.stringify([piece]);
+  if(!await rapprPersist(transactionIds,{rapproche:true,ecriture_piece:piece,ecriture_pieces_json:piecesJson})) return;
+  const all=D.comptes.flatMap(c=>c.transactions||[]);
   for(const tid of transactionIds){
-    await SB.from('transactions').update({rapproche:true,ecriture_piece:piece,ecriture_pieces_json:piecesJson}).eq('id',tid);
-    const t=D.comptes.flatMap(c=>c.transactions||[]).find(x=>x.id===tid);
+    const t=all.find(x=>x.id===tid);
     if(t){t.rapproche=true;t.ecriture_piece=piece;t.ecriture_pieces_json=piecesJson;}
   }
   notify('success',`${transactionIds.length} transaction(s) rapprochées avec la pièce ${piece}.`,'Rapprochement groupé');
@@ -10346,7 +10420,7 @@ async function validerGroupeRapprochement(transactionIds, piece){
 
 async function modifierRapprochement(id){
   if(!await confirmModal('Modifier le rapprochement de cette transaction ? Elle repassera en attente et vous pourrez choisir une nouvelle écriture.')) return;
-  await SB.from('transactions').update({rapproche:false,ecriture_piece:null,ecriture_pieces_json:null}).eq('id',id);
+  if(!await rapprPersist(id,{rapproche:false,ecriture_piece:null,ecriture_pieces_json:null})) return;
   const t=D.comptes.flatMap(c=>c.transactions||[]).find(x=>x.id===id);
   if(t){t.rapproche=false;t.ecriture_piece=null;t.ecriture_pieces_json=null;}
   notify('info','Transaction repassée en attente — choisissez la bonne écriture.','Rapprochement');
@@ -10411,14 +10485,29 @@ function rapprPieceCandidates(opts){
   const byKey=new Map();
   for(const j of D.journal){
     if(!j.piece&&!j.id) continue;
-    if(!includeAll&&!(j.compte||'').startsWith('512')) continue;
+    const isBank=(j.compte||'').startsWith('512');
+    if(!includeAll&&!isBank) continue;
     const key=j.piece||String(j.id).slice(0,8);
     if(consumed.has(key)) continue;
     let g=byKey.get(key);
-    if(!g){ g={piece:key,date_op:j.date_op,libelle:j.libelle||'',compte:j.compte||'',amount:0}; byKey.set(key,g); }
-    g.amount+=rapprBankSenseAmount(j);
+    if(!g){ g={piece:key,date_op:j.date_op,libelle:j.libelle||'',compte:j.compte||'',amount:0,_bank:0,_other:0,_hasBank:false}; byKey.set(key,g); }
+    if(isBank){
+      // La ligne 512 décrit le mouvement réellement vu par la banque : elle
+      // donne la date, le libellé et le compte affichés pour la pièce.
+      if(!g._hasBank){ g._hasBank=true; g.date_op=j.date_op; g.libelle=j.libelle||''; g.compte=j.compte||''; }
+      g._bank+=rapprBankSenseAmount(j);
+    }else{
+      g._other+=rapprBankSenseAmount(j);
+    }
   }
-  return [...byKey.values()].sort((a,b)=>compareFrDates(b.date_op,a.date_op)||a.piece.localeCompare(b.piece));
+  // Pièce équilibrée à plusieurs comptes (ex. 512 débit 45 / 7561 crédit 45) :
+  // seul le mouvement 512 compte, sinon le montant était compté deux fois
+  // (45 + 45 = 90) dans le mode « Tous les comptes ».
+  const out=[...byKey.values()].map(g=>{
+    const {_bank,_other,_hasBank,...rest}=g;
+    return {...rest,amount:Math.round((_hasBank?_bank:_other)*100)/100};
+  });
+  return out.sort((a,b)=>compareFrDates(b.date_op,a.date_op)||a.piece.localeCompare(b.piece));
 }
 
 // Équilibre entre le total des opérations bancaires et celui des écritures cochées.
@@ -10634,7 +10723,8 @@ async function rapprMultiConfirm(){
 //   +1  montant proche à ±1 €
 //   +1  date dans les 3 jours (bonus si ≤7 jours)
 //   +1  libellé contient un mot commun significatif (≥4 caractères)
-//   +0.5 sens cohérent (débit tx ↔ débit journal, crédit tx ↔ crédit journal)
+//   +0.5 sens cohérent « vu de la banque » (encaissement ↔ entrée d'argent, paiement ↔ sortie) ;
+//        un sens opposé élimine d'office le candidat (score 0)
 // Seuil rapprochement automatique : score ≥ 3.5
 // Seuil suggestion manuelle      : score ≥ 1.5
 const RAPPR_AUTO_THRESHOLD   = 3.5;
@@ -10658,10 +10748,20 @@ function normalizeLibelleWords(libelle){
     .filter(w=>w.length>=4 && !RAPPR_STOPWORDS.has(w));
 }
 
+// `entry` : soit une ligne du journal (debit/credit + compte), soit un candidat
+// de rapprPieceCandidates() (montant `amount` déjà signé « vu de la banque »).
 function scoreRapprochement(transaction, entry){
   let score = 0;
-  const txAmount  = Math.max(+transaction.credit||0, +transaction.debit||0);
-  const entAmount = Math.max(+entry.credit||0, +entry.debit||0);
+  // Tout est comparé « vu de la banque » : + argent entré, − argent sorti. Une
+  // opération créditrice (encaissement) correspond à une ligne 512 au DÉBIT ;
+  // l'ancien test « débit ↔ débit / crédit ↔ crédit » était inversé pour le
+  // compte 512 et favorisait les lignes 411/707 plutôt que la ligne de banque.
+  const txSigned  = (+transaction.credit||0) - (+transaction.debit||0);
+  const entSigned = (entry.debit===undefined && entry.credit===undefined) ? (+entry.amount||0) : rapprBankSenseAmount(entry);
+  if(Math.abs(txSigned) < 0.005 || Math.abs(entSigned) < 0.005) return 0;
+  if((txSigned > 0) !== (entSigned > 0)) return 0; // un encaissement ne peut pas être un paiement
+  const txAmount  = Math.abs(txSigned);
+  const entAmount = Math.abs(entSigned);
   const diff = Math.abs(entAmount - txAmount);
   if(diff < 0.01)       score += 2;
   else if(diff <= 1.00) score += 1;
@@ -10676,10 +10776,9 @@ function scoreRapprochement(transaction, entry){
     else if(deltaDays > 31) return 0; // trop loin dans le temps → éliminé
   }
 
-  // Sens débit/crédit cohérent
-  const txIsDebit   = (+transaction.debit||0) > 0;
-  const entIsDebit  = (+entry.debit||0) > 0;
-  if(txIsDebit === entIsDebit) score += 0.5;
+  // Sens cohérent (garanti par le test ci-dessus) : le point demi-pas est conservé
+  // pour que le barème et les seuils restent sur 5 points.
+  score += 0.5;
 
   // Matching libellé — mots significatifs en commun, nettoyés des parasites bancaires
   const txWords  = normalizeLibelleWords(transaction.libelle);
@@ -10726,28 +10825,44 @@ function suggestRapprochementPiece(transaction){
   return result?.entry?.piece || '';
 }
 
-function bestRapprochementEntry(transaction, excludePieces=null){
+// `pool` (facultatif) : candidats déjà calculés par rapprPieceCandidates(), pour
+// ne pas reparcourir tout le journal à chaque opération (pré-sélection, rendu).
+// Seules les pièces du compte 512 sont proposées : c'est ce que la banque voit.
+// Avant, toutes les lignes du journal étaient candidates : une encaissement de
+// 45 € pouvait être « rapproché » de la ligne 411 ou 707 de la vente (même
+// montant, même date) et la vraie ligne 512 restait « en attente de relevé ».
+function bestRapprochementEntry(transaction, excludePieces=null, pool=null){
   const excluded = excludePieces || consumedPieces();
+  const candidates = pool || rapprPieceCandidates({consumed: excluded});
   let best = null;
   let bestScore = 0;
-  for(const entry of D.journal){
-    if(!entry.piece && !entry.id) continue;
-    const pieceKey = entry.piece || entry.id.slice(0,8);
-    if(excluded.has(pieceKey)) continue; // déjà consommée par un autre rapprochement
+  let tie = false;
+  for(const entry of candidates){
+    if(excluded.has(entry.piece)) continue; // déjà consommée par un autre rapprochement
     const score = scoreRapprochement(transaction, entry);
-    if(score > bestScore){ bestScore = score; best = entry; }
+    if(score > bestScore){ bestScore = score; best = entry; tie = false; }
+    else if(score > 0 && score === bestScore){ tie = true; }
   }
   if(bestScore < RAPPR_SUGGEST_THRESHOLD) return null;
-  return { entry: best, score: bestScore, auto: bestScore >= RAPPR_AUTO_THRESHOLD };
+  // Deux écritures aussi plausibles l'une que l'autre (cotisations au même
+  // tarif, même jour…) : on ne tranche pas à la place de l'utilisateur, la
+  // suggestion reste à valider manuellement au lieu d'être rapprochée d'office.
+  return { entry: best, score: bestScore, auto: bestScore >= RAPPR_AUTO_THRESHOLD && !tie, ambiguous: tie };
 }
 
 // ─── Rapprochement groupé (plusieurs transactions ↔ une même pièce) ───────
 // Cas typiques : remise de chèques groupée, virement HelloAsso groupant N adhésions,
 // tout virement bancaire unique correspondant à plusieurs écritures comptables.
 // Algorithme subset-sum généralisé (max 10 transactions par groupe pour rester performant).
-function findSubsetSum(pool, target, maxSize=10){
+// `pool` doit être orienté dans un seul sens (que des entrées d'argent, ou que
+// des sorties) : sinon un encaissement de 30 € et un paiement de 15 € « faisaient »
+// 45 € et formaient un faux groupe. `budget` borne le nombre de combinaisons
+// explorées pour ne jamais figer l'écran sur un gros relevé.
+function findSubsetSum(pool, target, maxSize=10, budget=200000){
   const results=[];
+  let steps=0;
   function recurse(start, current, sum){
+    if(++steps>budget) return;
     if(Math.abs(sum-target)<0.02 && current.length>1){
       results.push([...current]);
     }
@@ -10764,34 +10879,31 @@ function findSubsetSum(pool, target, maxSize=10){
 }
 
 function findGroupedRapprochement(transactions){
-  const byPiece = {};
-  D.journal.forEach(j=>{
-    const key = j.piece || j.id.slice(0,8);
-    if(!byPiece[key]) byPiece[key] = { piece:key, rows:[], amount:0, date:j.date_op };
-    byPiece[key].rows.push(j);
-    byPiece[key].amount += (+j.credit||0) - (+j.debit||0);
-  });
-  const consumed = consumedPieces();
-  const candidates = Object.values(byPiece).filter(g=>!consumed.has(g.piece) && Math.abs(g.amount)>=0.01);
+  // Pièces du compte 512 non rapprochées, montant signé vu de la banque (+ entrée, − sortie).
+  const candidates = rapprPieceCandidates({consumed: consumedPieces()}).filter(g=>Math.abs(g.amount)>=0.01);
+  const pending = transactions.filter(t=>!t.rapproche);
+  const poolIn  = pending.filter(t=>(+t.credit||0) > (+t.debit||0));
+  const poolOut = pending.filter(t=>(+t.debit||0) > (+t.credit||0));
 
   const results = [];
-  const pool = transactions.filter(t=>!t.rapproche);
+  const seen = new Set();
   for(const group of candidates){
     const groupAmount = Math.abs(group.amount);
-    // Cherche tous les sous-ensembles de transactions non rapprochées dont la somme colle
-    const subsets = findSubsetSum(pool, groupAmount);
+    // Cherche tous les sous-ensembles d'opérations non rapprochées, de même sens, dont la somme colle
+    const subsets = findSubsetSum(group.amount>0 ? poolIn : poolOut, groupAmount);
     for(const subset of subsets){
       // Évite les doublons (même ensemble de transactions, pièce différente)
-      const key = subset.map(t=>t.id).sort().join(',');
-      if(!results.find(r=>r.transactionIds.slice().sort().join(',')===key && r.piece===group.piece)){
-        results.push({
-          piece: group.piece,
-          transactionIds: subset.map(t=>t.id),
-          transactions: subset,
-          amount: groupAmount,
-          nbTx: subset.length
-        });
-      }
+      const ids = subset.map(t=>t.id).sort().join(',');
+      const key = ids+'@'+group.piece;
+      if(seen.has(key)) continue;
+      seen.add(key);
+      results.push({
+        piece: group.piece,
+        transactionIds: subset.map(t=>t.id),
+        transactions: subset,
+        amount: groupAmount,
+        nbTx: subset.length
+      });
     }
   }
   return results;
@@ -10801,13 +10913,14 @@ async function preselectRapprochements(){
   const transactions = D.comptes.flatMap(c=>c.transactions||[]);
   const toAutoRapproch = [];
   const excluded = consumedPieces(); // mutée localement pour éviter d'attribuer deux fois la même pièce dans cette même passe
+  const pool = rapprPieceCandidates({consumed: new Set()}); // toutes les pièces 512, filtrées via `excluded` à chaque opération
   let nbAuto = 0; let nbSuggest = 0;
 
   transactions.forEach((transaction, index)=>{
     if(transaction.rapproche) return;
-    const result = bestRapprochementEntry(transaction, excluded);
+    const result = bestRapprochementEntry(transaction, excluded, pool);
     if(!result) return;
-    const piece = result.entry.piece || result.entry.id.slice(0,8);
+    const piece = result.entry.piece;
     if(result.auto){
       // Haute confiance → on marque pour rapprochement automatique
       toAutoRapproch.push({ id: transaction.id, piece, transaction, index });
@@ -10832,12 +10945,16 @@ async function preselectRapprochements(){
       `\nConfirmer le rapprochement automatique ?`
     );
     if(confirmed){
+      let nbDone = 0;
       for(const item of toAutoRapproch){
-        await SB.from('transactions').update({rapproche:true, ecriture_piece:item.piece, ecriture_pieces_json:JSON.stringify([item.piece])}).eq('id',item.id);
+        const piecesJson = JSON.stringify([item.piece]);
+        if(!await rapprPersist(item.id,{rapproche:true, ecriture_piece:item.piece, ecriture_pieces_json:piecesJson})) break;
         const t = D.comptes.flatMap(c=>c.transactions||[]).find(x=>x.id===item.id);
-        if(t){ t.rapproche=true; t.ecriture_piece=item.piece; t.ecriture_pieces_json=JSON.stringify([item.piece]); }
+        if(t){ t.rapproche=true; t.ecriture_piece=item.piece; t.ecriture_pieces_json=piecesJson; }
+        nbDone++;
       }
-      notify('success',
+      nbAuto = nbDone;
+      notify(nbDone===toAutoRapproch.length?'success':'warn',
              `${nbAuto} rapprochement(s) automatique(s) effectué(s)` +
              (nbSuggest ? ` · ${nbSuggest} suggestion(s) manuelle(s) en attente de validation` : '') +
              (nbGrouped ? ` · ${nbGrouped} regroupement(s) possible(s) à examiner` : '') + '.',
@@ -10869,7 +10986,7 @@ async function toutRappr(){
 // Annule un rapprochement effectué par erreur (auto ou manuel).
 async function annulerRapprochement(id){
   if(!await confirmModal('Annuler le rapprochement de cette transaction ?')) return;
-  await SB.from('transactions').update({rapproche:false, ecriture_piece:null, ecriture_pieces_json:null}).eq('id',id);
+  if(!await rapprPersist(id,{rapproche:false,ecriture_piece:null,ecriture_pieces_json:null})) return;
   const t=D.comptes.flatMap(c=>c.transactions||[]).find(x=>x.id===id);
   if(t){ t.rapproche=false; t.ecriture_piece=null; t.ecriture_pieces_json=null; }
   notify('info','Rapprochement annulé — la transaction repasse en attente.','Rapprochement');
