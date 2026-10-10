@@ -461,3 +461,55 @@ describe("parseBankCsvAmount() — montants du CSV bancaire", () => {
     expect(parse(["abc", "—"])).toEqual([0, 0]);
   });
 });
+
+describe("une écriture rapprochée disparaît des écritures en attente (anti-doublon)", () => {
+  const setup = `
+    D.journal = [
+      {id:'j1', piece:'PAY-1-BNQ', compte:'512 - Banque', debit:45, credit:0, date_op:'2026-10-05', libelle:'Encaissement Dupont'},
+      {id:'j2', piece:'PAY-2-BNQ', compte:'512 - Banque', debit:30, credit:0, date_op:'2026-10-06', libelle:'Encaissement Martin'},
+    ];
+    D.comptes = [{nom:'CM', transactions:[
+      {id:'t1', date_op:'2026-10-05', libelle:'VIR Dupont', debit:0, credit:45, rapproche:false},
+      {id:'t2', date_op:'2026-10-06', libelle:'VIR Martin', debit:0, credit:30, rapproche:false},
+    ]}];
+  `;
+  const link = `const t=D.comptes[0].transactions[0]; t.rapproche=true; t.ecriture_piece='PAY-1-BNQ'; t.ecriture_pieces_json=JSON.stringify(['PAY-1-BNQ']);`;
+
+  it("compteurs « en attente de relevé », suggestions et imputation multi n'incluent plus la pièce liée", () => {
+    const out = JSON.parse(
+      loadAppAndRun(`${setup} ${link}
+        capture(JSON.stringify({
+          pending: pendingBankPieces().map(j => j.piece),
+          cands: rapprPieceCandidates().map(c => c.piece),
+          sugg: (bestRapprochementEntry({id:'tx', date_op:'2026-10-05', libelle:'VIR Dupont', debit:0, credit:45}) || {}).entry?.piece || null,
+        }));`)
+    );
+    expect(out).toEqual({ pending: ["PAY-2-BNQ"], cands: ["PAY-2-BNQ"], sugg: null });
+  });
+
+  it("le menu « Pièce unique » des autres opérations ne propose plus la pièce déjà liée", () => {
+    const html = loadAppAndRun(`${setup} ${link}
+      RAPPR_CONSUMED = null; RAPPR_POOL = null; RAPPR_SUGG = new Map();
+      capture(rapprBodyHtml(rapprAllTransactions()));`);
+    const rowT2 = html.split("<tr").find((r: string) => r.includes('id="ecr-t2"')) as string;
+    expect(rowT2).toBeDefined();
+    expect(rowT2).toContain('value="PAY-2-BNQ"');
+    expect(rowT2).not.toContain('value="PAY-1-BNQ"');
+  });
+
+  it("rapprocher() demande confirmation si l'écriture est déjà liée à une autre opération", async () => {
+    const r = await loadAppAndRunAsync(`${setup} ${link}
+      var asked = '';
+      confirmModal = async (m) => { asked = m; return false; };
+      notify = () => {}; render = () => {};
+      var updates = 0;
+      SB = { from: () => ({ update: () => ({ eq: async () => { updates++; return { data: [], error: null }; } }) }) };
+      document.getElementById = (id) => id === 'ecr-t2' ? { value: 'PAY-1-BNQ' } : null;
+      await rapprocher('t2');
+      capture(JSON.stringify({ asked, updates, rapproche: D.comptes[0].transactions[1].rapproche }));`);
+    const out = JSON.parse(r);
+    expect(out.asked).toContain("déjà rapprochée");
+    expect(out.updates).toBe(0);
+    expect(out.rapproche).toBe(false);
+  });
+});

@@ -4614,12 +4614,15 @@ function rapprBodyHtml(all){
   // pièce, libellé, montant vu de la banque), puis les autres écritures. Avant, toutes
   // les lignes du journal étaient mélangées avec un libellé tronqué à 20 caractères et
   // sans montant : impossible de distinguer la ligne 411, 707 ou 512 d'une même vente.
-  const pendingPieces=rapprPieceCandidates({consumed:RAPPR_CONSUMED||consumedPieces()});
+  // Une pièce déjà rapprochée n'est plus proposée nulle part (comme dans « Imputation multi »),
+  // y compris dans le groupe « Autres écritures » : sinon on pouvait la lier une 2e fois.
+  const consumedNow=RAPPR_CONSUMED||consumedPieces();
+  const pendingPieces=rapprPieceCandidates({consumed:consumedNow});
   const pendingKeys=new Set(pendingPieces.map(c=>c.piece));
-  const otherPieces=rapprPieceCandidates({includeAllAccounts:true,consumed:new Set()}).filter(c=>!pendingKeys.has(c.piece));
+  const otherPieces=rapprPieceCandidates({includeAllAccounts:true,consumed:consumedNow}).filter(c=>!pendingKeys.has(c.piece));
   const optLabel=c=>`${fd(c.date_op)||''} · ${c.piece} · ${(c.libelle||'').slice(0,30)} · ${rapprSignedEuro(c.amount)}${c.compte&&!String(c.compte).startsWith('512')?' ['+String(c.compte).split(' ')[0]+']':''}`;
   const optionsHtml=`<optgroup label="512 Banque — en attente de relevé">${pendingPieces.map(c=>`<option value="${esc(c.piece)}">${esc(optLabel(c))}</option>`).join('')}</optgroup>`
-    +(otherPieces.length?`<optgroup label="Autres écritures (autres comptes / déjà rapprochées)">${otherPieces.map(c=>`<option value="${esc(c.piece)}">${esc(optLabel(c))}</option>`).join('')}</optgroup>`:'');
+    +(otherPieces.length?`<optgroup label="Autres écritures (autres comptes)">${otherPieces.map(c=>`<option value="${esc(c.piece)}">${esc(optLabel(c))}</option>`).join('')}</optgroup>`:'');
   const rows=rowsData.map(t=>rapprRowHtml(t,optionsHtml)).join('');
   return`${filtered?`<div style="font-size:12px;color:var(--txt2);margin-bottom:6px">${rowsData.length}/${all.length} opération(s) affichée(s)</div>`:''}
   <div class="wrap"><table>
@@ -10386,6 +10389,11 @@ async function rapprocher(id){
   const piece=ecr?ecr.value:'';
   if(!piece){ notify('warn','Sélectionnez une écriture avant de rapprocher.','Rapprochement'); return; }
   const t=D.comptes.flatMap(c=>c.transactions||[]).find(x=>x.id===id);
+  // Garde-fou anti-doublon : l'écriture est déjà liée à une autre opération (cas typique :
+  // la pré-sélection a proposé la même pièce à deux lignes, et la première vient d'être validée).
+  if(consumedPieces().has(piece)){
+    if(!await confirmModal(`L'écriture ${piece} est déjà rapprochée avec une autre opération bancaire.\n\nLa lier aussi à celle-ci (risque de doublon) ?`)) return;
+  }
   // Garde-fou : montant ou sens différent entre l'opération et l'écriture choisie.
   const cand=rapprPieceCandidates({includeAllAccounts:true,consumed:new Set()}).find(c=>c.piece===piece);
   if(t&&cand){

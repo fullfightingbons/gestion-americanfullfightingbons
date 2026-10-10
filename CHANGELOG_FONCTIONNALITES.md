@@ -35,6 +35,10 @@ tout l'UPDATE échouait (« Erreur base de données ») et le statut n'était ja
 - Les mises à jour de `transactions` (valider, corriger, annuler, pré-sélection auto, groupé) vérifient
   maintenant le retour de la base : avant, une erreur était ignorée et l'écran affichait « rapprochée »
   alors que rien n'était enregistré.
+- Anti-doublon : une écriture rapprochée disparaît des écritures en attente (compteurs, suggestions,
+  imputation multi) — et désormais aussi du menu « Pièce unique », où elle restait proposée. `rapprocher()`
+  demande confirmation si l'écriture choisie est déjà liée à une autre opération (cas : la pré-sélection a
+  proposé la même pièce à deux lignes).
 - « Tous les comptes » (imputation multi) ne compte plus deux fois une pièce équilibrée (512 débit 45 +
   7561 crédit 45 = 45 €, pas 90 €).
 
@@ -44,7 +48,7 @@ tout l'UPDATE échouait (« Erreur base de données ») et le statut n'était ja
 (le sens vient de la colonne), valeur illisible = 0. Les formats qui fonctionnaient (`45,00`, `-45,00`,
 `1234.56`) donnent le même résultat qu'avant.
 
-Aucune migration. `app.min.js` régénéré, `app.js?v=20261010c`. 20 tests ajoutés (`test/rapprochement.test.ts`) ;
+Aucune migration. `app.min.js` régénéré, `app.js?v=20261010d`. 23 tests ajoutés (`test/rapprochement.test.ts`) ;
 `tsc --noEmit`, les tests et `wrangler deploy --dry-run` passent.
 
 ## Rapprochement bancaire : recherche et sélection multiple — 10/10/2026
