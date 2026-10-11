@@ -561,12 +561,12 @@ describe("écritures types « Transfert d'épargne » (deux sens)", () => {
     expect(depuis._typeHint).toContain("livret vers le compte courant");
   });
 
-  it("le journal affiche les deux boutons rapides pour qui a le droit d'écriture, et aucun sinon", () => {
+  it("le journal affiche les deux boutons d'épargne pour qui a le droit d'écriture, et aucun sinon", () => {
     const html = loadAppAndRun(`hasPerm = () => true; D.journal = []; capture(vJournal());`);
     expect(html).toContain("openEcritureType('transfert_vers_epargne')");
-    expect(html).toContain("⚡ Compte courant → Épargne");
+    expect(html).toContain(">Compte courant → Épargne");
     expect(html).toContain("openEcritureType('transfert_depuis_epargne')");
-    expect(html).toContain("⚡ Épargne → Compte courant");
+    expect(html).toContain(">Épargne → Compte courant");
     const sans = loadAppAndRun(`hasPerm = () => false; D.journal = []; capture(vJournal());`);
     expect(sans).not.toContain("epargne')");
   });
@@ -857,5 +857,421 @@ describe("clôture d'exercice : avertissement si le rapprochement est incomplet"
   it("clôture si l'utilisateur confirme malgré tout", async () => {
     const r = await close(true);
     expect(r.updated).toBe(true);
+  });
+});
+
+// ─── Écritures rapides → miroir dans les onglets Achats / Ventes (sans doublon) ───
+
+// Base de données en mémoire : assez de l'API du client (select/insert/update/delete + eq/in/single)
+// pour exécuter saveEcr(), les synchronisations Achats/Ventes et les suppressions.
+const FAKE_SB = `
+  var DBT = { achats: [], factures: [], journal_comptable: [] };
+  var FAIL = {};
+  SB = { from: (t) => {
+    const q = { op: 'select', filters: [], single: false, payload: null };
+    const b = {
+      select: () => b,
+      insert: (p) => { q.op = 'insert'; q.payload = p; return b; },
+      update: (p) => { q.op = 'update'; q.payload = p; return b; },
+      delete: () => { q.op = 'delete'; return b; },
+      eq: (c, v) => { q.filters.push((r) => r[c] === v); return b; },
+      in: (c, vs) => { q.filters.push((r) => vs.includes(r[c])); return b; },
+      order: () => b, limit: () => b, single: () => { q.single = true; return b; },
+      then: (res, rej) => {
+        const run = () => {
+          if (FAIL[t + ':' + q.op]) return { data: null, error: { message: 'échec ' + t + ':' + q.op } };
+          const rows = DBT[t]; const m = (r) => q.filters.every((f) => f(r));
+          if (q.op === 'insert') { const arr = (Array.isArray(q.payload) ? q.payload : [q.payload]).map((x) => ({ ...x })); rows.push(...arr); return { data: q.single ? arr[0] : arr, error: null }; }
+          if (q.op === 'update') { const hit = rows.filter(m); hit.forEach((r) => Object.assign(r, q.payload)); return { data: hit, error: null }; }
+          if (q.op === 'delete') { DBT[t] = rows.filter((r) => !m(r)); return { data: [], error: null }; }
+          const hit = rows.filter(m); return { data: q.single ? (hit[0] || null) : hit, error: null };
+        };
+        return Promise.resolve(run()).then(res, rej);
+      },
+    };
+    return b; } };
+`;
+
+const QUICK_ENV = `
+  requireWritePerm = () => true; requireExerciceActif = () => true; hasPerm = () => true;
+  renderModal = () => {}; closeModal = () => {}; render = () => {}; notify = () => {}; setTimeout = () => 0;
+  loadTabData = async () => {};
+  var alerts = []; alert = (m) => { alerts.push(m); }; confirm = () => true;
+  D.currentExo = { id: 'exo1' }; D.journal = []; D.achats = []; D.factures = [];
+  ${FAKE_SB}
+`;
+
+describe("écritures rapides : miroir dans les onglets Achats / Ventes", () => {
+  // Remplit la fenêtre comme le ferait l'utilisateur, puis enregistre.
+  const quick = (type: string, vals: Record<string, string>, opts: { mirror?: boolean; setup?: string } = {}) =>
+    loadAppAndRunAsync(`
+      ${QUICK_ENV}
+      ${opts.setup || ""}
+      openEcritureType(${JSON.stringify(type)});
+      const vals = Object.assign({ 'e-lib': UI.editObj.libelle, 'e-dat': '2026-10-08', 'e-pie': 'Q-1', 'e-cpt': UI.editObj.compte, 'e-cpt-ctr': UI.editObj.contrepartie }, ${JSON.stringify(vals)});
+      document.getElementById = (id) => id === 'e-mir' ? { checked: ${opts.mirror !== false} } : (id in vals ? { value: vals[id] } : null);
+      await saveEcr();
+      capture(JSON.stringify({ achats: DBT.achats, factures: DBT.factures, journal: DBT.journal_comptable, alerts, dAchats: D.achats.length, dFactures: D.factures.length }));
+    `).then((v) => JSON.parse(v));
+
+  it("seuls les modèles qui correspondent à un achat ou à une vente ont un miroir", () => {
+    const m = JSON.parse(
+      loadAppAndRun(`capture(JSON.stringify(Object.fromEntries(Object.entries(ECRITURE_TYPES).filter(([k, t]) => t.miroir).map(([k, t]) => [k, t.miroir]))));`)
+    );
+    expect(m).toEqual({
+      achat_fournisseur: { kind: "achat", categorie: "Fournitures" },
+      achat_licence: { kind: "achat", categorie: "Licence" },
+      achat_materiel_sportif: { kind: "achat", categorie: "Équipement" },
+      achat_textile: { kind: "achat", categorie: "Textile" },
+      petit_equipement: { kind: "achat", categorie: "Équipement" },
+      produits_publicitaires: { kind: "achat", categorie: "Communication" },
+      location: { kind: "achat", categorie: "Location" },
+      deplacement: { kind: "achat", categorie: "Transport" },
+      assurance: { kind: "achat", categorie: "Assurance" },
+      facture_telecom: { kind: "achat", categorie: "Télécom" },
+      communication: { kind: "achat", categorie: "Communication" },
+      honoraires: { kind: "achat", categorie: "Honoraires" },
+      repas_reception: { kind: "achat", categorie: "Réception" },
+      sacem: { kind: "achat", categorie: "Redevances" },
+      spre: { kind: "achat", categorie: "Redevances" },
+      vente_equipement: { kind: "vente" },
+      encaissement_stage: { kind: "vente" },
+      buvette_manifestation: { kind: "vente" },
+    });
+  });
+
+  it("la catégorie « Licence » existe pour les achats et pointe sur le compte 6281", () => {
+    const out = JSON.parse(loadAppAndRun(`capture(JSON.stringify({ compte: achatCompteAuto('Licence'), autre: achatCompteAuto('Inconnue') }));`));
+    expect(out.compte).toBe("6281 - Cotisations fédérales et licences");
+    expect(out.autre).toBe("6580 - Charges diverses de gestion courante");
+  });
+
+  it("achat textile : crée l'achat (Payé) ET les écritures 6052/512, liées par source_id, sans écritures ACH-", async () => {
+    const r = await quick("achat_textile", { "e-pie": "TXT-1", "e-mnt": "120", "e-mir-tiers": "Decathlon", "e-mir-mode": "CB" });
+    expect(r.achats).toHaveLength(1);
+    const a = r.achats[0];
+    expect(a).toMatchObject({ fournisseur: "Decathlon", categorie: "Textile", montant: 120, mode_paiement: "CB", statut: "paye", date_op: "2026-10-08", piece: "TXT-1" });
+    expect(r.journal.map((j: any) => [j.piece, j.compte, j.debit, j.credit])).toEqual([
+      ["TXT-1-L1", "6052 - Achats de textile et tenues", 120, 0],
+      ["TXT-1-L2", "512 - Banque", 0, 120],
+    ]);
+    expect(r.journal.every((j: any) => j.source_type === "ecriture_rapide" && j.source_id === a.id && j.source_logiciel === "gestion")).toBe(true);
+    expect(r.journal.some((j: any) => String(j.piece).startsWith("ACH-"))).toBe(false);
+    expect(r.dAchats).toBe(1);
+  });
+
+  it("vente équipement : crée la vente (Payée, 1 ligne) ET les écritures 512/707, numéro = max + 1", async () => {
+    const r = await quick("vente_equipement", { "e-pie": "VTE-9", "e-mnt": "80", "e-mir-tiers": "M. Dupont" }, { setup: `D.factures = [{ id: 'old', numero: 'FAC-2026-007' }, { id: 'old2', numero: 'FAC-2025-099' }, { id: 'don', numero: 'DON-2026-001' }];` });
+    expect(r.factures).toHaveLength(1);
+    const f = r.factures[0];
+    expect(f).toMatchObject({ numero: "FAC-2026-008", destinataire: "M. Dupont", statut: "Payée", date_op: "2026-10-08", objet: "Vente vêtements / équipements" });
+    expect(f.lignes).toEqual([{ desc: "Vente vêtements / équipements", qte: 1, pu: 80 }]);
+    expect(f.notes).toContain("Règlement : Virement");
+    expect(r.journal.map((j: any) => [j.piece, j.compte, j.debit, j.credit])).toEqual([
+      ["VTE-9-L1", "512 - Banque", 80, 0],
+      ["VTE-9-L2", "707 - Ventes vêtements et équipements", 0, 80],
+    ]);
+    expect(r.journal.every((j: any) => j.source_id === f.id && j.source_type === "ecriture_rapide")).toBe(true);
+    expect(r.journal.some((j: any) => String(j.piece).startsWith("VTE-") && /-(CLI|PRO)$/.test(j.piece))).toBe(false);
+  });
+
+  it("tiers non renseigné : « À préciser » plutôt qu'un enregistrement refusé", async () => {
+    const r = await quick("achat_licence", { "e-mnt": "35" });
+    expect(r.achats[0].fournisseur).toBe("À préciser");
+    expect(r.achats[0].categorie).toBe("Licence");
+  });
+
+  it("case décochée : comportement d'avant (écritures seules, non marquées, aucun enregistrement)", async () => {
+    const r = await quick("achat_textile", { "e-mnt": "120" }, { mirror: false });
+    expect(r.achats).toEqual([]);
+    expect(r.journal).toHaveLength(2);
+    expect(r.journal.every((j: any) => !j.source_type && !j.source_id)).toBe(true);
+  });
+
+  it("un modèle sans miroir (frais bancaires) n'enregistre rien dans Achats/Ventes", async () => {
+    const r = await quick("frais_bancaires", { "e-mnt": "4.5" });
+    expect(r.achats).toEqual([]);
+    expect(r.factures).toEqual([]);
+    expect(r.journal).toHaveLength(2);
+  });
+
+  it("si l'enregistrement de l'onglet échoue : rien n'est créé du tout (ni écritures)", async () => {
+    const r = await quick("achat_textile", { "e-mnt": "120" }, { setup: `FAIL['achats:insert'] = true;` });
+    expect(r.journal).toEqual([]);
+    expect(r.achats).toEqual([]);
+    expect(r.alerts[0]).toContain("rien n'a été créé");
+  });
+
+  it("si les écritures échouent après coup : l'enregistrement de l'onglet est retiré (pas d'orphelin)", async () => {
+    const r = await quick("achat_textile", { "e-mnt": "120" }, { setup: `FAIL['journal_comptable:insert'] = true;` });
+    expect(r.journal).toEqual([]);
+    expect(r.achats).toEqual([]);
+    expect(r.dAchats).toBe(0);
+    expect(r.alerts.length).toBe(1);
+  });
+});
+
+describe("synchronisations Achats / Ventes : jamais de 2e série d'écritures", () => {
+  const run = (code: string) =>
+    loadAppAndRunAsync(`${QUICK_ENV} ${code}`).then((v) => JSON.parse(v));
+  const tagged = (id: string) => `
+    DBT.journal_comptable = [
+      { id: 'q1', piece: 'Q-1-L1', compte: '6052 - Achats de textile et tenues', debit: 120, credit: 0, date_op: '2026-10-08', source_type: 'ecriture_rapide', source_id: '${id}', source_logiciel: 'gestion' },
+      { id: 'q2', piece: 'Q-1-L2', compte: '512 - Banque', debit: 0, credit: 120, date_op: '2026-10-08', source_type: 'ecriture_rapide', source_id: '${id}', source_logiciel: 'gestion' },
+    ];
+    D.journal = DBT.journal_comptable.map((r) => ({ ...r }));`;
+  const snap = `capture(JSON.stringify({ db: DBT.journal_comptable.map(r => [r.piece, r.debit, r.credit, r.date_op]), local: D.journal.map(r => [r.piece, r.debit, r.credit]) }));`;
+
+  it("achat modifié depuis l'onglet : les écritures rapides suivent (montant, date), aucune écriture ACH- créée", async () => {
+    const r = await run(`${tagged("A1")}
+      await syncAchatJournal({ id: 'A1', montant: 150, date_op: '2026-10-09', statut: 'paye', categorie: 'Textile', fournisseur: 'X', mode_paiement: 'CB' });
+      ${snap}`);
+    expect(r.db).toEqual([["Q-1-L1", 150, 0, "2026-10-09"], ["Q-1-L2", 0, 150, "2026-10-09"]]);
+    expect(r.local).toEqual([["Q-1-L1", 150, 0], ["Q-1-L2", 0, 150]]);
+  });
+
+  it("achat refusé ou ramené à 0 : les écritures rapides sont retirées (comme pour les écritures automatiques)", async () => {
+    const refuse = await run(`${tagged("A1")}
+      await syncAchatJournal({ id: 'A1', montant: 120, date_op: '2026-10-08', statut: 'refuse', categorie: 'Textile', fournisseur: 'X' });
+      ${snap}`);
+    expect(refuse.db).toEqual([]);
+    const zero = await run(`${tagged("A1")}
+      await syncAchatJournal({ id: 'A1', montant: 0, date_op: '2026-10-08', statut: 'paye', categorie: 'Textile', fournisseur: 'X' });
+      ${snap}`);
+    expect(zero.db).toEqual([]);
+  });
+
+  it("achat validé (bouton Valider) : pas de doublon non plus", async () => {
+    const r = await run(`${tagged("A1")}
+      await syncAchatJournal({ id: 'A1', montant: 120, date_op: '2026-10-08', statut: 'valide', categorie: 'Textile', fournisseur: 'X' });
+      ${snap}`);
+    expect(r.db).toHaveLength(2);
+  });
+
+  it("achat SANS écriture rapide : comportement inchangé (écritures ACH-…-CHG / -CTR)", async () => {
+    const r = await run(`
+      await syncAchatJournal({ id: 'abcdef123456', montant: 90, date_op: '2026-10-08', statut: 'paye', categorie: 'Textile', fournisseur: 'Y', mode_paiement: 'CB' });
+      capture(JSON.stringify(DBT.journal_comptable.map(r => [r.piece, r.compte, r.debit, r.credit])));`);
+    expect(r).toEqual([
+      ["ACH-abcdef12-CHG", "6052 - Achats de textile et tenues", 90, 0],
+      ["ACH-abcdef12-CTR", "512 - Banque", 0, 90],
+    ]);
+  });
+
+  it("vente modifiée depuis l'onglet : les écritures rapides suivent le nouveau total, pas de 411/70x en plus", async () => {
+    const r = await run(`${tagged("F1")}
+      await syncVenteJournal({ id: 'F1', date_op: '2026-10-10', lignes: [{ desc: 'Kimono', qte: 2, pu: 45 }] });
+      ${snap}`);
+    expect(r.db).toEqual([["Q-1-L1", 90, 0, "2026-10-10"], ["Q-1-L2", 0, 90, "2026-10-10"]]);
+  });
+
+  it("vente SANS écriture rapide : comportement inchangé (411 / 70x)", async () => {
+    const r = await run(`
+      await syncVenteJournal({ id: 'fedcba987654', date_op: '2026-10-08', objet: 'Cours', lignes: [{ desc: 'Cours', qte: 1, pu: 60 }] });
+      capture(JSON.stringify(DBT.journal_comptable.map(r => [r.piece, r.compte.split(' ')[0], r.debit, r.credit])));`);
+    expect(r).toEqual([
+      ["VTE-fedcba98-CLI", "411", 60, 0],
+      ["VTE-fedcba98-PRO", "7061", 0, 60],
+    ]);
+  });
+
+  it("suppression d'un achat / d'une vente : leurs écritures rapides sont supprimées avec", async () => {
+    const a = await run(`${tagged("A1")}
+      DBT.achats = [{ id: 'A1' }]; D.achats = [{ id: 'A1' }]; confirmModal = async () => true;
+      await delAchat('A1');
+      capture(JSON.stringify({ achats: DBT.achats.length, journal: DBT.journal_comptable.length, local: D.journal.length }));`);
+    expect(a).toEqual({ achats: 0, journal: 0, local: 0 });
+    const f = await run(`${tagged("F1")}
+      DBT.factures = [{ id: 'F1' }]; D.factures = [{ id: 'F1' }]; confirmModal = async () => true;
+      await delFac('F1');
+      capture(JSON.stringify({ factures: DBT.factures.length, journal: DBT.journal_comptable.length }));`);
+    expect(f).toEqual({ factures: 0, journal: 0 });
+  });
+
+  it("la suppression d'un autre achat ne touche pas les écritures rapides d'un autre enregistrement", async () => {
+    const r = await run(`${tagged("A1")}
+      DBT.achats = [{ id: 'A2' }]; D.achats = [{ id: 'A2' }]; confirmModal = async () => true;
+      await delAchat('A2');
+      capture(JSON.stringify(DBT.journal_comptable.length));`);
+    expect(r).toBe(2);
+  });
+});
+
+describe("fenêtre d'écriture rapide : champs du miroir", () => {
+  const modal = (type: string) =>
+    loadAppAndRunAsync(`
+      requireWritePerm = () => true; setTimeout = () => 0;
+      var lastDiv = null;
+      document.querySelector = () => null;
+      document.createElement = () => { lastDiv = { style: {}, classList: { add() {}, remove() {} }, addEventListener() {}, remove() {} }; return lastDiv; };
+      document.body = { appendChild() {}, classList: { add() {}, remove() {} } };
+      document.getElementById = (id) => id === 'app' ? { appendChild() {} } : null;
+      openEcritureType(${JSON.stringify(type)});
+      capture(lastDiv ? lastDiv.innerHTML : '');
+    `);
+
+  it("achat : case cochée par défaut, champ Fournisseur et mode de règlement", async () => {
+    const html = await modal("achat_textile");
+    expect(html).toContain('id="e-mir"');
+    expect(html).toMatch(/id="e-mir"[^>]*checked/);
+    expect(html).toContain("Enregistrer aussi dans l'onglet Achats");
+    expect(html).toContain("Fournisseur (facultatif)");
+    expect(html).toContain('id="e-mir-mode"');
+    expect(html).toContain("pas de doublon");
+  });
+
+  it("vente : champ Client et onglet Ventes", async () => {
+    const html = await modal("vente_equipement");
+    expect(html).toContain("Enregistrer aussi dans l'onglet Ventes");
+    expect(html).toContain("Client (facultatif)");
+  });
+
+  it("modèle sans miroir : aucun de ces champs", async () => {
+    const html = await modal("frais_bancaires");
+    expect(html).not.toContain('id="e-mir"');
+  });
+});
+
+// ─── Boutons rapides du Journal : colonnes, nouveaux modèles, cohérence ───
+
+describe("boutons rapides du Journal : colonnes et cohérence des modèles", () => {
+  const data = JSON.parse(
+    loadAppAndRun(`capture(JSON.stringify({
+      types: Object.fromEntries(Object.entries(ECRITURE_TYPES).map(([k, t]) => [k, { label: t.label, lignes: t.lignes, miroir: t.miroir || null, hint: t.hint || '' }])),
+      groupes: ECRITURE_GROUPES.map(g => ({ titre: g.titre, boutons: g.boutons })),
+      plan: PLAN,
+      cats: ACHAT_CATEGORIES,
+      catComptes: Object.fromEntries(ACHAT_CATEGORIES.map(c => [c, achatCompteAuto(c)])),
+    }));`)
+  );
+  const keys = Object.keys(data.types);
+
+  it("chaque modèle a un bouton, dans exactement un groupe, et chaque bouton pointe un modèle existant", () => {
+    const inGroups = data.groupes.flatMap((g: any) => g.boutons.map((b: any) => b[0]));
+    expect(inGroups.filter((k: string) => !data.types[k])).toEqual([]);
+    expect(keys.filter((k) => !inGroups.includes(k))).toEqual([]);
+    expect(inGroups.length).toBe(new Set(inGroups).size);
+  });
+
+  it("4 colonnes thématiques", () => {
+    expect(data.groupes.map((g: any) => g.titre)).toEqual(["Encaissements", "Achats & équipements", "Charges courantes", "Banque & trésorerie"]);
+  });
+
+  it("tous les comptes utilisés par les modèles existent dans le plan comptable (sinon la liste déroulante se prérempli de travers)", () => {
+    const missing = keys.flatMap((k) => data.types[k].lignes.map((l: any) => l.compte).filter((c: string) => !data.plan.includes(c)).map((c: string) => `${k}: ${c}`));
+    expect(missing).toEqual([]);
+  });
+
+  it("chaque modèle = 2 lignes, une au débit et une au crédit, sur deux comptes différents", () => {
+    for (const k of keys) {
+      const l = data.types[k].lignes;
+      expect(l, k).toHaveLength(2);
+      expect(l.map((x: any) => x.sens).sort(), k).toEqual(["credit", "debit"]);
+      expect(l[0].compte, k).not.toBe(l[1].compte);
+    }
+  });
+
+  it("les nouveaux modèles imputent les bons comptes", () => {
+    const dc = (k: string) => {
+      const l = data.types[k].lignes;
+      return [l.find((x: any) => x.sens === "debit").compte.split(" ")[0], l.find((x: any) => x.sens === "credit").compte.split(" ")[0]];
+    };
+    expect(dc("licences_annexes")).toEqual(["512", "7562"]);
+    expect(dc("buvette_manifestation")).toEqual(["512", "7080"]);
+    expect(dc("pass_region")).toEqual(["512", "7088"]);
+    expect(dc("remboursement_pass_region")).toEqual(["512", "7410"]);
+    expect(dc("autre_encaissement")).toEqual(["512", "7580"]);
+    expect(dc("petit_equipement")).toEqual(["6063", "512"]);
+    expect(dc("produits_publicitaires")).toEqual(["6230", "512"]);
+    expect(dc("autre_depense")).toEqual(["6580", "512"]);
+    expect(dc("interets_livret")).toEqual(["5121", "768"]);
+    expect(dc("remise_especes")).toEqual(["512", "5300"]);
+    expect(dc("retrait_especes")).toEqual(["5300", "512"]);
+    expect(dc("remboursement_emprunt")).toEqual(["1640", "512"]);
+    expect(dc("encaissement_a_identifier")).toEqual(["512", "471"]);
+    expect(dc("paiement_a_identifier")).toEqual(["471", "512"]);
+  });
+
+  it("les mouvements internes (transferts, espèces) ne touchent aucun compte de charge ou de produit", () => {
+    for (const k of ["transfert_vers_epargne", "transfert_depuis_epargne", "remise_especes", "retrait_especes"]) {
+      const classes = data.types[k].lignes.map((l: any) => l.compte[0]);
+      expect(classes.every((c: string) => c === "5"), k).toBe(true);
+    }
+  });
+
+  it("toute catégorie d'achat d'un miroir existe dans la liste du formulaire, et chaque catégorie (sauf « Autre ») a son compte", () => {
+    for (const k of keys) {
+      const m = data.types[k].miroir;
+      if (m && m.kind === "achat") expect(data.cats, k).toContain(m.categorie);
+    }
+    for (const c of data.cats.filter((c: string) => c !== "Autre")) {
+      expect(data.catComptes[c], c).not.toBe("6580 - Charges diverses de gestion courante");
+    }
+    // Chaque compte de catégorie existe dans le plan.
+    for (const c of data.cats) expect(data.plan, c).toContain(data.catComptes[c]);
+  });
+
+  it("le Journal affiche les 4 colonnes et tous les boutons pour qui a le droit d'écriture", () => {
+    const html = loadAppAndRun(`hasPerm = () => true; D.journal = []; capture(vJournal());`);
+    for (const g of data.groupes) expect(html).toContain(g.titre.replace("&", "&amp;") === g.titre ? g.titre : g.titre.replace("&", "&amp;"));
+    for (const k of keys) expect(html, k).toContain(`openEcritureType('${k}')`);
+    expect(html).toContain("grid-template-columns:repeat(auto-fit,minmax(220px,1fr))");
+    // Les boutons à miroir sont marqués ↗ et l'infobulle indique les comptes.
+    expect(html).toContain("Débit 5121 · Crédit 768");
+    expect(html).toMatch(/Textile \/ tenues ↗/);
+    expect(html).not.toMatch(/Frais bancaires ↗/);
+  });
+
+  it("sans droit d'écriture : aucune écriture rapide (mais la page reste lisible)", () => {
+    const html = loadAppAndRun(`hasPerm = () => false; D.journal = []; capture(vJournal());`);
+    expect(html).not.toContain("Écritures rapides");
+    expect(html).not.toContain("openEcritureType(");
+    expect(html).toContain("Journal comptable");
+  });
+
+  it("les actions générales restent dans la barre (nouvelle écriture, assistant)", () => {
+    const html = loadAppAndRun(`hasPerm = () => true; D.journal = []; capture(vJournal());`);
+    expect(html).toContain("+ Nouvelle écriture");
+    expect(html).toContain("Assistant déséquilibres");
+  });
+});
+
+describe("nouveaux boutons : enregistrement réel", () => {
+  const save = (type: string, amount = "100") =>
+    loadAppAndRunAsync(`
+      ${QUICK_ENV}
+      openEcritureType(${JSON.stringify(type)});
+      const vals = { 'e-lib': UI.editObj.libelle, 'e-dat': '2026-10-08', 'e-pie': 'N-1', 'e-cpt': UI.editObj.compte, 'e-cpt-ctr': UI.editObj.contrepartie, 'e-mnt': '${amount}' };
+      document.getElementById = (id) => id === 'e-mir' ? { checked: false } : (id in vals ? { value: vals[id] } : null);
+      await saveEcr();
+      capture(JSON.stringify(DBT.journal_comptable.map(r => [r.compte.split(' ')[0], r.debit, r.credit])));
+    `).then((v) => JSON.parse(v));
+
+  it("intérêts du livret : 5121 débité, 768 crédité", async () => {
+    expect(await save("interets_livret", "12.5")).toEqual([["5121", 12.5, 0], ["768", 0, 12.5]]);
+  });
+  it("remise d'espèces : 512 débité, 5300 crédité ; retrait : l'inverse", async () => {
+    expect(await save("remise_especes", "250")).toEqual([["512", 250, 0], ["5300", 0, 250]]);
+    expect(await save("retrait_especes", "250")).toEqual([["5300", 250, 0], ["512", 0, 250]]);
+  });
+  it("encaissement / paiement à identifier : passent par le compte d'attente 471", async () => {
+    expect(await save("encaissement_a_identifier", "80")).toEqual([["512", 80, 0], ["471", 0, 80]]);
+    expect(await save("paiement_a_identifier", "80")).toEqual([["471", 80, 0], ["512", 0, 80]]);
+  });
+  it("remboursement d'emprunt : 1640 débité (capital), 512 crédité", async () => {
+    expect(await save("remboursement_emprunt", "400")).toEqual([["1640", 400, 0], ["512", 0, 400]]);
+  });
+  it("buvette : crée aussi la vente quand la case est cochée", async () => {
+    const r = JSON.parse(
+      await loadAppAndRunAsync(`
+        ${QUICK_ENV}
+        openEcritureType('buvette_manifestation');
+        const vals = { 'e-lib': UI.editObj.libelle, 'e-dat': '2026-10-08', 'e-pie': 'B-1', 'e-cpt': UI.editObj.compte, 'e-cpt-ctr': UI.editObj.contrepartie, 'e-mnt': '320', 'e-mir-tiers': 'Tournoi du club' };
+        document.getElementById = (id) => id === 'e-mir' ? { checked: true } : (id in vals ? { value: vals[id] } : null);
+        await saveEcr();
+        capture(JSON.stringify({ f: DBT.factures.map(f => [f.destinataire, f.statut, f.lignes[0].pu]), j: DBT.journal_comptable.map(r => [r.compte.split(' ')[0], r.debit, r.credit]) }));`)
+    );
+    expect(r.f).toEqual([["Tournoi du club", "Payée", 320]]);
+    expect(r.j).toEqual([["512", 320, 0], ["7080", 0, 320]]);
   });
 });

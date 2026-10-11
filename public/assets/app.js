@@ -148,6 +148,7 @@ const PLAN = [
 '7561 - Cotisations membres actifs',
 '7562 - Cotisations licences et adhésions annexes',
 '7580 - Autres produits de gestion courante',
+'768 - Autres produits financiers',
 ];
 const PLAN_OPT = PLAN.map(p=>`<option value="${p}">${p}</option>`).join('');
 
@@ -5371,32 +5372,10 @@ function vJournal(){
   <div class="card" style="margin-bottom:12px;padding:12px 16px;font-size:12px;color:${ecart===0?'#1e7e34':'var(--red)'}">${ecart===0?'Journal équilibré sur l’exercice sélectionné.':'Le journal n’est pas équilibré. Vérifiez les anciennes écritures manuelles ou importées.'}${issues.length?`<div style="margin-top:8px;color:var(--txt)">Pièces déséquilibrées détectées : <strong>${issues.length}</strong>${issues.slice(0,3).map(i=>`<div style="margin-top:4px;font-size:11px;color:var(--txt2)">${i.piece} : ${i.ecart.toFixed(2)} €</div>`).join('')}</div>`:''}</div>
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
   ${canWrite?`<button class="btn primary" onclick="openModal('ecr')">+ Nouvelle écriture</button>`:''}
-  ${canWrite?`<button class="btn" onclick="openEcritureType('cotisation')" title="Écriture type encaissement cotisation">⚡ Cotisation</button>`:''}
-  ${canWrite?`<button class="btn" onclick="openEcritureType('achat_fournisseur')" title="Écriture type paiement fournisseur">⚡ Achat</button>`:''}
-  ${canWrite?`<button class="btn" onclick="openEcritureType('achat_licence')" title="Écriture type achat de licence fédérale">⚡ Achat licence</button>`:''}
-  ${canWrite?`<button class="btn" onclick="openEcritureType('subvention')" title="Écriture type subvention/don">⚡ Subvention</button>`:''}
-  ${canWrite?`<button class="btn" onclick="openEcritureType('facture_telecom')" title="Écriture type paiement facture télécom (téléphone, internet, mobile)">⚡ Facture Télécom</button>`:''}
-  ${canWrite?`<button class="btn" onclick="openEcritureType('frais_bancaires')" title="Écriture type frais bancaires prélevés par la banque">⚡ Frais bancaires</button>`:''}
-  ${canWrite?`<button class="btn" onclick="openEcritureType('remboursement_frais_bancaires')" title="Écriture type remboursement de frais bancaires par la banque">⚡ Remboursement frais bancaires</button>`:''}
-  ${canWrite?`<button class="btn" onclick="openEcritureType('sacem')" title="Écriture type paiement redevance SACEM (droits d'auteur)">⚡ SACEM</button>`:''}
-  ${canWrite?`<button class="btn" onclick="openEcritureType('spre')" title="Écriture type paiement redevance SPRE (rémunération équitable)">⚡ SPRE</button>`:''}
-  ${canWrite?`<button class="btn" onclick="openEcritureType('assurance')" title="Écriture type paiement prime d'assurance">⚡ Assurance</button>`:''}
-  ${canWrite?`<button class="btn" onclick="openEcritureType('achat_materiel_sportif')" title="Écriture type achat de matériel sportif (6051)">⚡ Matériel sportif</button>`:''}
-  ${canWrite?`<button class="btn" onclick="openEcritureType('achat_textile')" title="Écriture type achat de textile / tenues (6052)">⚡ Textile / tenues</button>`:''}
-  ${canWrite?`<button class="btn" onclick="openEcritureType('location')" title="Écriture type location (salle, matériel loué...) (6132)">⚡ Location</button>`:''}
-  ${canWrite?`<button class="btn" onclick="openEcritureType('deplacement')" title="Écriture type déplacement / voyage pour compétition ou stage (6251, alimente le même poste que 6241)">⚡ Déplacement</button>`:''}
-  ${canWrite?`<button class="btn" onclick="openEcritureType('repas_reception')" title="Écriture type repas / réception (6257)">⚡ Repas / réception</button>`:''}
-  ${canWrite?`<button class="btn" onclick="openEcritureType('communication')" title="Écriture type communication / publicité (623)">⚡ Communication</button>`:''}
-  ${canWrite?`<button class="btn" onclick="openEcritureType('honoraires')" title="Écriture type honoraires (expert-comptable, commissaire aux comptes...) (6226)">⚡ Honoraires</button>`:''}
-  ${canWrite?`<button class="btn" onclick="openEcritureType('encaissement_stage')" title="Écriture type encaissement d'un stage/cours ponctuel (7061)">⚡ Stage / cours</button>`:''}
-  ${canWrite?`<button class="btn" onclick="openEcritureType('vente_equipement')" title="Écriture type vente de vêtements / équipements (707)">⚡ Vente équipement</button>`:''}
-  ${canWrite?`<button class="btn" onclick="openEcritureType('don')" title="Écriture type don reçu, distinct des subventions (754)">⚡ Don</button>`:''}
-  ${canWrite?`<button class="btn" onclick="openEcritureType('remboursement_adherent')" title="Écriture type remboursement à un adhérent — pré-rempli pour le trop-perçu kit/tenue (707), à ajuster selon ce qui est remboursé">⚡ Remboursement adhérent</button>`:''}
-  ${canWrite?`<button class="btn" onclick="openEcritureType('transfert_vers_epargne')" title="Écriture type virement du compte courant vers le livret d'épargne (5121 débit / 512 crédit) — sans effet sur le résultat">⚡ Compte courant → Épargne</button>`:''}
-  ${canWrite?`<button class="btn" onclick="openEcritureType('transfert_depuis_epargne')" title="Écriture type virement du livret d'épargne vers le compte courant (512 débit / 5121 crédit) — sans effet sur le résultat">⚡ Épargne → Compte courant</button>`:''}
   <button class="btn" onclick="openEquilibreAssistant()">Assistant déséquilibres${issues.length?` (${issues.length})`:''}</button>
   ${canWrite&&issues.length?`<button class="btn gold" onclick="regulariserEquilibreExo()">Équilibrer l'exercice</button>`:''}
   </div>
+  ${canWrite?ecritureRapideHtml():''}
   <div class="wrap">
   <div style="display:grid;grid-template-columns:90px 70px 1fr 90px 90px;gap:8px;padding:6px 0;font-size:11px;color:var(--txt2);font-weight:500;border-bottom:.5px solid var(--brd2)">
   <span>Date</span><span>Pièce</span><span>Compte / Libellé</span><span style="text-align:right">Débit</span><span style="text-align:right">Crédit</span>
@@ -6820,7 +6799,7 @@ async function delFac(id){
   if(!await confirmModal('Supprimer ?'))return;
   const {error}=await SB.from('factures').delete().eq('id',id);
   if(error)return alert('Erreur lors de la suppression : '+error.message);
-  try{await deleteJournalAuto(autoPiece('vente',id));}catch(e){return alert('Vente supprimée, mais écriture comptable non supprimée : '+e.message);}
+  try{await deleteJournalAuto(autoPiece('vente',id));await deleteQuickMirrorRows(id);}catch(e){return alert('Vente supprimée, mais écriture comptable non supprimée : '+e.message);}
   D.factures=D.factures.filter(f=>f.id!==id);render();
 }
 function printFac(id){
@@ -8574,6 +8553,15 @@ function renderModal(){
     const sens1=e._lignesType?.[1]?.sens||'credit';
     const sensTag=s=>s==='debit'?`<span style="color:var(--red);font-weight:600;font-size:11px">→ débit</span>`:`<span style="color:#1e7e34;font-weight:600;font-size:11px">→ crédit</span>`;
     const typeBanner=isType?`<div id="ecr-type-hint" style="margin-bottom:14px;padding:10px 14px;background:#e8f4ea;border-radius:10px;border:1px solid #b2d8b5;font-size:12px;color:#1e7e34;display:flex;gap:8px;align-items:center"><span>⚡</span><span><strong>${esc(e._typeLabel||'Écriture type')}</strong> — le sens (débit/crédit) est fixé par ce modèle, seul le montant est à saisir.${e._typeHint?`<br>${esc(e._typeHint)}`:''}</span></div>`:'';
+    const mir=isType?e._miroir:null;
+    const miroirFields=mir?`<div class="fg full" style="background:var(--bg2);border-radius:var(--r);padding:10px;margin-top:2px">
+    <label style="display:flex;gap:8px;align-items:center;cursor:pointer;font-weight:600"><input type="checkbox" id="e-mir" ${e.miroirOn===false?'':'checked'} onchange="UI.editObj.miroirOn=this.checked"> Enregistrer aussi dans l'onglet ${mir.kind==='achat'?'Achats':'Ventes'}</label>
+    <div class="g2" style="margin-top:8px">
+    <div class="fg"><label>${mir.kind==='achat'?'Fournisseur':'Client'} (facultatif)</label><input id="e-mir-tiers" value="${esc(e.miroirTiers||'')}" placeholder="${mir.kind==='achat'?'Nom du fournisseur':'Nom du client'}"></div>
+    <div class="fg"><label>Mode de règlement</label><select id="e-mir-mode">${MODES_PAIE.map(m=>`<option ${m==='Virement'?'selected':''}>${m}</option>`).join('')}</select></div>
+    </div>
+    <div style="font-size:11px;color:var(--txt2);margin-top:6px">Simple aperçu dans l'onglet : les écritures comptables restent celles de cette fenêtre, il n'y aura <strong>pas de doublon</strong>.</div>
+    </div>`:'';
     const montantField=isType
       ?`<div class="fg"><label>Montant (€)</label><input id="e-mnt" type="number" value="${e.montant||0}" min="0" step="0.01"></div>`
       :`<div class="fg"><label>Débit (€)</label><input id="e-deb" type="number" value="${e.debit||0}" min="0" step="0.01"></div>
@@ -8587,6 +8575,7 @@ function renderModal(){
     <div class="fg full"><label>Compte de contrepartie ${isType?sensTag(sens1):''}</label><select id="e-cpt-ctr" style="width:100%">${PLAN.map(p=>`<option value="${p}" ${p===e.contrepartie?'selected':''}>${p}</option>`).join('')}</select></div>
     <div class="fg full"><label>Libellé</label><input id="e-lib" value="${esc(e.libelle||'')}" placeholder="Description de l'opération"></div>
     ${montantField}
+    ${miroirFields}
     </div>
     ${isType?'':`<div style="background:var(--bg2);border-radius:var(--r);padding:10px;margin-top:12px;font-size:12px;color:var(--txt2)">Si vous ne renseignez qu'un débit ou qu'un crédit, la ligne de contrepartie sera créée automatiquement pour garder le journal équilibré.</div>`}
     <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="saveEcr()">Enregistrer</button></div>
@@ -8662,7 +8651,7 @@ function renderModal(){
     <div class="fg"><label>Date</label><input id="a-dat" type="date" value="${a.date_op}"></div>
     <div class="fg"><label>Fournisseur</label><input id="a-fou" value="${a.fournisseur}"></div>
     <div class="fg full"><label>Désignation</label><input id="a-des" value="${a.designation||''}"></div>
-    <div class="fg"><label>Catégorie</label><select id="a-cat">${['Équipement','Location','Textile','Fournitures','Transport','Formation','Autre'].map(c=>`<option ${a.categorie===c?'selected':''}>${c}</option>`).join('')}</select></div>
+    <div class="fg"><label>Catégorie</label><select id="a-cat">${ACHAT_CATEGORIES.map(c=>`<option ${a.categorie===c?'selected':''}>${c}</option>`).join('')}</select></div>
     <div class="fg"><label>Montant TTC (€)</label><input id="a-mnt" type="number" value="${a.montant}" min="0" step="0.01"></div>
     <div class="fg"><label>Mode de paiement</label><select id="a-mod">${MODES_PAIE.map(p=>`<option ${a.mode_paiement===p?'selected':''}>${p}</option>`).join('')}</select></div>
     <div class="fg"><label>Référence paiement</label><input id="a-ref" value="${a.reference_paiement||''}" placeholder="N° chèque, réf. virement..."></div>
@@ -8840,6 +8829,12 @@ function renderModal(){
 // `sens` fixe le côté (débit/crédit) de chaque ligne : c'est le modèle qui
 // décide, jamais une saisie libre de l'utilisateur (cf. inversion du
 // 11/08/2026 sur une pièce SUB-... où le débit/crédit avait été intervertis).
+// `miroir` (facultatif) : ce modèle correspond à un achat ({kind:'achat',categorie}) ou à une
+// vente ({kind:'vente'}). Si la case de la fenêtre est cochée, l'opération est AUSSI enregistrée dans
+// l'onglet Achats / Ventes, à titre d'aperçu : les écritures du Journal restent celles de la fenêtre
+// (marquées source_type='ecriture_rapide' + source_id = id de l'enregistrement) et les
+// synchronisations automatiques de ces onglets (syncAchatJournal / syncVenteJournal) les reconnaissent
+// pour ne jamais créer une 2e série d'écritures.
 const ECRITURE_TYPES={
   cotisation:{
     label:'Encaissement cotisation',
@@ -8851,6 +8846,7 @@ const ECRITURE_TYPES={
   },
   achat_fournisseur:{
     label:'Achat fournisseur',
+    miroir:{kind:'achat',categorie:'Fournitures'},
     montant:0,
     lignes:[
       {compte:'6061 - Fournitures non stockées',libelle:'Achat fournisseur',sens:'debit'},
@@ -8859,6 +8855,7 @@ const ECRITURE_TYPES={
   },
   achat_licence:{
     label:'Achat licence',
+    miroir:{kind:'achat',categorie:'Licence'},
     montant:0,
     lignes:[
       {compte:'6281 - Cotisations fédérales et licences',libelle:'Achat licence',sens:'debit'},
@@ -8875,6 +8872,7 @@ const ECRITURE_TYPES={
   },
   facture_telecom:{
     label:'Facture télécom',
+    miroir:{kind:'achat',categorie:'Télécom'},
     montant:0,
     lignes:[
       {compte:'6260 - Téléphone et communications',libelle:'Facture télécom',sens:'debit'},
@@ -8902,6 +8900,7 @@ const ECRITURE_TYPES={
   },
   sacem:{
     label:'Redevance SACEM',
+    miroir:{kind:'achat',categorie:'Redevances'},
     montant:0,
     lignes:[
       {compte:'651 - Redevances droits d auteur SACEM',libelle:'Redevance SACEM',sens:'debit'},
@@ -8910,6 +8909,7 @@ const ECRITURE_TYPES={
   },
   spre:{
     label:'Redevance SPRE',
+    miroir:{kind:'achat',categorie:'Redevances'},
     montant:0,
     lignes:[
       {compte:'652 - Redevances SPRE',libelle:'Redevance SPRE',sens:'debit'},
@@ -8918,6 +8918,7 @@ const ECRITURE_TYPES={
   },
   assurance:{
     label:'Prime assurance',
+    miroir:{kind:'achat',categorie:'Assurance'},
     montant:0,
     lignes:[
       {compte:'616 - Primes assurances',libelle:'Prime assurance',sens:'debit'},
@@ -8926,6 +8927,7 @@ const ECRITURE_TYPES={
   },
   achat_materiel_sportif:{
     label:'Achat matériel sportif',
+    miroir:{kind:'achat',categorie:'Équipement'},
     montant:0,
     lignes:[
       {compte:'6051 - Achats de matériels et équipements sportifs',libelle:'Achat matériel sportif',sens:'debit'},
@@ -8934,6 +8936,7 @@ const ECRITURE_TYPES={
   },
   achat_textile:{
     label:'Achat textile / tenues',
+    miroir:{kind:'achat',categorie:'Textile'},
     montant:0,
     lignes:[
       {compte:'6052 - Achats de textile et tenues',libelle:'Achat textile / tenues',sens:'debit'},
@@ -8942,6 +8945,7 @@ const ECRITURE_TYPES={
   },
   location:{
     label:'Location',
+    miroir:{kind:'achat',categorie:'Location'},
     montant:0,
     lignes:[
       {compte:'6132 - Locations immobilières',libelle:'Location (salle, matériel...)',sens:'debit'},
@@ -8950,6 +8954,7 @@ const ECRITURE_TYPES={
   },
   deplacement:{
     label:'Déplacement / voyage',
+    miroir:{kind:'achat',categorie:'Transport'},
     montant:0,
     lignes:[
       // 6251 (Voyages et déplacements) plutôt que 6241 (Transports sur achats) :
@@ -8963,6 +8968,7 @@ const ECRITURE_TYPES={
   },
   repas_reception:{
     label:'Repas / réception',
+    miroir:{kind:'achat',categorie:'Réception'},
     montant:0,
     lignes:[
       {compte:'6257 - Réceptions repas',libelle:'Repas / réception',sens:'debit'},
@@ -8971,6 +8977,7 @@ const ECRITURE_TYPES={
   },
   communication:{
     label:'Communication / publicité',
+    miroir:{kind:'achat',categorie:'Communication'},
     montant:0,
     lignes:[
       {compte:'623 - Publicité publications',libelle:'Communication / publicité',sens:'debit'},
@@ -8979,6 +8986,7 @@ const ECRITURE_TYPES={
   },
   honoraires:{
     label:'Honoraires',
+    miroir:{kind:'achat',categorie:'Honoraires'},
     montant:0,
     lignes:[
       {compte:'6226 - Honoraires',libelle:'Honoraires (expert-comptable, CAC...)',sens:'debit'},
@@ -8987,6 +8995,7 @@ const ECRITURE_TYPES={
   },
   encaissement_stage:{
     label:'Encaissement stage / cours',
+    miroir:{kind:'vente'},
     montant:0,
     lignes:[
       {compte:'512 - Banque',libelle:'Encaissement stage / cours',sens:'debit'},
@@ -8995,6 +9004,7 @@ const ECRITURE_TYPES={
   },
   vente_equipement:{
     label:'Vente vêtements / équipements',
+    miroir:{kind:'vente'},
     montant:0,
     lignes:[
       {compte:'512 - Banque',libelle:'Vente vêtements / équipements',sens:'debit'},
@@ -9009,6 +9019,134 @@ const ECRITURE_TYPES={
       // pour un don manuel (particulier, entreprise hors subvention publique).
       {compte:'512 - Banque',libelle:'Don reçu',sens:'debit'},
       {compte:'754 - Dons manuels',libelle:'Don reçu',sens:'credit'},
+    ]
+  },
+  // ── Encaissements ──
+  licences_annexes:{
+    label:'Licences / adhésions annexes',
+    montant:0,
+    lignes:[
+      {compte:'512 - Banque',libelle:'Licence / adhésion annexe',sens:'debit'},
+      {compte:'7562 - Cotisations licences et adhésions annexes',libelle:'Licence / adhésion annexe',sens:'credit'},
+    ]
+  },
+  buvette_manifestation:{
+    label:'Buvette / manifestation',
+    montant:0,
+    miroir:{kind:'vente'},
+    lignes:[
+      {compte:'512 - Banque',libelle:'Buvette / manifestation',sens:'debit'},
+      {compte:'7080 - Produits des activités annexes',libelle:'Buvette / manifestation',sens:'credit'},
+    ]
+  },
+  pass_region:{
+    label:'Pass Région (participation)',
+    montant:0,
+    hint:'Participation versée au titre du Pass Région (7088). Pour un remboursement de la Région, utilisez « Pass Région (remboursement) ».',
+    lignes:[
+      {compte:'512 - Banque',libelle:'Participation Pass Région',sens:'debit'},
+      {compte:'7088 - Participations et produits accessoires Pass Région',libelle:'Participation Pass Région',sens:'credit'},
+    ]
+  },
+  remboursement_pass_region:{
+    label:'Pass Région (remboursement)',
+    montant:0,
+    lignes:[
+      {compte:'512 - Banque',libelle:'Remboursement Pass Région',sens:'debit'},
+      {compte:'7410 - Remboursements Pass Région',libelle:'Remboursement Pass Région',sens:'credit'},
+    ]
+  },
+  autre_encaissement:{
+    label:'Autre encaissement',
+    montant:0,
+    hint:'Produit divers (7580). Si vous ne savez pas encore de quoi il s\'agit, utilisez plutôt « Encaissement à identifier ».',
+    lignes:[
+      {compte:'512 - Banque',libelle:'Encaissement divers',sens:'debit'},
+      {compte:'7580 - Autres produits de gestion courante',libelle:'Encaissement divers',sens:'credit'},
+    ]
+  },
+  // ── Achats & équipements ──
+  petit_equipement:{
+    label:'Petit équipement',
+    montant:0,
+    miroir:{kind:'achat',categorie:'Équipement'},
+    lignes:[
+      {compte:'6063 - Petit équipement',libelle:'Petit équipement',sens:'debit'},
+      {compte:'512 - Banque',libelle:'Petit équipement',sens:'credit'},
+    ]
+  },
+  produits_publicitaires:{
+    label:'Produits publicitaires',
+    montant:0,
+    miroir:{kind:'achat',categorie:'Communication'},
+    lignes:[
+      {compte:'6230 - Achats de produits publicitaires',libelle:'Produits publicitaires (affiches, goodies…)',sens:'debit'},
+      {compte:'512 - Banque',libelle:'Produits publicitaires (affiches, goodies…)',sens:'credit'},
+    ]
+  },
+  // ── Charges courantes ──
+  autre_depense:{
+    label:'Autre dépense',
+    montant:0,
+    hint:'Charge diverse (6580). Si vous ne savez pas encore de quoi il s\'agit, utilisez plutôt « Paiement à identifier ».',
+    lignes:[
+      {compte:'6580 - Charges diverses de gestion courante',libelle:'Dépense diverse',sens:'debit'},
+      {compte:'512 - Banque',libelle:'Dépense diverse',sens:'credit'},
+    ]
+  },
+  // ── Banque, trésorerie & régularisations ──
+  interets_livret:{
+    label:'Intérêts du livret',
+    montant:0,
+    hint:'Intérêts crédités sur le livret : 5121 débité, 768 crédité. Produit financier, il augmente le résultat.',
+    lignes:[
+      {compte:'5121 - Livret d épargne',libelle:'Intérêts du livret',sens:'debit'},
+      {compte:'768 - Autres produits financiers',libelle:'Intérêts du livret',sens:'credit'},
+    ]
+  },
+  remise_especes:{
+    label:"Remise d'espèces en banque",
+    montant:0,
+    hint:'Dépôt des espèces de la caisse sur le compte bancaire : 512 débité, 5300 crédité. Mouvement interne, sans effet sur le résultat.',
+    lignes:[
+      {compte:'512 - Banque',libelle:"Remise d'espèces en banque",sens:'debit'},
+      {compte:'5300 - Caisse',libelle:"Remise d'espèces en banque",sens:'credit'},
+    ]
+  },
+  retrait_especes:{
+    label:"Retrait d'espèces",
+    montant:0,
+    hint:'Retrait d\'espèces au distributeur ou au guichet pour la caisse : 5300 débité, 512 crédité. Mouvement interne, sans effet sur le résultat.',
+    lignes:[
+      {compte:'5300 - Caisse',libelle:"Retrait d'espèces",sens:'debit'},
+      {compte:'512 - Banque',libelle:"Retrait d'espèces",sens:'credit'},
+    ]
+  },
+  remboursement_emprunt:{
+    label:"Remboursement d'emprunt (capital)",
+    montant:0,
+    hint:'Part de CAPITAL uniquement (1640). La part d\'intérêts de l\'échéance est une charge distincte, à enregistrer séparément.',
+    lignes:[
+      {compte:'1640 - Emprunts auprès des établissements de crédit',libelle:"Remboursement d'emprunt (capital)",sens:'debit'},
+      {compte:'512 - Banque',libelle:"Remboursement d'emprunt (capital)",sens:'credit'},
+    ]
+  },
+  encaissement_a_identifier:{
+    label:'Encaissement à identifier',
+    montant:0,
+    hint:'Virement reçu dont l\'origine est inconnue : enregistré en attente (471) pour pouvoir rapprocher la ligne bancaire. À régulariser dès que l\'origine est connue : le compte 471 doit revenir à zéro.',
+    lignes:[
+      {compte:'512 - Banque',libelle:'Encaissement à identifier',sens:'debit'},
+      {compte:'471 - Comptes d attente',libelle:'Encaissement à identifier',sens:'credit'},
+    ]
+  },
+  paiement_a_identifier:{
+    label:'Paiement à identifier',
+    montant:0,
+    hint:'Prélèvement ou paiement dont la nature est inconnue : enregistré en attente (471) pour pouvoir rapprocher la ligne bancaire. À régulariser dès que la nature est connue : le compte 471 doit revenir à zéro.',
+    lignes:[
+      {compte:'471 - Comptes d attente',libelle:'Paiement à identifier',sens:'debit'},
+      {compte:'512 - Banque',libelle:'Paiement à identifier',sens:'credit'},
     ]
   },
   // Transferts d'épargne : mouvements internes de trésorerie, sans effet sur le résultat.
@@ -9055,6 +9193,79 @@ const ECRITURE_TYPES={
   }
 };
 
+// Boutons rapides du Journal, regroupés en colonnes. [clé du modèle, libellé du bouton, aide].
+// Chaque modèle d'ECRITURE_TYPES apparaît dans exactement un groupe (vérifié par les tests).
+const ECRITURE_GROUPES=[
+  {titre:'Encaissements',icone:'📥',boutons:[
+    ['cotisation','Cotisation','Encaissement d\'une cotisation'],
+    ['licences_annexes','Licences / adhésions annexes','Encaissement de licences et adhésions annexes'],
+    ['encaissement_stage','Stage / cours','Encaissement d\'un stage ou d\'un cours ponctuel'],
+    ['vente_equipement','Vente équipement','Vente de vêtements / équipements'],
+    ['buvette_manifestation','Buvette / manifestation','Recettes de buvette ou de manifestation'],
+    ['subvention','Subvention','Subvention reçue'],
+    ['don','Don','Don reçu, distinct des subventions'],
+    ['pass_region','Pass Région (participation)','Participation Pass Région'],
+    ['remboursement_pass_region','Pass Région (remboursement)','Remboursement Pass Région'],
+    ['autre_encaissement','Autre encaissement','Produit divers'],
+  ]},
+  {titre:'Achats & équipements',icone:'🛒',boutons:[
+    ['achat_fournisseur','Achat fournisseur','Paiement d\'un fournisseur (fournitures)'],
+    ['achat_materiel_sportif','Matériel sportif','Achat de matériel sportif'],
+    ['achat_textile','Textile / tenues','Achat de textile / tenues'],
+    ['petit_equipement','Petit équipement','Achat de petit équipement'],
+    ['produits_publicitaires','Produits publicitaires','Affiches, goodies, supports de communication'],
+    ['achat_licence','Achat licence','Achat de licences fédérales'],
+  ]},
+  {titre:'Charges courantes',icone:'🏢',boutons:[
+    ['location','Location','Location (salle, matériel loué…)'],
+    ['assurance','Assurance','Paiement d\'une prime d\'assurance'],
+    ['facture_telecom','Télécom','Facture de téléphone, internet, mobile'],
+    ['sacem','SACEM','Redevance SACEM (droits d\'auteur)'],
+    ['spre','SPRE','Redevance SPRE (rémunération équitable)'],
+    ['honoraires','Honoraires','Honoraires (expert-comptable…)'],
+    ['communication','Communication','Communication / publicité'],
+    ['deplacement','Déplacement','Déplacement / voyage pour compétition ou stage'],
+    ['repas_reception','Repas / réception','Repas ou réception'],
+    ['autre_depense','Autre dépense','Charge diverse'],
+  ]},
+  {titre:'Banque & trésorerie',icone:'🏦',boutons:[
+    ['frais_bancaires','Frais bancaires','Frais prélevés par la banque'],
+    ['remboursement_frais_bancaires','Remboursement frais bancaires','Remboursement de frais par la banque'],
+    ['interets_livret','Intérêts du livret','Intérêts crédités sur le livret'],
+    ['transfert_vers_epargne','Compte courant → Épargne','Virement du compte courant vers le livret, sans effet sur le résultat'],
+    ['transfert_depuis_epargne','Épargne → Compte courant','Virement du livret vers le compte courant, sans effet sur le résultat'],
+    ['remise_especes','Remise d\'espèces en banque','Dépôt des espèces de la caisse en banque, sans effet sur le résultat'],
+    ['retrait_especes','Retrait d\'espèces','Retrait d\'espèces pour la caisse, sans effet sur le résultat'],
+    ['remboursement_emprunt','Remboursement d\'emprunt','Part de capital d\'une échéance d\'emprunt'],
+    ['encaissement_a_identifier','Encaissement à identifier','Virement reçu d\'origine inconnue (compte 471)'],
+    ['paiement_a_identifier','Paiement à identifier','Paiement de nature inconnue (compte 471)'],
+    ['remboursement_adherent','Remboursement adhérent','Remboursement à un adhérent — pré-rempli pour le trop-perçu kit/tenue (707), à ajuster'],
+  ]},
+];
+
+function ecritureTypeComptes(key){
+  const tpl=ECRITURE_TYPES[key]; if(!tpl) return '';
+  const code=l=>String(l?.compte||'').split(' ')[0];
+  return `Débit ${code(tpl.lignes.find(l=>l.sens==='debit'))} · Crédit ${code(tpl.lignes.find(l=>l.sens==='credit'))}`;
+}
+
+function ecritureRapideHtml(){
+  return `<div class="card" style="margin-bottom:12px;padding:14px 16px">
+  <div style="font-weight:600;font-size:13px;margin-bottom:2px">⚡ Écritures rapides</div>
+  <div style="font-size:11px;color:var(--txt2);margin-bottom:12px">Survolez un bouton pour voir les comptes utilisés. Les boutons marqués ↗ proposent aussi d'enregistrer l'opération dans l'onglet Achats ou Ventes (sans doublon).</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px">
+  ${ECRITURE_GROUPES.map(g=>`<div>
+    <div style="font-size:11px;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">${g.icone} ${esc(g.titre)}</div>
+    <div style="display:flex;flex-direction:column;gap:5px">
+    ${g.boutons.map(([key,label,tip])=>{
+      const mir=ECRITURE_TYPES[key]?.miroir;
+      const dest=mir?(mir.kind==='achat'?' — enregistre aussi dans Achats (case à cocher)':' — enregistre aussi dans Ventes (case à cocher)'):'';
+      return `<button class="btn sm" style="text-align:left;justify-content:flex-start" onclick="openEcritureType('${key}')" title="${esc(`${tip} — ${ecritureTypeComptes(key)}${dest}`)}">${esc(label)}${mir?' ↗':''}</button>`;
+    }).join('')}
+    </div></div>`).join('')}
+  </div></div>`;
+}
+
 function openEcritureType(type){
   if(!requireWritePerm('perm_comptabilite')) return;
   const tpl=ECRITURE_TYPES[type];
@@ -9065,6 +9276,7 @@ function openEcritureType(type){
     _isType:type,
     _typeLabel:tpl.label,
     _typeHint:tpl.hint||'',
+    _miroir:tpl.miroir||null,
     _lignesType:tpl.lignes,
     date_op:td(),
     exercice_id:D.currentExo?.id||null,
@@ -9442,14 +9654,22 @@ async function confirmDiplomeBatch(){
 
 function closeModal(){UI.modal=null;UI.editObj=null;renderModal()}
 
+const ACHAT_CATEGORIES=['Équipement','Location','Textile','Licence','Fournitures','Transport','Formation','Assurance','Télécom','Communication','Honoraires','Réception','Redevances','Autre'];
 function achatCompteAuto(categorie){
   const map={
     'Équipement':'6051 - Achats de matériels et équipements sportifs',
     'Location':'6132 - Locations immobilières',
     'Textile':'6052 - Achats de textile et tenues',
+    'Licence':'6281 - Cotisations fédérales et licences',
     'Fournitures':'6061 - Fournitures non stockées',
     'Transport':'6241 - Transports sur achats',
     'Formation':'6226 - Honoraires',
+    'Assurance':'616 - Primes assurances',
+    'Télécom':'6260 - Téléphone et communications',
+    'Communication':'623 - Publicité publications',
+    'Honoraires':'6226 - Honoraires',
+    'Réception':'6257 - Réceptions repas',
+    'Redevances':'651 - Redevances droits d auteur SACEM',
     'Autre':'6580 - Charges diverses de gestion courante',
   };
   return map[categorie]||'6580 - Charges diverses de gestion courante';
@@ -9547,6 +9767,13 @@ async function insertJournalRows(rows){
 }
 
 async function syncAchatJournal(achat){
+  // Achat créé par une écriture rapide : ses écritures existent déjà (source_type='ecriture_rapide').
+  // On les met à jour au lieu d'en générer une 2e série (ACH-…-CHG/-CTR) = doublon.
+  const quick=await quickMirrorRows(achat.id);
+  if(quick.length){
+    await syncQuickMirror(quick,{montant:parseFloat(achat.montant)||0,dateOp:achat.date_op,remove:achat.statut==='refuse'});
+    return;
+  }
   const piece=autoPiece('achat',achat.id);
   await deleteJournalAuto(piece);
   if(achat.statut==='refuse'||achat.statut==='nouveau'||!(+achat.montant>0)){
@@ -9582,8 +9809,14 @@ async function syncAchatJournal(achat){
 }
 
 async function syncVenteJournal(facture){
-  const piece=autoPiece('vente',facture.id);
   const total=totalVente(facture);
+  // Vente créée par une écriture rapide : mise à jour des écritures existantes, pas de doublon 411/70x.
+  const quick=await quickMirrorRows(facture.id);
+  if(quick.length){
+    await syncQuickMirror(quick,{montant:total,dateOp:facture.date_op||facture.date});
+    return;
+  }
+  const piece=autoPiece('vente',facture.id);
   await deleteJournalAuto(piece);
   if(!(total>0)){
     return;
@@ -9959,16 +10192,106 @@ async function saveEcr(){
   if(D.journal.some(j=>normalizePieceGroupKey(j.piece)===pieceKey)){
     if(!confirm(`La référence de pièce « ${piece} » est déjà utilisée par une autre écriture du journal. Les deux seront regroupées comme une seule pièce (assistant de déséquilibre inclus). Continuer quand même ?`))return;
   }
+  // Miroir Achats / Ventes (écritures types qui s'y prêtent, case cochée) : l'enregistrement est
+  // créé d'abord ; si le Journal échoue ensuite, il est retiré (voir plus bas).
+  const mirKind=typeLignes?UI.editObj?._miroir:null;
+  const wantMirror=!!(mirKind&&document.getElementById('e-mir')?.checked);
+  let mirror=null;
+  if(wantMirror){
+    try{
+      mirror=await createQuickMirrorRecord(mirKind,{
+        dateOp,piece,libelle:lib,
+        montant:Math.max(debit,credit),
+        tiers:document.getElementById('e-mir-tiers')?.value.trim()||'',
+        mode:document.getElementById('e-mir-mode')?.value||'Virement',
+      });
+    }catch(error){
+      return alert('Enregistrement dans l\'onglet impossible, rien n\'a été créé : '+error.message);
+    }
+  }
+  const mirrorTag=mirror?{source_type:'ecriture_rapide',source_id:mirror.id,source_logiciel:'gestion'}:{};
   const rows=[
-    {id:crypto.randomUUID(),date_op:dateOp,piece:`${piece}-L1`,compte,libelle:lib,debit,credit,exercice_id:D.currentExo?.id||null,created_at:new Date().toISOString()},
-    {id:crypto.randomUUID(),date_op:dateOp,piece:`${piece}-L2`,compte:contrepartie,libelle:`Contrepartie - ${lib}`,debit:credit>0?credit:0,credit:debit>0?debit:0,exercice_id:D.currentExo?.id||null,created_at:new Date().toISOString()}
+    {id:crypto.randomUUID(),date_op:dateOp,piece:`${piece}-L1`,compte,libelle:lib,debit,credit,...mirrorTag,exercice_id:D.currentExo?.id||null,created_at:new Date().toISOString()},
+    {id:crypto.randomUUID(),date_op:dateOp,piece:`${piece}-L2`,compte:contrepartie,libelle:`Contrepartie - ${lib}`,debit:credit>0?credit:0,credit:debit>0?debit:0,...mirrorTag,exercice_id:D.currentExo?.id||null,created_at:new Date().toISOString()}
   ];
   try{
     await insertJournalRows(rows);
   }catch(error){
+    // Pas d'enregistrement orphelin dans l'onglet si les écritures n'ont pas pu être créées.
+    if(mirror) await removeQuickMirrorRecord(mirror).catch(()=>{});
     return alert('Erreur : '+error.message);
   }
+  if(mirror) notify('success',`Écritures créées et opération ajoutée à l'onglet ${mirror.kind==='achat'?'Achats':'Ventes'} (sans doublon).`,'Écriture rapide');
   closeModal();render();
+}
+
+// ─── Miroir Achats / Ventes des écritures rapides ───────────────────────────
+// Crée l'enregistrement de l'onglet Achats (statut « Payé ») ou Ventes (statut « Payée ») qui
+// correspond à une écriture rapide. Les écritures comptables, elles, sont créées par saveEcr()
+// et marquées source_type='ecriture_rapide' / source_id = id de cet enregistrement.
+function nextFactureNumeroFor(year){
+  const re=new RegExp('^FAC-'+year+'-(\\d+)$');
+  const max=D.factures.reduce((m,f)=>{ const x=re.exec(String(f.numero||'')); return x?Math.max(m,parseInt(x[1],10)):m; },0);
+  return `FAC-${year}-${String(max+1).padStart(3,'0')}`;
+}
+async function createQuickMirrorRecord(mir,{dateOp,piece,libelle,montant,tiers,mode}){
+  const id=crypto.randomUUID();
+  const now=new Date().toISOString();
+  const notes=`⚡ Écriture rapide — pièce ${piece}. Les écritures comptables sont gérées depuis le Journal (aucun doublon).`;
+  if(mir.kind==='achat'){
+    const row={id,date_op:dateOp,fournisseur:tiers||'À préciser',designation:libelle,categorie:mir.categorie,montant,mode_paiement:mode,reference_paiement:'',statut:'paye',piece,notes,exercice_id:D.currentExo?.id||null,created_at:now,updated_at:now};
+    const {data,error}=await SB.from('achats').insert(row).select().single();
+    if(error) throw error;
+    D.achats.unshift(data||row);
+    return {id,kind:'achat'};
+  }
+  // Vente : le n° suit la série FAC-AAAA-NNN ; les ventes sont chargées d'abord pour ne pas réutiliser un numéro.
+  await loadTabData('facture');
+  const row={id,numero:nextFactureNumeroFor(String(dateOp||td()).slice(0,4)),date_op:dateOp,destinataire:tiers||'À préciser',adresse:'',objet:libelle,lignes:[{desc:libelle,qte:1,pu:montant}],statut:'Payée',notes:`${notes}\nRèglement : ${mode}`,exercice_id:D.currentExo?.id||null,created_at:now,updated_at:now};
+  const {data,error}=await SB.from('factures').insert(row).select().single();
+  if(error) throw error;
+  D.factures.unshift(normalizeFactureRow(data||row));
+  return {id,kind:'vente'};
+}
+async function removeQuickMirrorRecord(mirror){
+  const table=mirror.kind==='achat'?'achats':'factures';
+  await SB.from(table).delete().eq('id',mirror.id);
+  if(mirror.kind==='achat') D.achats=D.achats.filter(a=>a.id!==mirror.id); else D.factures=D.factures.filter(f=>f.id!==mirror.id);
+}
+// Écritures rapides rattachées à un enregistrement Achats/Ventes. Lues en base (et non dans
+// D.journal) : le journal n'est pas forcément chargé quand on enregistre depuis l'onglet.
+async function quickMirrorRows(recordId){
+  const {data,error}=await SB.from('journal_comptable').select('*').eq('source_type','ecriture_rapide').eq('source_id',recordId);
+  if(error) throw error;
+  return data||[];
+}
+async function deleteQuickMirrorRows(recordId){
+  const rows=await quickMirrorRows(recordId);
+  if(!rows.length) return;
+  const ids=rows.map(r=>r.id);
+  const {error}=await SB.from('journal_comptable').delete().in('id',ids);
+  if(error) throw error;
+  D.journal=D.journal.filter(j=>!ids.includes(j.id));
+}
+// L'enregistrement a été modifié depuis son onglet : les écritures rapides suivent (date,
+// montant), au lieu d'être doublées par une 2e série d'écritures automatiques.
+async function syncQuickMirror(rows,{montant,dateOp,remove}){
+  if(remove||!(montant>0)){
+    const ids=rows.map(r=>r.id);
+    const {error}=await SB.from('journal_comptable').delete().in('id',ids);
+    if(error) throw error;
+    D.journal=D.journal.filter(j=>!ids.includes(j.id));
+    return;
+  }
+  for(const r of rows){
+    const patch={date_op:dateOp||r.date_op,updated_at:new Date().toISOString()};
+    if((+r.debit||0)>0) patch.debit=montant;
+    if((+r.credit||0)>0) patch.credit=montant;
+    const {error}=await SB.from('journal_comptable').update(patch).eq('id',r.id);
+    if(error) throw error;
+    const local=D.journal.find(j=>j.id===r.id);
+    if(local) Object.assign(local,patch);
+  }
 }
 
 async function saveAchat(id){
@@ -10002,7 +10325,7 @@ async function delAchat(id){
   if(!await confirmModal('Supprimer ?'))return;
   const {error}=await SB.from('achats').delete().eq('id',id);
   if(error)return alert('Erreur lors de la suppression : '+error.message);
-  try{await deleteJournalAuto(autoPiece('achat',id));}catch(e){return alert('Achat supprimé, mais écriture comptable non supprimée : '+e.message);}
+  try{await deleteJournalAuto(autoPiece('achat',id));await deleteQuickMirrorRows(id);}catch(e){return alert('Achat supprimé, mais écriture comptable non supprimée : '+e.message);}
   D.achats=D.achats.filter(a=>a.id!==id);render()
 }
 async function validerAchat(id){

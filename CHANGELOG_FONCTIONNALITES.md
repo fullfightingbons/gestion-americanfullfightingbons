@@ -4,6 +4,66 @@ Ajoutées sur la base du projet existant, sans rien retirer. `tsc --noEmit`,
 les 31 tests existants (`vitest run`) et `wrangler deploy --dry-run` sont
 propres après ajout.
 
+## Journal : écritures rapides en 4 colonnes + 14 nouveaux boutons — 11/10/2026
+
+La barre de 23 boutons du Journal est remplacée par une carte **⚡ Écritures rapides** en 4 colonnes thématiques
+(une seule liste, `ECRITURE_GROUPES`, qui porte libellé, infobulle et regroupement ; les infobulles affichent aussi les
+comptes débités / crédités). « + Nouvelle écriture », « Assistant déséquilibres » et « Équilibrer l'exercice » restent
+dans la barre d'actions. Colonnes en `auto-fit` : 4 sur grand écran, empilées sur mobile.
+
+- 📥 **Encaissements** : Cotisation, **Licences / adhésions annexes** (7562), Stage / cours, Vente équipement,
+  **Buvette / manifestation** (7080), Subvention, Don, **Pass Région (participation)** (7088), **Pass Région
+  (remboursement)** (7410), **Autre encaissement** (7580).
+- 🛒 **Achats & équipements** : Achat fournisseur, Matériel sportif, Textile / tenues, **Petit équipement** (6063),
+  **Produits publicitaires** (6230), Achat licence.
+- 🏢 **Charges courantes** : Location, Assurance, Télécom, SACEM, SPRE, Honoraires, Communication, Déplacement,
+  Repas / réception, **Autre dépense** (6580).
+- 🏦 **Banque & trésorerie** : Frais bancaires, Remboursement frais bancaires, **Intérêts du livret** (5121 / 768),
+  Compte courant → Épargne, Épargne → Compte courant, **Remise d'espèces en banque** (512 / 5300), **Retrait
+  d'espèces** (5300 / 512), **Remboursement d'emprunt (capital)** (1640 / 512), **Encaissement à identifier**
+  (512 / 471), **Paiement à identifier** (471 / 512), Remboursement adhérent.
+
+Autres changements :
+- Plan comptable : ajout de **768 - Autres produits financiers**.
+- Aperçu Achats / Ventes (boutons marqués ↗) étendu à : Assurance, Télécom, Communication, Honoraires, Repas /
+  réception, SACEM, SPRE (achats) et Buvette / manifestation (vente), Petit équipement, Produits publicitaires.
+  Nouvelles catégories d'achat : Assurance, Télécom, Communication, Honoraires, Réception, Redevances (liste
+  `ACHAT_CATEGORIES` partagée avec le formulaire, chacune avec son compte dans `achatCompteAuto`). La case reste
+  décochable à chaque saisie.
+- Les modèles « à identifier » (compte d'attente 471) permettent de rapprocher une ligne bancaire d'origine inconnue
+  sans la laisser en suspens ; le compte 471 doit revenir à zéro une fois l'opération identifiée (le Contrôle de
+  complétude du Rapprochement la signale tant qu'elle n'est pas rapprochée).
+- Tests : chaque modèle a un bouton dans exactement un groupe, tous les comptes des modèles existent dans le plan, deux
+  lignes (une au débit, une au crédit), mouvements internes limités à la classe 5, et enregistrement réel des nouveaux
+  modèles.
+
+Aucune migration. `app.min.js` régénéré, `app.js?v=20261011e`.
+
+## Écritures rapides : aperçu dans les onglets Achats et Ventes, sans doublon — 11/10/2026
+
+Les boutons rapides du **Journal** qui correspondent à un achat ou à une vente peuvent maintenant aussi
+enregistrer l'opération dans l'onglet dédié, **sans créer une 2e série d'écritures**.
+- **Achats** (statut « Payé ») : Achat fournisseur (catégorie Fournitures), Achat licence (nouvelle catégorie
+  **Licence**, compte 6281), Achat matériel sportif (Équipement), Achat textile / tenues (Textile), Location (Location),
+  Déplacement / voyage (Transport).
+- **Ventes** (statut « Payée », n° `FAC-AAAA-NNN` = plus grand numéro existant + 1) : Vente vêtements / équipements,
+  Encaissement stage / cours.
+- La fenêtre affiche, pour ces modèles, une case **« Enregistrer aussi dans l'onglet Achats / Ventes »** (cochée par
+  défaut), un champ Fournisseur / Client (facultatif, « À préciser » sinon) et le mode de règlement (Virement par
+  défaut). Case décochée : comportement d'avant. Les autres modèles (frais bancaires, assurance, télécom, SACEM,
+  transferts d'épargne…) ne changent pas.
+- **Pas de doublon** : les écritures du Journal restent celles de la fenêtre (6xxx/512 ou 512/70x, comptes choisis
+  dans la fenêtre) ; elles sont marquées `source_type='ecriture_rapide'` + `source_id` = id de l'achat / de la vente.
+  `syncAchatJournal()` et `syncVenteJournal()` (enregistrer, valider un achat…) reconnaissent ce marquage et
+  **mettent à jour** les écritures existantes (date, montant) au lieu d'en générer d'autres (ACH-…, VTE-…-CLI/-PRO).
+  Un achat refusé ou ramené à 0 retire ses écritures rapides, comme pour les écritures automatiques ; supprimer
+  l'achat / la vente supprime ses écritures rapides. Un achat / une vente sans marquage garde exactement le
+  comportement précédent.
+- Atomicité : si l'enregistrement de l'onglet échoue, rien n'est créé ; si les écritures échouent ensuite,
+  l'enregistrement est retiré (pas d'orphelin).
+- Aucune migration (`journal_comptable.source_*` existent déjà). `app.min.js` régénéré, `app.js?v=20261011d`.
+  Tests ajoutés dans `test/rapprochement.test.ts`.
+
 ## Rapprochement : contrôle de complétude, chargement complet, ré-import sans effet de bord — 11/10/2026
 
 **Contrôle de complétude** (Banque › Rapprochement, carte « 🔎 Contrôle de complétude » en haut de page) : vérifie
