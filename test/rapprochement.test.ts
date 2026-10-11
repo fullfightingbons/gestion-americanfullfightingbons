@@ -619,3 +619,243 @@ describe("écritures types « Transfert d'épargne » — enregistrement", () =>
     ]);
   });
 });
+
+// ─── Saison précédente : chargement complet, ré-import, liens perdus ───
+
+describe("selectAllRows() — le serveur plafonne chaque requête à 5000 lignes", () => {
+  const run = (total: number, failAtPage = -1) =>
+    loadAppAndRunAsync(`
+      const DB = Array.from({length:${total}}, (_, i) => ({ id: 'id' + String(i).padStart(6,'0'), date_op: '2025-09-01' }));
+      const calls = [];
+      SB = { from: () => {
+        const q = { limit: 5000, offset: 0 };
+        const b = {
+          select: () => b, order: (col) => { q.order = col; return b; },
+          limit: (n) => { q.limit = n; return b; }, offset: (n) => { q.offset = n; return b; },
+          then: (res) => { calls.push({ offset: q.offset, limit: q.limit, order: q.order });
+            if (calls.length - 1 === ${failAtPage}) return Promise.resolve({ data: null, error: { message: 'boom' } }).then(res);
+            return Promise.resolve({ data: DB.slice(q.offset, q.offset + q.limit), error: null }).then(res); },
+        };
+        return b; } };
+      notify = () => {};
+      const r = await selectAllRows('journal_comptable');
+      capture(JSON.stringify({ n: r.data.length, unique: new Set(r.data.map(x => x.id)).size, error: !!r.error, calls }));
+    `).then((v) => JSON.parse(v));
+
+  it("12 000 lignes : 3 pages de 5000, rien de perdu ni de dupliqué, triées par id", async () => {
+    const r = await run(12000);
+    expect(r.n).toBe(12000);
+    expect(r.unique).toBe(12000);
+    expect(r.calls.map((c: any) => c.offset)).toEqual([0, 5000, 10000]);
+    expect(r.calls.every((c: any) => c.order === "id")).toBe(true);
+  });
+
+  it("exactement 5000 lignes : une page pleine déclenche une 2e requête (vide) pour confirmer la fin", async () => {
+    const r = await run(5000);
+    expect(r.n).toBe(5000);
+    expect(r.calls).toHaveLength(2);
+  });
+
+  it("une table petite ne coûte qu'une requête", async () => {
+    const r = await run(40);
+    expect(r.n).toBe(40);
+    expect(r.calls).toHaveLength(1);
+  });
+
+  it("erreur sur une page : renvoie ce qui a été chargé et signale l'erreur (pas de silence)", async () => {
+    const r = await run(12000, 1);
+    expect(r.error).toBe(true);
+    expect(r.n).toBe(5000);
+  });
+});
+
+describe("import de relevé : une opération déjà importée n'est plus remise « en attente »", () => {
+  it("l'upsert n'envoie pas `rapproche` (le conflit ne peut donc pas l'écraser)", async () => {
+    const r = JSON.parse(
+      await loadAppAndRunAsync(`
+        D.comptes = [{ id: 'c1', nom: 'CM', transactions: [] }];
+        UI.bankPreview = { cid: 'c1', rows: [
+          { compte_id: 'c1', date_op: '05/10/2026', libelle: 'VIR Dupont', debit: 0, credit: 45, rapproche: false, a_verifier: false, source_format: 'pdf' },
+        ] };
+        let sent = null;
+        SB = { from: () => ({ upsert: (rows, opts) => { sent = { rows, opts }; return { select: async () => ({ data: rows.map((x, i) => ({ ...x, id: 'n' + i })), error: null }) }; } }) };
+        closeModal = () => {}; render = () => {}; alert = () => {};
+        await confirmBankImport();
+        capture(JSON.stringify({ keys: Object.keys(sent.rows[0]).sort(), onConflict: sent.opts.onConflict }));
+      `)
+    );
+    expect(r.keys).not.toContain("rapproche");
+    expect(r.keys).not.toContain("a_verifier");
+    expect(r.onConflict).toEqual(["compte_id", "date_op", "libelle", "debit", "credit"]);
+  });
+});
+
+describe("rapprLostLinks() / restaurerRapprochementsPerdus()", () => {
+  const setup = `
+    D.journal = [];
+    D.comptes = [{ id: 'c1', nom: 'CM', transactions: [
+      { id: 't1', rapproche: 0, ecriture_piece: 'P1', ecriture_pieces_json: '["P1"]', date_op: '05/10/2025', libelle: 'a', credit: 45, debit: 0 },
+      { id: 't2', rapproche: 1, ecriture_piece: 'P2', ecriture_pieces_json: '["P2"]', date_op: '06/10/2025', libelle: 'b', credit: 30, debit: 0 },
+      { id: 't3', rapproche: 0, ecriture_piece: null, ecriture_pieces_json: null, date_op: '07/10/2025', libelle: 'c', credit: 10, debit: 0 },
+      { id: 't4', rapproche: null, ecriture_piece: null, ecriture_pieces_json: null, date_op: '08/10/2025', libelle: 'd', credit: 5, debit: 0 },
+      { id: 't5', rapproche: 0, ecriture_piece: 'P2', ecriture_pieces_json: '["P2"]', date_op: '09/10/2025', libelle: 'e', credit: 30, debit: 0 },
+      { id: 't6', rapproche: 0, ecriture_piece: 'P6', ecriture_pieces_json: '["P6","P7"]', date_op: '10/10/2025', libelle: 'f', credit: 8, debit: 0 },
+    ] }];
+  `;
+
+  it("repère uniquement les opérations « en attente » qui gardent un lien (pas les annulations volontaires)", () => {
+    const ids = JSON.parse(loadAppAndRun(`${setup} capture(JSON.stringify(rapprLostLinks(rapprAllTransactions()).map(x => x.t.id).sort()));`));
+    expect(ids).toEqual(["t1", "t5", "t6"]);
+  });
+
+  it("rétablit les liens, sauf si l'écriture est déjà prise par une autre opération rapprochée", async () => {
+    const r = JSON.parse(
+      await loadAppAndRunAsync(`${setup}
+        confirmModal = async () => true; notify = () => {}; render = () => {};
+        let sent = null;
+        SB = { from: () => ({ update: (patch) => ({ in: async (col, ids) => { sent = { patch, ids }; return { data: [], error: null }; } }) }) };
+        await restaurerRapprochementsPerdus();
+        const tx = D.comptes[0].transactions;
+        capture(JSON.stringify({ sent, restored: tx.filter(t => t.rapproche).map(t => t.id).sort() }));
+      `)
+    );
+    // t5 est écartée (P2 est utilisée par t2, déjà rapprochée) ; t1 et t6 sont rétablies.
+    expect(r.sent.ids.sort()).toEqual(["t1", "t6"]);
+    expect(r.sent.patch).toEqual({ rapproche: true });
+    expect(r.restored).toEqual(["t1", "t2", "t6"]);
+  });
+});
+
+// ─── Contrôle de complétude : « rien n'a été oublié » ───
+
+describe("rapprControlReport() — contrôle de complétude du rapprochement", () => {
+  // Jeu de données : une opération saine de chaque type + une anomalie de chaque catégorie.
+  const setup = `
+    var __today = new Date(); td = () => '2026-10-11';
+    D.journal = [
+      {id:'j1', piece:'OK-1',   compte:'512 - Banque', debit:45, credit:0, date_op:'2026-10-05', libelle:'Encaissement sain'},
+      {id:'j2', piece:'MIS-1',  compte:'512 - Banque', debit:50, credit:0, date_op:'2026-10-05', libelle:'Écriture 50 liée à une opération de 45'},
+      {id:'j3', piece:'PEND-1', compte:'512 - Banque', debit:20, credit:0, date_op:'2026-10-09', libelle:'Écriture récente en attente'},
+      {id:'j4', piece:'OLD-1',  compte:'512 - Banque', debit:15, credit:0, date_op:'2026-06-01', libelle:'Écriture ancienne en attente'},
+      {id:'j5', piece:'ZERO-1', compte:'707 - Ventes', debit:0, credit:0,  date_op:'2026-10-05', libelle:'Vente mise à zéro'},
+      {id:'j6', piece:'GRP-1',  compte:'512 - Banque', debit:30, credit:0, date_op:'2026-10-06', libelle:'Remise de chèques'},
+    ];
+    D.comptes = [{ id:'c1', nom:'CM', solde_initial:0, transactions:[
+      {id:'t_ok',   date_op:'05/10/2026', libelle:'ok',      credit:45, debit:0, rapproche:1, ecriture_piece:'OK-1',  ecriture_pieces_json:'["OK-1"]'},
+      {id:'t_mis',  date_op:'05/10/2026', libelle:'mismatch',credit:45, debit:0, rapproche:1, ecriture_piece:'MIS-1', ecriture_pieces_json:'["MIS-1"]'},
+      {id:'t_forc', date_op:'06/10/2026', libelle:'forcée',  credit:10, debit:0, rapproche:1, ecriture_piece:null,    ecriture_pieces_json:null},
+      {id:'t_orph', date_op:'06/10/2026', libelle:'orpheline',credit:5, debit:0, rapproche:1, ecriture_piece:'GONE-1',ecriture_pieces_json:'["GONE-1"]'},
+      {id:'t_g1',   date_op:'06/10/2026', libelle:'chèque 1',credit:18, debit:0, rapproche:1, ecriture_piece:'GRP-1', ecriture_pieces_json:'["GRP-1"]'},
+      {id:'t_g2',   date_op:'06/10/2026', libelle:'chèque 2',credit:12, debit:0, rapproche:1, ecriture_piece:'GRP-1', ecriture_pieces_json:'["GRP-1"]'},
+      {id:'t_pend', date_op:'09/10/2026', libelle:'attente', credit:20, debit:0, rapproche:0, ecriture_piece:null,    ecriture_pieces_json:null},
+      {id:'t_old',  date_op:'01/06/2026', libelle:'ancienne',credit:15, debit:0, rapproche:0, ecriture_piece:null,    ecriture_pieces_json:null},
+      {id:'t_zero', date_op:'05/10/2026', libelle:'à zéro',  credit:0,  debit:0, rapproche:0, ecriture_piece:null,    ecriture_pieces_json:null},
+      {id:'t_jan',  date_op:'03/01/2026', libelle:'janvier', credit:1,  debit:0, rapproche:0, ecriture_piece:null,    ecriture_pieces_json:null},
+    ]}];
+  `;
+  const report = (extra = "", opts = "") =>
+    JSON.parse(loadAppAndRun(`${setup} ${extra}
+      const r = rapprControlReport(${opts});
+      capture(JSON.stringify({
+        forced: r.forced.map(t => t.id), orphans: r.orphans.map(o => [o.txs.map(t => t.id), o.missing]),
+        mismatches: r.mismatches.map(m => [m.txs.map(t => t.id).sort(), m.diff]),
+        pendingTx: r.pendingTx.map(t => t.id).sort(), oldPendingTx: r.oldPendingTx.map(t => t.id),
+        pendingPieces: r.pendingPieces.map(p => p.piece).sort(), oldPendingPieces: r.oldPendingPieces.map(p => p.piece),
+        zeroLines: r.zeroLines.map(j => j.piece), zeroTx: r.zeroTx.map(t => t.id),
+        gaps: r.gaps, counts: r.counts, ok: r.ok, equation: r.equation,
+      }));`));
+
+  it("détecte chaque catégorie d'anomalie", () => {
+    const r = report();
+    expect(r.forced).toEqual(["t_forc"]);
+    expect(r.orphans).toEqual([[["t_orph"], ["GONE-1"]]]);
+    expect(r.mismatches).toEqual([[["t_mis"], -5]]); // opération 45 € ↔ écriture 50 €
+    expect(r.zeroLines).toEqual(["ZERO-1"]);
+    expect(r.zeroTx).toEqual(["t_zero"]);
+  });
+
+  it("un regroupement correct (deux chèques 18 + 12 ↔ une remise de 30) n'est PAS signalé", () => {
+    const r = report();
+    expect(r.mismatches.flatMap((m: any) => m[0])).not.toContain("t_g1");
+    expect(r.orphans.flatMap((o: any) => o[0])).not.toContain("t_g1");
+  });
+
+  it("liste ce qui est en attente, et à part ce qui l'est depuis plus de 45 jours", () => {
+    const r = report();
+    expect(r.pendingTx).toEqual(["t_jan", "t_old", "t_pend", "t_zero"]);
+    expect(r.oldPendingTx.sort()).toEqual(["t_jan", "t_old"]);
+    expect(r.pendingPieces).toEqual(["OLD-1", "PEND-1"]);
+    expect(r.oldPendingPieces).toEqual(["OLD-1"]);
+  });
+
+  it("repère les mois sans aucune opération entre la première et la dernière", () => {
+    const r = report();
+    expect(r.gaps).toEqual([{ compte: "CM", months: ["2026-02", "2026-03", "2026-04", "2026-05", "2026-07", "2026-08", "2026-09"] }]);
+  });
+
+  it("la période borne les résultats (ex. un exercice)", () => {
+    const r = report("", "{from:'2026-10-01', to:'2026-10-31'}");
+    expect(r.oldPendingTx).toEqual([]);
+    expect(r.pendingTx).not.toContain("t_old");
+    expect(r.gaps).toEqual([]);
+  });
+
+  it("l'état de rapprochement se décompose exactement : écart = soldes initiaux + non rapprochées + sans écriture − écritures 512 en attente + autres", () => {
+    const e = report().equation;
+    const sum = Math.round((e.soldeInitial + e.unrecTx + e.forcedNet + e.unrecPieces + e.autres) * 100) / 100;
+    expect(sum).toBe(e.ecart);
+  });
+
+  it("un état entièrement rapproché et cohérent : ok, écart nul", () => {
+    const r = JSON.parse(
+      loadAppAndRun(`
+        td = () => '2026-10-11';
+        D.journal = [{id:'a', piece:'P1', compte:'512 - Banque', debit:45, credit:0, date_op:'2026-10-05', libelle:'x'},
+                     {id:'b', piece:'P1-V', compte:'707 - Ventes', debit:0, credit:45, date_op:'2026-10-05', libelle:'x'}];
+        D.comptes = [{id:'c1', nom:'CM', transactions:[{id:'t1', date_op:'05/10/2026', libelle:'x', credit:45, debit:0, rapproche:1, ecriture_piece:'P1', ecriture_pieces_json:'["P1"]'}]}];
+        const r = rapprControlReport();
+        capture(JSON.stringify({ ok: r.ok, ecart: r.equation.ecart, counts: r.counts }));`)
+    );
+    expect(r).toEqual({ ok: true, ecart: 0, counts: { anomalies: 0, waiting: 0, old: 0 } });
+  });
+
+  it("le panneau s'affiche dans la vue Rapprochement, avec le bouton « Défaire » sur les anomalies", () => {
+    const html = loadAppAndRun(`${setup} capture(vRappr());`);
+    expect(html).toContain("Contrôle de complétude");
+    expect(html).toContain("annulerRapprochement('t_forc')");
+    expect(html).toContain("Rapprochées sans écriture liée");
+    expect(html).toContain("État de rapprochement");
+  });
+});
+
+describe("clôture d'exercice : avertissement si le rapprochement est incomplet", () => {
+  const close = (confirmAnswer: boolean) =>
+    loadAppAndRunAsync(`
+      td = () => '2026-10-11';
+      hasPerm = () => true;
+      loadTabData = async () => {};
+      exerciceDiagnostics = () => ({ ecartJournal: 0, resultat: 0 });
+      D.exercices = [{ id: 'exo1', libelle: '2025-2026', date_debut: '2025-07-01', date_fin: '2026-06-30', statut: 'actif' }];
+      D.journal = [];
+      D.comptes = [{ id: 'c1', nom: 'CM', transactions: [{ id: 't1', date_op: '10/10/2025', libelle: 'oubliée', credit: 10, debit: 0, rapproche: 0 }] }];
+      var asked = '', updated = false;
+      confirm = (m) => { asked = m; return ${confirmAnswer}; };
+      alert = () => {}; closeModal = () => {}; render = () => {}; refreshCurrentExo = () => {};
+      document.getElementById = () => null;
+      SB = { from: () => ({ update: () => ({ eq: async () => { updated = true; return { error: null }; } }) }) };
+      await finalizeExoClose('exo1');
+      capture(JSON.stringify({ asked, updated }));
+    `).then((v) => JSON.parse(v));
+
+  it("demande confirmation et ne clôture pas si l'utilisateur refuse", async () => {
+    const r = await close(false);
+    expect(r.asked).toContain("Rapprochement bancaire incomplet");
+    expect(r.asked).toContain("1 élément(s) non rapproché(s)");
+    expect(r.updated).toBe(false);
+  });
+
+  it("clôture si l'utilisateur confirme malgré tout", async () => {
+    const r = await close(true);
+    expect(r.updated).toBe(true);
+  });
+});

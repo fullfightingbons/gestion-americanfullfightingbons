@@ -675,15 +675,16 @@ async function loadTabData(tab, force=false){
     if(tab==='banque'){
       const [cpt,tr]=await Promise.all([
         SB.from('comptes_bancaires').select('*').order('created_at'),
-                                       SB.from('transactions').select('*').order('date_op',{ascending:false}),
+        selectAllRows('transactions'),
       ]);
+      tr.data=(tr.data||[]).sort((a,b)=>compareFrDates(b.date_op,a.date_op));
       D.comptes=(cpt.data||[]).map(c=>({...c,transactions:(tr.data||[]).filter(t=>t.compte_id===c.id)}));
       markLoaded('banque');
       return;
     }
     if(tab==='comptabilite'){
-      const {data}=await SB.from('journal_comptable').select('*').order('date_op',{ascending:false});
-      D.journal=data||[];
+      const {data}=await selectAllRows('journal_comptable');
+      D.journal=(data||[]).sort((a,b)=>String(b.date_op||'').localeCompare(String(a.date_op||'')));
       markLoaded('comptabilite');
       return;
     }
@@ -1647,6 +1648,26 @@ async function apiRequest(path, options={}){
   return {data:payload,error:null};
 }
 
+// Charge TOUTES les lignes d'une table, page par page. Le serveur plafonne chaque requête à
+// 5000 lignes (DB_MAX_QUERY_LIMIT) : avant, `select('*').order('date_op', desc)` sans pagination
+// laissait silencieusement de côté tout ce qui dépassait — c.-à-d. les lignes les plus
+// anciennes (la saison précédente) dès que le journal ou les opérations bancaires dépassaient
+// 5000 lignes : totaux et bilans de la saison précédente amputés, écritures introuvables au
+// rapprochement. Tri par `id` (unique) pour que les pages ne se chevauchent pas.
+async function selectAllRows(table,{pageSize=5000,maxPages=60}={}){
+  const all=[];
+  for(let page=0;page<maxPages;page++){
+    const {data,error}=await SB.from(table).select('*').order('id',{ascending:true}).limit(pageSize).offset(page*pageSize);
+    if(error){
+      if(typeof notify==='function') notify('error',`Chargement incomplet de « ${table} » : ${error.message||'erreur'}`,'Données');
+      return {data:all,error};
+    }
+    all.push(...(data||[]));
+    if(!data||data.length<pageSize) break;
+  }
+  return {data:all,error:null};
+}
+
 class CloudflareQueryBuilder{
   constructor(table){
     this.table=table;
@@ -1670,6 +1691,7 @@ class CloudflareQueryBuilder{
   in(column,value){this.query.filters.push({op:'in',column,value});return this}
   order(column,options={}){this.query.order={column,ascending:options.ascending!==false};return this}
   limit(value){this.query.limit=value;return this}
+  offset(value){this.query.offset=value;return this}
   single(){this.query.single=true;return this}
   async execute(){
     return apiRequest(`/db/${encodeURIComponent(this.table)}`,{
@@ -4717,6 +4739,176 @@ function rapprReset(){
   const bar=document.getElementById('rappr-selbar'); if(bar) bar.remove();
 }
 
+// Opérations « en attente » qui portent encore un lien vers une écriture. Un rapprochement
+// annulé volontairement (annulerRapprochement / modifierRapprochement) efface ce lien : seul
+// l'ancien upsert d'import, qui remettait `rapproche` à 0 sans toucher au lien, laisse cette trace.
+function rapprTxPieces(t){
+  const out=[];
+  if(t.ecriture_piece) out.push(t.ecriture_piece);
+  if(t.ecriture_pieces_json){ try{ const a=JSON.parse(t.ecriture_pieces_json); if(Array.isArray(a)) out.push(...a); }catch(e){} }
+  return [...new Set(out.filter(Boolean))];
+}
+function rapprLostLinks(all){
+  return (all||[]).filter(t=>!t.rapproche && rapprTxPieces(t).length>0).map(t=>({t,pieces:rapprTxPieces(t)}));
+}
+
+// ─── Contrôle de complétude du rapprochement ─────────────────────────────────
+// Répond à « est-ce que rien n'a été oublié ? » avec des vérifications déterministes :
+//  • rapprochées SANS écriture liée (typiquement « Tout rapprocher ») : l'opération est cochée
+//    mais aucune écriture ne la justifie ;
+//  • liens vers une écriture INTROUVABLE (supprimée ou régénérée depuis) ;
+//  • montants DISCORDANTS : somme des opérations ≠ somme des écritures liées (une écriture à
+//    zéro ou un mauvais compte apparaît ici) ;
+//  • opérations et écritures 512 encore EN ATTENTE (dont les anciennes : > 45 jours) ;
+//  • lignes à ZÉRO (débit = crédit = 0) dans le journal ou les relevés ;
+//  • mois SANS aucune opération entre la première et la dernière d'un compte (relevé manquant ?).
+// `opts.from` / `opts.to` (AAAA-MM-JJ) bornent la période, p. ex. un exercice.
+function rapprControlReport(opts={}){
+  const from=opts.from||null, to=opts.to||null;
+  const inRange=iso=>!iso||((!from||iso>=from)&&(!to||iso<=to));
+  const cents=n=>Math.round(n*100)/100;
+  const signed=t=>cents((+t.credit||0)-(+t.debit||0));
+  const txIso=t=>frDateToISO(t.date_op)||t.date_op||'';
+  const allTx=rapprAllTransactions();
+  const txById=new Map(allTx.map(t=>[t.id,t]));
+  const pieceInfo=new Map(rapprPieceCandidates({includeAllAccounts:true,consumed:new Set()}).map(c=>[c.piece,c]));
+  const limitDate=new Date(td()+'T12:00:00'); limitDate.setDate(limitDate.getDate()-45);
+  const oldLimit=limitDate.toISOString().slice(0,10);
+
+  // Composantes connexes opérations ↔ écritures (1-1, N-1, 1-N, N-M) : on compare les sommes.
+  const parent=new Map();
+  const find=x=>{ while(parent.get(x)!==x){ parent.set(x,parent.get(parent.get(x))); x=parent.get(x); } return x; };
+  const link=(a,b)=>{ [a,b].forEach(x=>{ if(!parent.has(x)) parent.set(x,x); }); const ra=find(a),rb=find(b); if(ra!==rb) parent.set(ra,rb); };
+  const forced=[];
+  allTx.forEach(t=>{
+    if(!t.rapproche) return;
+    const ps=rapprTxPieces(t);
+    if(!ps.length){ forced.push(t); return; }
+    ps.forEach(piece=>link('t:'+t.id,'p:'+piece));
+  });
+  const comps=new Map();
+  parent.forEach((_,node)=>{
+    const root=find(node);
+    if(!comps.has(root)) comps.set(root,{txs:[],pieces:[]});
+    const c=comps.get(root);
+    if(node.startsWith('t:')) c.txs.push(txById.get(node.slice(2))); else c.pieces.push(node.slice(2));
+  });
+  const mismatches=[], orphans=[];
+  comps.forEach(c=>{
+    const missing=c.pieces.filter(piece=>!pieceInfo.has(piece));
+    const sumTx=cents(c.txs.reduce((a,t)=>a+signed(t),0));
+    const sumPieces=cents(c.pieces.filter(piece=>pieceInfo.has(piece)).reduce((a,piece)=>a+pieceInfo.get(piece).amount,0));
+    if(!c.txs.some(t=>inRange(txIso(t)))) return;
+    if(missing.length) orphans.push({txs:c.txs,missing});
+    else if(Math.abs(sumTx-sumPieces)>=0.01) mismatches.push({txs:c.txs,pieces:c.pieces,sumTx,sumPieces,diff:cents(sumTx-sumPieces)});
+  });
+
+  const pendingTx=allTx.filter(t=>!t.rapproche&&inRange(txIso(t)));
+  const oldPendingTx=pendingTx.filter(t=>txIso(t)&&txIso(t)<oldLimit);
+  const pendingPieces=rapprPieceCandidates({consumed:consumedPieces()}).filter(c=>inRange(c.date_op));
+  const oldPendingPieces=pendingPieces.filter(c=>c.date_op&&c.date_op<oldLimit&&Math.abs(c.amount)>=0.01);
+  const zeroLines=D.journal.filter(j=>inRange(j.date_op)&&(+j.debit||0)===0&&(+j.credit||0)===0);
+  const zeroTx=allTx.filter(t=>inRange(txIso(t))&&(+t.debit||0)===0&&(+t.credit||0)===0);
+
+  const gaps=[];
+  const monthOk=m=>(!from||m>=from.slice(0,7))&&(!to||m<=to.slice(0,7));
+  D.comptes.forEach(c=>{
+    const have=new Set((c.transactions||[]).map(t=>txIso(t).slice(0,7)).filter(m=>/^\d{4}-\d{2}$/.test(m)));
+    const months=[...have].sort();
+    if(months.length<2) return;
+    let [y,m]=months[0].split('-').map(Number);
+    const [ly,lm]=months[months.length-1].split('-').map(Number);
+    const missing=[];
+    while(y<ly||(y===ly&&m<lm)){
+      const key=y+'-'+String(m).padStart(2,'0');
+      if(!have.has(key)&&monthOk(key)) missing.push(key);
+      m++; if(m>12){ m=1; y++; }
+    }
+    if(missing.length) gaps.push({compte:c.nom||'Compte',months:missing});
+  });
+
+  // État de rapprochement (global, sans filtre de période) : de quoi se compose l'écart entre
+  // le solde calculé des relevés et le solde du compte 512 en comptabilité.
+  const soldeInitial=cents(D.comptes.reduce((a,c)=>a+(+c.solde_initial||0),0));
+  const bankNet=cents(allTx.reduce((a,t)=>a+signed(t),0));
+  const bookNet=cents(D.journal.filter(j=>String(j.compte||'').startsWith('512')).reduce((a,j)=>a+(+j.debit||0)-(+j.credit||0),0));
+  const unrecTx=cents(allTx.filter(t=>!t.rapproche).reduce((a,t)=>a+signed(t),0));
+  const forcedNet=cents(forced.reduce((a,t)=>a+signed(t),0));
+  const unrecPieces=cents(rapprPieceCandidates({consumed:consumedPieces()}).reduce((a,c)=>a+c.amount,0));
+  const equation={
+    soldeBanque:cents(soldeInitial+bankNet), soldeCompta:bookNet,
+    ecart:cents(soldeInitial+bankNet-bookNet),
+    soldeInitial, unrecTx, forcedNet, unrecPieces: -unrecPieces,
+    // Reste : liens dont le montant ne colle pas, ou écritures liées d'un autre compte que 512.
+    autres:cents(soldeInitial+bankNet-bookNet-soldeInitial-unrecTx-forcedNet+unrecPieces),
+  };
+
+  const anomalies=forced.filter(t=>inRange(txIso(t))).length+orphans.length+mismatches.length+zeroLines.length+zeroTx.length;
+  const waiting=pendingTx.length+pendingPieces.filter(c=>Math.abs(c.amount)>=0.01).length;
+  return {
+    forced:forced.filter(t=>inRange(txIso(t))), orphans, mismatches,
+    pendingTx, oldPendingTx, pendingPieces, oldPendingPieces,
+    zeroLines, zeroTx, gaps, equation,
+    counts:{anomalies,waiting,old:oldPendingTx.length+oldPendingPieces.length},
+    ok:anomalies===0&&waiting===0,
+  };
+}
+
+function rapprControlHtml(rep){
+  const f=n=>rapprSignedEuro(n);
+  const row=(l,r,btn='')=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid var(--brd);font-size:11px"><span>${l}</span><span style="white-space:nowrap">${r}${btn}</span></div>`;
+  const txRow=(t,withUndo)=>row(`${esc(fd(frDateToISO(t.date_op)||t.date_op)||'')} · ${esc((t.libelle||'').slice(0,60))}${t.cname?` <span style="color:var(--txt2)">(${esc(t.cname)})</span>`:''}`,f((+t.credit||0)-(+t.debit||0)),withUndo?` <button class="btn sm" onclick="annulerRapprochement('${esc(t.id)}')">Défaire</button>`:'');
+  const pieceRow=c=>row(`${esc(fd(c.date_op)||'')} · ${esc(c.piece)} · ${esc((c.libelle||'').slice(0,50))}`,f(c.amount));
+  const sect=(icon,title,n,body,open=false)=>n?`<details ${open?'open':''} style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;font-weight:600">${icon} ${title} <span class="badge bgray">${n}</span></summary><div style="margin-top:4px;max-height:260px;overflow:auto">${body}</div></details>`:'';
+  const cap=(arr,fn)=>arr.slice(0,100).map(fn).join('')+(arr.length>100?`<div style="font-size:11px;color:var(--txt2);padding:4px 0">… et ${arr.length-100} autre(s)</div>`:'');
+  const c=rep.counts, e=rep.equation;
+  const verdict=rep.ok?'<span style="color:#1e7e34">✓ tout est rapproché et cohérent</span>'
+    :c.anomalies?`<span style="color:var(--red)">⚠ ${c.anomalies} anomalie(s) à corriger</span>${c.waiting?` · ${c.waiting} en attente`:''}`
+    :`${c.waiting} élément(s) en attente de rapprochement${c.old?` <span style="color:var(--red)">dont ${c.old} depuis plus de 45 jours</span>`:''}`;
+  return `<div class="card" style="margin-bottom:14px;border-left:3px solid ${c.anomalies?'var(--red)':rep.ok?'#1e7e34':'var(--gold)'}">
+  <div style="font-weight:600">🔎 Contrôle de complétude : ${verdict}</div>
+  ${sect('⛔','Rapprochées sans écriture liée (« Tout rapprocher »)',rep.forced.length,cap(rep.forced,t=>txRow(t,true)),true)}
+  ${sect('⛔','Liens vers une écriture introuvable',rep.orphans.length,cap(rep.orphans,o=>o.txs.map(t=>txRow(t,true)).join('')+row(`<span style="color:var(--red)">écriture(s) absente(s) du journal : ${esc(o.missing.join(', '))}</span>`,'')),true)}
+  ${sect('⛔','Montants discordants entre l\'opération et l\'écriture',rep.mismatches.length,cap(rep.mismatches,m=>m.txs.map(t=>txRow(t,true)).join('')+row(`<span style="color:var(--red)">écritures ${esc(m.pieces.join(', '))} : ${f(m.sumPieces)} — écart ${f(m.diff)}</span>`,'')),true)}
+  ${sect('⛔','Lignes à zéro (débit = crédit = 0) dans le journal',rep.zeroLines.length,cap(rep.zeroLines,j=>row(`${esc(fd(j.date_op)||'')} · ${esc(j.piece||'')} · ${esc(j.compte||'')} · ${esc((j.libelle||'').slice(0,50))}`,'0,00 €')),true)}
+  ${sect('⛔','Opérations bancaires à zéro',rep.zeroTx.length,cap(rep.zeroTx,t=>txRow(t,false)),true)}
+  ${sect('⏳','Opérations bancaires en attente de rapprochement',rep.pendingTx.length,cap(rep.pendingTx,t=>txRow(t,false)))}
+  ${sect('⏳','Écritures du compte 512 pas encore rapprochées',rep.pendingPieces.filter(p=>Math.abs(p.amount)>=0.01).length,cap(rep.pendingPieces.filter(p=>Math.abs(p.amount)>=0.01),pieceRow))}
+  ${sect('📅','Mois sans aucune opération (relevé manquant ?)',rep.gaps.length,rep.gaps.map(g=>row(esc(g.compte),esc(g.months.join(', ')))).join(''))}
+  <details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;font-weight:600">⚖ État de rapprochement : écart banque ↔ comptabilité 512</summary>
+  <div style="margin-top:4px">
+  ${row('Solde calculé des relevés (soldes initiaux + opérations)',f(e.soldeBanque))}
+  ${row('Solde du compte 512 en comptabilité',f(e.soldeCompta))}
+  ${row('<strong>Écart</strong>',`<strong>${f(e.ecart)}</strong>`)}
+  <div style="font-size:11px;color:var(--txt2);margin:6px 0 2px">Cet écart se compose de :</div>
+  ${row('soldes initiaux des comptes bancaires',f(e.soldeInitial))}
+  ${row('opérations bancaires non rapprochées',f(e.unrecTx))}
+  ${row('opérations rapprochées sans écriture',f(e.forcedNet))}
+  ${row('écritures 512 non rapprochées (à retrancher)',f(e.unrecPieces))}
+  ${row('écarts sur les rapprochements (montants discordants, autres comptes)',f(e.autres))}
+  <div style="font-size:11px;color:var(--txt2);margin-top:6px">Quand tout est rapproché et cohérent, l'écart est nul : la comptabilité 512 correspond exactement aux relevés.</div>
+  </div></details>
+  </div>`;
+}
+
+async function restaurerRapprochementsPerdus(){
+  const lost=rapprLostLinks(rapprAllTransactions());
+  if(!lost.length) return;
+  // Sécurité anti-doublon : on ne rétablit pas un lien dont l'écriture est entre-temps
+  // rapprochée avec une autre opération.
+  const consumed=consumedPieces();
+  const ok=lost.filter(x=>!x.pieces.some(p=>consumed.has(p)));
+  const skipped=lost.length-ok.length;
+  if(!ok.length) return notify('warn','Aucun lien rétablissable : les écritures concernées sont déjà rapprochées avec d\'autres opérations.','Rapprochement');
+  if(!await confirmModal(`Rétablir ${ok.length} rapprochement(s) annulé(s) par un ré-import de relevé ?${skipped?`\n\n${skipped} autre(s) ne seront pas rétabli(s) : leur écriture est déjà utilisée par une autre opération.`:''}`)) return;
+  const ids=ok.map(x=>x.t.id);
+  if(!await rapprPersist(ids,{rapproche:true})) return;
+  const all=D.comptes.flatMap(c=>c.transactions||[]);
+  ids.forEach(id=>{ const t=all.find(x=>x.id===id); if(t) t.rapproche=true; });
+  notify('success',`${ids.length} rapprochement(s) rétabli(s).`,'Rapprochement');
+  render();
+}
+
 function vRappr(){
   RAPPR_CONSUMED=consumedPieces();
   RAPPR_POOL=null;
@@ -4727,6 +4919,14 @@ function vRappr(){
   const autoCount=nonR.filter(t=>{ const r=rapprSugg(t); return r&&r.auto; }).length;
   const suggestCount=nonR.filter(t=>{ const r=rapprSugg(t); return r&&!r.auto; }).length;
   const grouped=findGroupedRapprochement(all);
+  const controlPanel=all.length||D.journal.length?rapprControlHtml(rapprControlReport()):'';
+  const lost=rapprLostLinks(all);
+  const lostPanel=lost.length?`
+  <div class="card" style="margin-bottom:14px;border-left:3px solid var(--red)">
+  <div style="font-weight:600;margin-bottom:6px">⚠ ${lost.length} rapprochement(s) annulé(s) sans action de votre part</div>
+  <p style="font-size:12px;color:var(--txt2);margin-bottom:10px">Ces opérations sont repassées « en attente » alors qu'elles gardent un lien vers une écriture : c'est la trace d'un ré-import de relevé bancaire, qui remettait à zéro le statut des opérations déjà importées. Le lien est conservé : vous pouvez le rétablir en un clic.</p>
+  <button class="btn sm primary" onclick="restaurerRapprochementsPerdus()">Rétablir ${lost.length} rapprochement(s)</button>
+  </div>`:'';
 
   const groupPanel=grouped.length?`
   <div class="card" style="margin-bottom:14px;border-left:3px solid var(--gold-d)">
@@ -4757,6 +4957,8 @@ function vRappr(){
   <button class="btn sm primary" onclick="toutRappr()">Tout rapprocher</button>
   </div>
   </div>
+  ${controlPanel}
+  ${lostPanel}
   ${groupPanel}
   ${all.length===0?'':`<div class="toolbar" style="margin-bottom:8px">
   <input id="rappr-q" style="flex:1;min-width:220px" placeholder="🔍 Rechercher une opération : nom / libellé, montant, date, compte…" value="${esc(UI.rapprSearch||'')}" oninput="rapprSetSearch(this.value)" autocomplete="off">
@@ -9900,6 +10102,18 @@ async function finalizeExoClose(id){
   if(!exo) return;
   const diag=exerciceDiagnostics(exo.id);
   if(diag.ecartJournal!==0) return alert('L’exercice n’est pas équilibré. Régularisez-le avant de le clôturer.');
+  // Rien d'oublié côté banque : on prévient (sans bloquer) s'il reste des opérations ou des
+  // écritures 512 non rapprochées, ou des rapprochements incohérents, sur la période de l'exercice.
+  if(hasPerm('perm_banque')){
+    // Les relevés et le journal sont chargés à la demande : sans eux le contrôle passerait « à vide ».
+    await loadTabData('banque');
+    await loadTabData('comptabilite');
+    const ctl=rapprControlReport({from:exo.date_debut,to:exo.date_fin});
+    if(ctl.counts.anomalies||ctl.counts.waiting){
+      const detail=`${ctl.counts.anomalies?`${ctl.counts.anomalies} anomalie(s) de rapprochement`:''}${ctl.counts.anomalies&&ctl.counts.waiting?' et ':''}${ctl.counts.waiting?`${ctl.counts.waiting} élément(s) non rapproché(s)`:''}`;
+      if(!confirm(`Rapprochement bancaire incomplet sur cet exercice : ${detail}.\n\nOnglet Banque › Rapprochement › « Contrôle de complétude » pour le détail.\n\nClôturer quand même ?`)) return;
+    }
+  }
   const doReport=document.getElementById('exo-close-report')?.checked;
   const doNext=document.getElementById('exo-close-next')?.checked;
   if(doReport&&Math.abs(diag.resultat)>=0.01){
@@ -9978,7 +10192,9 @@ async function importBankCSV(e){
       rows.push(row);
     });
     if(!rows.length)return alert('Aucune ligne valide ou toutes les opérations existent déjà.');
-    const {data,error}=await SB.from('transactions').upsert(rows,{onConflict:['compte_id','date_op','libelle','debit','credit']}).select();
+    // `rapproche` n'est pas envoyé : sur une opération déjà importée (conflit), l'upsert la
+    // remettait « en attente » (rapproche = 0) alors que son lien vers l'écriture restait stocké.
+    const {data,error}=await SB.from('transactions').upsert(rows.map(({rapproche,...rest})=>rest),{onConflict:['compte_id','date_op','libelle','debit','credit']}).select();
     if(error)return alert('Erreur : '+error.message);
     // Fusionner sans doublons en mémoire (l'upsert peut retourner des lignes déjà existantes)
     const existingIds=new Set((c.transactions||[]).map(t=>t.id));
@@ -10384,7 +10600,9 @@ async function confirmBankImport(){
   const c=D.comptes.find(x=>x.id===preview.cid);
   if(!c) return alert('Compte cible introuvable.');
   const rows=preview.rows.map(r=>{ const {a_verifier,a_verifier_raison,...rest}=r; return rest; });
-  const {data,error}=await SB.from('transactions').upsert(rows,{onConflict:['compte_id','date_op','libelle','debit','credit']}).select();
+  // `rapproche` n'est pas envoyé : sur une opération déjà importée (conflit), l'upsert la
+  // remettait « en attente » (rapproche = 0) alors que son lien vers l'écriture restait stocké.
+  const {data,error}=await SB.from('transactions').upsert(rows.map(({rapproche,...rest})=>rest),{onConflict:['compte_id','date_op','libelle','debit','credit']}).select();
   if(error) return alert('Erreur : '+error.message);
   const existingIds=new Set((c.transactions||[]).map(t=>t.id));
   const newTx=(data||[]).filter(t=>!existingIds.has(t.id));

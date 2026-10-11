@@ -4,6 +4,37 @@ Ajoutées sur la base du projet existant, sans rien retirer. `tsc --noEmit`,
 les 31 tests existants (`vitest run`) et `wrangler deploy --dry-run` sont
 propres après ajout.
 
+## Rapprochement : contrôle de complétude, chargement complet, ré-import sans effet de bord — 11/10/2026
+
+**Contrôle de complétude** (Banque › Rapprochement, carte « 🔎 Contrôle de complétude » en haut de page) : vérifie
+que rien n'a été oublié, avec le détail déroulant de chaque point.
+- ⛔ **Rapprochées sans écriture liée** (cas du bouton « Tout rapprocher ») : l'opération est cochée mais rien ne la
+  justifie. Bouton « Défaire » sur chaque ligne.
+- ⛔ **Liens vers une écriture introuvable** (écriture supprimée ou régénérée depuis).
+- ⛔ **Montants discordants** : somme des opérations ≠ somme des écritures liées. Les regroupements sont traités
+  comme un tout (deux chèques de 18 € et 12 € ↔ une remise de 30 € : correct, non signalé). Une écriture mise à zéro
+  ou rapprochée sur le mauvais compte apparaît ici.
+- ⛔ **Lignes à zéro** (débit = crédit = 0) dans le journal ou dans les relevés.
+- ⏳ **En attente** : opérations bancaires et écritures 512 non rapprochées, avec mise en avant de celles de plus de 45 jours.
+- 📅 **Mois sans aucune opération** entre la première et la dernière d'un compte (relevé manquant ?).
+- ⚖ **État de rapprochement** : écart entre le solde calculé des relevés (soldes initiaux + opérations) et le solde du
+  compte 512, décomposé ligne à ligne ; nul quand tout est rapproché et cohérent.
+- **Clôture d'exercice** : `finalizeExoClose()` prévient (sans bloquer) s'il reste des opérations ou écritures 512 non
+  rapprochées, ou des anomalies, sur la période de l'exercice.
+
+**Saison précédente : opérations et écritures qui disparaissent ou repassent « en attente ».**
+- Le serveur plafonne chaque requête à 5000 lignes (`DB_MAX_QUERY_LIMIT`) et le front chargeait `journal_comptable` et
+  `transactions` en une seule requête triée par date décroissante : au-delà de 5000 lignes, les plus anciennes (la
+  saison précédente) disparaissaient silencieusement (totaux et bilans amputés, écritures introuvables au rapprochement).
+  Nouveau `selectAllRows()` : chargement page par page (`offset` côté builder, déjà géré par le serveur), tri par `id`
+  pour des pages sans chevauchement, erreur signalée si une page échoue.
+- Un ré-import de relevé (PDF ou CSV) sur des opérations déjà présentes remettait `rapproche` à 0 (l'upsert met à jour
+  toutes les colonnes envoyées) alors que le lien vers l'écriture restait stocké. `rapproche` n'est plus envoyé à
+  l'import. Pour les opérations déjà touchées : bandeau « ⚠ N rapprochement(s) annulé(s) sans action de votre part »
+  avec un bouton **Rétablir** (les liens dont l'écriture est entre-temps prise par une autre opération sont écartés).
+
+Aucune migration. `app.min.js` régénéré, `app.js?v=20261011c`. 25 tests ajoutés (`test/rapprochement.test.ts`).
+
 ## Espace membre : deux adhérents sur la même adresse e-mail (père et fils) — 11/10/2026
 
 **Cause.** L'espace membre retrouvait « la fiche d'un adhérent » (et toutes ses saisons) par son **e-mail seul**.
