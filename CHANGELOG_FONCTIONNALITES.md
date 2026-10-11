@@ -4,6 +4,38 @@ Ajoutées sur la base du projet existant, sans rien retirer. `tsc --noEmit`,
 les 31 tests existants (`vitest run`) et `wrangler deploy --dry-run` sont
 propres après ajout.
 
+## Ressources du club : PDF et vidéos pour l'espace membre — 12/10/2026
+
+Nouvel onglet **📚 Ressources** (droits de la fiche adhérent : `perm_adherents`, écriture pour secrétaire / trésorier /
+admin, lecture pour l'entraîneur). Il alimente la rubrique « Ressources du club » de l'espace membre, que **tous les
+adhérents connectés** peuvent consulter.
+- **PDF** : téléversé (25 Mo max). L'adhérent peut le consulter dans un onglet ou le télécharger.
+- **Vidéo par lien** (recommandé pour les vidéos longues) : lien YouTube ou Vimeo, lu dans un lecteur intégré. Seuls ces
+  deux services sont acceptés (validation à la saisie, et à nouveau côté espace membre) ; le lecteur n'est chargé qu'au
+  clic de l'adhérent. YouTube est lu via `youtube-nocookie.com`. Une vidéo « non répertoriée » évite qu'elle soit publique.
+- **Vidéo téléversée** : MP4, WebM ou MOV, 95 Mo max (limite de corps de requête de la plateforme : au-delà, utiliser un
+  lien). Lecture avec avance rapide (requêtes `Range`) y compris sur iPhone.
+- Catégories libres (« Techniques », « Règlement »…), ordre d'affichage, case **Visible par les adhérents** pour masquer
+  sans supprimer. Supprimer une ressource efface aussi son fichier dans R2.
+
+Technique :
+- Migration **`0038_club_ressources.sql`** (table `club_ressources`) — **à appliquer sur la base D1 avant d'utiliser
+  l'onglet** (tant qu'elle manque, l'espace membre affiche simplement la banderole habituelle, sans erreur).
+- Fichiers dans le bucket R2 `fullfighting-pdf` (binding `R2_PDF`) sous `ressources/<id>/<horodatage>-<nom>`.
+- `PUT /api/admin/ressources/fichier` : le fichier est le **corps brut** relayé en flux vers R2 (pas de `formData`, qui
+  chargerait la vidéo entière en mémoire du Worker). Le type MIME vient de l'extension, jamais de l'en-tête du client.
+  `DELETE /api/admin/ressources/:id` supprime ligne et fichiers ; `DELETE …/fichier?id=…&garder=…` nettoie les anciennes
+  versions après un remplacement.
+- `GET /api/member/ressources` (session membre) : ressources actives, chacune avec un **lien signé de 6 h**
+  (`GET /api/ressources/fichier/:id?t=…`, avec `Range`), car `<video>` et les onglets PDF ne peuvent pas envoyer
+  d'en-tête `Authorization`. Ce jeton est distinct d'une session (`kind: 'ressource'`) et ne donne accès qu'à son fichier ;
+  la clé R2 n'est jamais renvoyée au navigateur.
+- Nouveau module `src/lib/ressources.ts` (règles pures : validation, noms de fichier, plages d'octets, liens vidéo).
+- Les sauvegardes quotidiennes exportent la table `club_ressources` avec les autres, **pas les fichiers R2**.
+
+`app.min.js` régénéré, `app.js?v=20261012a`. 50 tests ajoutés (`test/ressources.test.ts`, `test/ressources-admin.test.ts`),
+dont le round-trip « liste membre → lien signé → lecture partielle du fichier ».
+
 ## Journal : écritures rapides en 4 colonnes + 14 nouveaux boutons — 11/10/2026
 
 La barre de 23 boutons du Journal est remplacée par une carte **⚡ Écritures rapides** en 4 colonnes thématiques

@@ -301,6 +301,9 @@ function hasStoragePermission(
     return hasPermission(user, "perm_adherents", mode, defaultRolePerms);
   }
   if (bucketName === "fullfighting-pdf") {
+    // Ressources du club (PDF/vidéos de l'espace membre) : mêmes droits que la
+    // gestion de leurs métadonnées (club_ressources → perm_adherents).
+    if (normalized.startsWith("ressources/")) return hasPermission(user, "perm_adherents", mode, defaultRolePerms);
     if (normalized.startsWith("achats/")) return hasPermission(user, "perm_achats", mode, defaultRolePerms);
     if (normalized.startsWith("adherents/")) return hasPermission(user, "perm_adherents", mode, defaultRolePerms);
     return hasPermission(user, "perm_administration", mode, defaultRolePerms);

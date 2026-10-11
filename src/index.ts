@@ -33,6 +33,10 @@ import {verifyPassword, createSessionToken, parseSessionToken, hashPassword, pre
 import { buildDocumentPdfBytes, type DocumentInput, type DocumentLigne } from './lib/pdf/document-template';
 import { bytesToBase64 } from './lib/pdf/pdf-engine';
 import { buildCotisationReceipt, buildReceiptContent } from './lib/pdf/cotisation-receipt';
+import {
+  RESSOURCE_LINK_TTL_MS, isValidRessourceId, ressourceKey, ressourceKeyBelongsTo, ressourcePrefix,
+  resolveByteRange, sanitizeRessourceFileName, validateRessourceUpload,
+} from './lib/ressources';
 import { loadMemberPersonRows, personRowIds, sqlPlaceholders, latestRowPerPerson, pickAccountHolder } from './lib/member-identity';
 import type { RegistrationRow } from './lib/pdf/cotisation-receipt';
 
@@ -398,6 +402,7 @@ const DB_TABLES = new Set([
   'inscriptions_publiques', 'deletion_requests', 'adherents_blacklist_historique',
   'journal_comptable', 'transactions', 'utilisateurs',
   'presences', 'materiel', 'materiel_emprunts', 'materiel_mouvements', 'budget_previsionnel', 'planning_encadrants',
+  'club_ressources',
 ]);
 
 const RESTORE_ORDER: string[] = [
@@ -414,7 +419,7 @@ const DB_PRIMARY_KEYS: Record<string, string> = {
   inscriptions_publiques: 'id', journal_comptable: 'id', transactions: 'id',
   utilisateurs: 'id', deletion_requests: 'id', adherents_blacklist_historique: 'id',
   presences: 'id', materiel: 'id', materiel_emprunts: 'id', materiel_mouvements: 'id',
-  budget_previsionnel: 'id', planning_encadrants: 'id',
+  budget_previsionnel: 'id', planning_encadrants: 'id', club_ressources: 'id',
 };
 
 export const DB_TABLE_PERMISSIONS: Record<string, { read: string; write: string }> = {
@@ -463,6 +468,10 @@ export const DB_TABLE_PERMISSIONS: Record<string, { read: string; write: string 
   budget_previsionnel: { read: 'perm_comptabilite', write: 'perm_comptabilite' },
   // Planning des cours réguliers, distinct du calendrier d'événements ponctuels (cf. migration 0028).
   planning_encadrants: { read: 'perm_planning', write: 'perm_planning' },
+  // Ressources du club (PDF/vidéos de l'espace membre) : gérées par les mêmes
+  // rôles que les fiches adhérents (secrétaire, trésorier, admin ; l'entraîneur
+  // peut les consulter). Cf. migration 0038.
+  club_ressources: { read: 'perm_adherents', write: 'perm_adherents' },
 };
 
 export const DB_DEFAULT_ROLE_PERMS: PermissionMatrix = {
@@ -3371,6 +3380,103 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       return json({ data: results || [], error: null });
     }
 
+    // GET /api/member/ressources — ressources du club (PDF et vidéos) visibles
+    // par tout adhérent connecté, gérées par le staff depuis l'onglet
+    // « Ressources » (table club_ressources, migration 0038). Les fichiers
+    // téléversés sont servis par GET /api/ressources/fichier/:id : les balises
+    // <video> et les onglets PDF ne peuvent pas envoyer d'en-tête
+    // Authorization, donc chaque ressource porte ici un lien signé à durée
+    // limitée (même secret que les sessions, charge utile distincte — un tel
+    // lien n'est jamais accepté comme session membre ni staff).
+    // Tolérant à l'absence de la table (migration pas encore appliquée) : liste
+    // vide plutôt qu'une erreur qui casserait le tableau de bord.
+    if (method === 'GET' && path === '/api/member/ressources') {
+      const member = await getCurrentMemberFromBearer(request, env);
+      if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+      let rows: Record<string, any>[] = [];
+      try {
+        const { results } = await env.DB.prepare(
+          `SELECT id, titre, description, categorie, type, video_url, fichier_path, fichier_nom,
+                  fichier_taille, fichier_mime, ordre, updated_at
+           FROM club_ressources
+           WHERE actif = 1
+           ORDER BY COALESCE(categorie, '') COLLATE NOCASE, ordre, titre COLLATE NOCASE`
+        ).all<Record<string, any>>();
+        rows = results || [];
+      } catch (e) {
+        console.error('[member/ressources]', e instanceof Error ? e.message : String(e));
+        return json({ data: [], error: null }, 200, { 'Cache-Control': 'private, no-store' });
+      }
+      const expiresAt = Date.now() + RESSOURCE_LINK_TTL_MS;
+      const data = await Promise.all(rows.map(async (row) => {
+        let lien: string | null = null;
+        if (row.fichier_path && ressourceKeyBelongsTo(row.fichier_path, String(row.id))) {
+          const token = await createSessionToken({ kind: 'ressource', id: String(row.id), expiresAt }, env as any);
+          lien = `${url.origin}/api/ressources/fichier/${encodeURIComponent(String(row.id))}?t=${encodeURIComponent(token)}`;
+        }
+        return {
+          id: row.id,
+          titre: row.titre,
+          description: row.description || '',
+          categorie: row.categorie || '',
+          type: row.type === 'video' ? 'video' : 'pdf',
+          video_url: row.video_url || null,
+          fichier_nom: row.fichier_nom || null,
+          fichier_taille: row.fichier_taille ?? null,
+          fichier_mime: row.fichier_mime || null,
+          lien,
+          ordre: row.ordre ?? 0,
+          updated_at: row.updated_at || null,
+        };
+      }));
+      return json({ data, error: null }, 200, { 'Cache-Control': 'private, no-store' });
+    }
+
+    // GET|HEAD /api/ressources/fichier/:id?t=<jeton>[&dl=1] — lecture d'un
+    // fichier de ressource (PDF ou vidéo téléversée). Authentifié par le jeton
+    // signé émis par /api/member/ressources (pas par cookie/Bearer). Gère les
+    // requêtes Range : indispensable à la lecture et au déplacement dans une
+    // vidéo (Safari/iOS refuse un média sans 206).
+    const ressourceFileMatch = path.match(/^\/api\/ressources\/fichier\/([A-Za-z0-9_-]+)$/);
+    if (ressourceFileMatch && (method === 'GET' || method === 'HEAD')) {
+      if (!env.R2_PDF) return err('Stockage indisponible', 503);
+      const id = ressourceFileMatch[1];
+      const session = await parseSessionToken(url.searchParams.get('t') || '', env as any);
+      if (!session || session.kind !== 'ressource' || session.id !== id || Number(session.expiresAt) < Date.now()) {
+        return err('Lien expiré ou invalide', 403);
+      }
+      const row = await env.DB.prepare(
+        `SELECT titre, fichier_path, fichier_nom, fichier_mime FROM club_ressources WHERE id = ? AND actif = 1`
+      ).bind(id).first<Record<string, any>>();
+      if (!row?.fichier_path || !ressourceKeyBelongsTo(row.fichier_path, id)) return err('Ressource introuvable', 404);
+
+      const key = String(row.fichier_path);
+      const rangeHeader = request.headers.get('Range');
+      const object: any = method === 'HEAD'
+        ? await env.R2_PDF.head(key)
+        : await env.R2_PDF.get(key, rangeHeader ? { range: request.headers } : undefined);
+      if (!object) return err('Fichier introuvable', 404);
+
+      const mime = String(object.httpMetadata?.contentType || row.fichier_mime || 'application/octet-stream');
+      const downloadName = sanitizeRessourceFileName(row.fichier_nom || row.titre || 'ressource');
+      const asAttachment = url.searchParams.get('dl') === '1';
+      const headers = new Headers({
+        'Content-Type': mime,
+        'Content-Disposition': `${asAttachment ? 'attachment' : 'inline'}; filename="${downloadName}"`,
+        'Accept-Ranges': 'bytes',
+        'Cache-Control': 'private, max-age=300',
+      });
+      const size = Number(object.size) || 0;
+      const partial = method === 'GET' && rangeHeader ? resolveByteRange(object.range, size) : null;
+      if (partial) {
+        headers.set('Content-Range', `bytes ${partial.start}-${partial.end}/${size}`);
+        headers.set('Content-Length', String(partial.length));
+        return new Response(object.body, { status: 206, headers });
+      }
+      headers.set('Content-Length', String(size));
+      return new Response(method === 'HEAD' ? null : object.body, { status: 200, headers });
+    }
+
     // POST /api/member/documents/certificat — l'adhérent dépose lui-même un
     // certificat médical à jour. Stocké au même endroit et sous le même
     // préfixe (adherents/{adherent_id}/...) que ce que l'équipe utilise déjà
@@ -4642,6 +4748,7 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
   "/api/member/password/change",
   "/api/member/diplomes",
   "/api/member/annuaire",
+  "/api/member/ressources",
   "/api/member/cotisations",
   "/api/member/preferences",
   "/api/member/documents/notation",
@@ -4676,6 +4783,87 @@ if (path.startsWith("/api/") && !publicApiRoutes.has(path)) {
     // Même secret partagé que la synchro des ventes.
     if (method === 'POST' && path === '/api/internal/boutique/member-status') {
         return handleBoutiqueMemberStatus(request, env);
+    }
+
+    // ── Ressources du club (PDF / vidéos de l'espace membre) ─────────────
+    // Les métadonnées (titre, catégorie, ordre, lien YouTube…) passent par le
+    // CRUD générique /api/db/club_ressources (perm_adherents). Ces routes ne
+    // gèrent que ce que le CRUD ne sait pas faire : écrire/supprimer les
+    // FICHIERS dans R2.
+    //
+    // PUT /api/admin/ressources/fichier?id=<id>&type=pdf|video&nom=<fichier>
+    // Le fichier est le CORPS BRUT de la requête, relayé en flux vers R2 : un
+    // multipart (formData) chargerait toute la vidéo en mémoire du Worker
+    // (128 Mo) et échouerait bien avant la limite de 95 Mo. La clé est
+    // ressources/<id>/<horodatage>-<nom> ; la ligne n'est PAS modifiée ici
+    // (le front enregistre fichier_path puis demande le nettoyage des
+    // anciennes versions), pour qu'un échec n'orpheline jamais une ressource.
+    if (method === 'PUT' && path === '/api/admin/ressources/fichier') {
+      const user = await getCurrentUserFromBearer(request, env);
+      if (!user) return err('Unauthorized', 401);
+      const rolePerms = await getRolePerms(env);
+      if (!dbHasPermission(user, 'perm_adherents', 'write', rolePerms)) return err('Permission refusée', 403);
+      if (!env.R2_PDF) return err('Stockage indisponible', 503);
+
+      const id = url.searchParams.get('id') || '';
+      if (!isValidRessourceId(id)) return err('Identifiant de ressource invalide', 400);
+      const type = url.searchParams.get('type') === 'video' ? 'video' : 'pdf';
+      const nom = url.searchParams.get('nom') || '';
+      const size = Number(request.headers.get('Content-Length') || 0);
+      const check = validateRessourceUpload({ type, name: nom, size });
+      if (!check.ok) return err(check.error, check.status);
+      if (!request.body) return err('Corps de requête manquant', 400);
+
+      const key = ressourceKey(id, check.safeName, Date.now());
+      await env.R2_PDF.put(key, request.body, { httpMetadata: { contentType: check.mime } });
+      ctx.waitUntil(writeAuditLog(env, {
+        userId: user.id, action: 'ressource_upload', entityType: 'club_ressources', entityId: id,
+        details: { key, type, taille: size }, ip: request.headers.get('CF-Connecting-IP'),
+      }));
+      return json({ data: { path: key, nom: nom.split(/[\\/]/).pop() || check.safeName, taille: size, mime: check.mime }, error: null }, 201);
+    }
+
+    // DELETE /api/admin/ressources/fichier?id=<id>&garder=<clé> — supprime les
+    // anciennes versions du fichier d'une ressource (tout sauf `garder`).
+    if (method === 'DELETE' && path === '/api/admin/ressources/fichier') {
+      const user = await getCurrentUserFromBearer(request, env);
+      if (!user) return err('Unauthorized', 401);
+      const rolePerms = await getRolePerms(env);
+      if (!dbHasPermission(user, 'perm_adherents', 'write', rolePerms)) return err('Permission refusée', 403);
+      if (!env.R2_PDF) return err('Stockage indisponible', 503);
+      const id = url.searchParams.get('id') || '';
+      if (!isValidRessourceId(id)) return err('Identifiant de ressource invalide', 400);
+      const keep = url.searchParams.get('garder') || '';
+      const listed = await env.R2_PDF.list({ prefix: ressourcePrefix(id) });
+      let removed = 0;
+      for (const obj of listed.objects) {
+        if (obj.key === keep) continue;
+        await env.R2_PDF.delete(obj.key);
+        removed += 1;
+      }
+      return json({ data: { removed }, error: null });
+    }
+
+    // DELETE /api/admin/ressources/:id — supprime la ressource ET ses fichiers.
+    const ressourceDeleteMatch = path.match(/^\/api\/admin\/ressources\/([A-Za-z0-9_-]+)$/);
+    if (method === 'DELETE' && ressourceDeleteMatch) {
+      const user = await getCurrentUserFromBearer(request, env);
+      if (!user) return err('Unauthorized', 401);
+      const rolePerms = await getRolePerms(env);
+      if (!dbHasPermission(user, 'perm_adherents', 'write', rolePerms)) return err('Permission refusée', 403);
+      const id = ressourceDeleteMatch[1];
+      if (!isValidRessourceId(id)) return err('Identifiant de ressource invalide', 400);
+      let removed = 0;
+      if (env.R2_PDF) {
+        const listed = await env.R2_PDF.list({ prefix: ressourcePrefix(id) });
+        for (const obj of listed.objects) { await env.R2_PDF.delete(obj.key); removed += 1; }
+      }
+      await env.DB.prepare(`DELETE FROM club_ressources WHERE id = ?`).bind(id).run();
+      ctx.waitUntil(writeAuditLog(env, {
+        userId: user.id, action: 'ressource_delete', entityType: 'club_ressources', entityId: id,
+        details: { fichiersSupprimes: removed }, ip: request.headers.get('CF-Connecting-IP'),
+      }));
+      return json({ data: { ok: true, removed }, error: null });
     }
 
     // POST /api/admin/certificats/verifier — déclenche manuellement la même

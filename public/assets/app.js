@@ -59,6 +59,7 @@ const ALL_TABS = [
 {id:'adherents',    icon:'👥',label:'Adhérents',    perm:'perm_adherents'},
 {id:'suivi',        icon:'✅',label:'Présences & Planning', perms:['perm_presences','perm_planning']},
 {id:'diplomes',     icon:'🎓',label:'Diplômes',     perm:'perm_diplomes'},
+{id:'ressources',    icon:'📚',label:'Ressources',   perm:'perm_adherents'},
 {id:'banque',       icon:'🏦',label:'Banque',        perm:'perm_banque'},
 {id:'comptabilite', icon:'📊',label:'Comptabilité',  perm:'perm_comptabilite'},
 {id:'achat',        icon:'🛒',label:'Achats',         perm:'perm_achats'},
@@ -207,11 +208,11 @@ const D = {
     diplomeLayouts:{},
     diplomes:[],
     feedbackCampaigns:[], feedbackRecipients:[], feedbackResponses:[],
-    presences:[], materiel:[], materielEmprunts:[], materielMouvements:[], planning:[], budgetPrevisionnel:[], budgetComparatif:null,
+    presences:[], materiel:[], materielEmprunts:[], materielMouvements:[], planning:[], ressources:[], ressourcesError:'', budgetPrevisionnel:[], budgetComparatif:null,
     familles:[], famillesError:null,
     renouvellement:null,
     rolePerms: JSON.parse(JSON.stringify(DEFAULT_ROLE_PERMS)),
-    loaded:{core:false,dashboard:false,adherents:false,banque:false,comptabilite:false,achat:false,facture:false,administration:false,diplomesArchive:false,feedback:false,presences:false,materiel:false,planning:false,familles:false},
+    loaded:{core:false,dashboard:false,adherents:false,banque:false,comptabilite:false,achat:false,facture:false,administration:false,diplomesArchive:false,feedback:false,presences:false,materiel:false,planning:false,ressources:false,familles:false},
     loading:{},
 };
 const UI = {
@@ -612,7 +613,7 @@ function markLoaded(key,value=true){
 }
 
 function resetLoadedData(){
-  D.loaded={core:false,dashboard:false,adherents:false,banque:false,comptabilite:false,achat:false,facture:false,administration:false,diplomesArchive:false,feedback:false,presences:false,materiel:false,planning:false,familles:false};
+  D.loaded={core:false,dashboard:false,adherents:false,banque:false,comptabilite:false,achat:false,facture:false,administration:false,diplomesArchive:false,feedback:false,presences:false,materiel:false,planning:false,ressources:false,familles:false};
   D.loading={};
 }
 
@@ -749,6 +750,13 @@ async function loadTabData(tab, force=false){
       D.materielEmprunts=empRes.data||[];
       D.materielMouvements=mouRes.data||[];
       markLoaded('materiel');
+      return;
+    }
+    if(tab==='ressources'){
+      const res=await SB.from('club_ressources').select('*').order('ordre');
+      D.ressources=res.data||[];
+      D.ressourcesError=res.error?(res.error.message||'Chargement impossible'):'';
+      markLoaded('ressources');
       return;
     }
     if(tab==='planning'){
@@ -1985,7 +1993,7 @@ function toggleTabsMore(){
   if(btn) btn.setAttribute('aria-expanded',open?'true':'false');
 }
 function needsLoadedTab(tab){
-  return ['dashboard','adherents','diplomes','banque','comptabilite','achat','facture','administration','feedback','suivi','materiel'].includes(tab);
+  return ['dashboard','adherents','diplomes','banque','comptabilite','achat','facture','administration','feedback','suivi','materiel','ressources'].includes(tab);
 }
 async function ensureCurrentTabData(){
   const target=UI.tab==='diplomes'?'adherents':UI.tab;
@@ -2021,7 +2029,7 @@ function render(){
     c.innerHTML=`<div class="empty">Chargement de la rubrique…</div>`;
     return;
   }
-  const map={dashboard:vDashboard,adherents:vAdh,diplomes:vDiplomes,banque:vBanque,comptabilite:vCompta,achat:vAchat,facture:vFacture,feedback:vFeedback,administration:vAdmin,suivi:vSuivi,materiel:vMateriel};
+  const map={dashboard:vDashboard,adherents:vAdh,diplomes:vDiplomes,banque:vBanque,comptabilite:vCompta,achat:vAchat,facture:vFacture,feedback:vFeedback,administration:vAdmin,suivi:vSuivi,materiel:vMateriel,ressources:vRessources};
   c.innerHTML=(map[UI.tab]||vAdh)();
   renderModal();
   updLogo();
@@ -6419,6 +6427,259 @@ function vPlanning(){
   ${byJour.length===0?`<div class="empty">Aucun créneau enregistré</div>`:''}`;
 }
 
+// ═══════════════════════════════════════════════════
+// RESSOURCES DU CLUB (PDF et vidéos de l'espace membre)
+// ═══════════════════════════════════════════════════
+// Table club_ressources (migration 0038). Les adhérents les consultent dans
+// « Ressources du club » de l'espace membre. Un fichier (PDF, ou vidéo
+// MP4/WebM/MOV) est téléversé dans R2 par PUT /api/admin/ressources/fichier ;
+// une vidéo peut aussi être un simple lien YouTube/Vimeo — recommandé pour les
+// vidéos longues, le téléversement étant limité à ~95 Mo par la plateforme.
+const RESSOURCE_MAX_MO={pdf:25,video:95};
+const RESSOURCE_CATEGORIES_SUGGEREES=['Techniques','Règlement','Entraînement','Vie du club'];
+
+function fmtOctets(n){
+  const v=Number(n)||0;
+  if(v>=1048576) return (v/1048576).toFixed(v>=10485760?0:1).replace('.',',').replace(/,0$/,'')+' Mo';
+  if(v>=1024) return Math.round(v/1024)+' Ko';
+  return v+' o';
+}
+
+// Même algorithme que src/lib/ressources.ts (parseVideoLink) et que le lecteur
+// de l'espace membre : seuls YouTube et Vimeo sont acceptés.
+function parseVideoLink(raw){
+  let url;
+  try{url=new URL(String(raw||'').trim());}catch{return null;}
+  if(url.protocol!=='https:'&&url.protocol!=='http:') return null;
+  const host=url.hostname.toLowerCase();
+  const parts=url.pathname.split('/').filter(Boolean);
+  const YT=/^[A-Za-z0-9_-]{11}$/;
+  if(host==='youtu.be') return YT.test(parts[0]||'')?{provider:'YouTube'}:null;
+  if(['youtube.com','www.youtube.com','m.youtube.com','music.youtube.com','youtube-nocookie.com','www.youtube-nocookie.com'].includes(host)){
+    let id='';
+    if(parts[0]==='watch') id=url.searchParams.get('v')||'';
+    else if(['embed','shorts','live','v'].includes(parts[0]||'')) id=parts[1]||'';
+    return YT.test(id)?{provider:'YouTube'}:null;
+  }
+  if(['vimeo.com','www.vimeo.com','player.vimeo.com'].includes(host)){
+    const idx=host==='player.vimeo.com'?parts.indexOf('video')+1:0;
+    return /^\d{6,12}$/.test(parts[idx]||'')?{provider:'Vimeo'}:null;
+  }
+  return null;
+}
+
+function ressourceOpenUrl(r){
+  return r.fichier_path?`/api/storage/fullfighting-pdf/${r.fichier_path.split('/').map(encodeURIComponent).join('/')}`:'';
+}
+
+function vRessources(){
+  const canWrite=hasPerm('perm_adherents','write');
+  const groups=new Map();
+  [...D.ressources]
+    .sort((a,b)=>String(a.categorie||'').localeCompare(String(b.categorie||''),'fr',{sensitivity:'base'})||(a.ordre||0)-(b.ordre||0)||String(a.titre||'').localeCompare(String(b.titre||''),'fr',{sensitivity:'base'}))
+    .forEach(r=>{const k=r.categorie||'Sans catégorie';if(!groups.has(k))groups.set(k,[]);groups.get(k).push(r);});
+  const contenu=r=>{
+    if(r.fichier_path){
+      return `<a href="${esc(ressourceOpenUrl(r))}" target="_blank" rel="noopener" style="color:var(--red)">${esc(r.fichier_nom||'Fichier')}</a>
+      <div style="font-size:11px;color:var(--muted)">${fmtOctets(r.fichier_taille)}</div>`;
+    }
+    if(r.video_url) return `<a href="${esc(r.video_url)}" target="_blank" rel="noopener noreferrer" style="color:var(--red)">↗ ${esc(parseVideoLink(r.video_url)?.provider||'Lien')}</a>`;
+    return `<span class="badge bno">Contenu manquant</span>`;
+  };
+  return`<div class="view-head">
+  <div><div class="eyebrow">Espace membre</div><h2>Ressources</h2>
+  <p>PDF et vidéos que tous les adhérents peuvent consulter dans leur espace membre (rubrique « Ressources du club »). Une ressource masquée n'est plus visible des adhérents.</p></div>
+  ${canWrite?`<button class="btn primary" onclick="openModal('ressource')">+ Ajouter une ressource</button>`:''}
+  </div>
+  ${D.ressourcesError?`<div class="card" style="margin-bottom:10px;border-color:var(--red)"><strong>Chargement impossible.</strong> ${esc(D.ressourcesError)}
+  <div style="font-size:12px;color:var(--muted);margin-top:4px">Si la table <code>club_ressources</code> n'existe pas encore, appliquez la migration <code>0038_club_ressources.sql</code> sur la base D1.</div></div>`:''}
+  ${[...groups.entries()].map(([cat,rows])=>`<div class="card" style="margin-bottom:10px">
+    <div style="font-weight:600;margin-bottom:8px">${esc(cat)} <span style="font-weight:400;color:var(--muted);font-size:12px">· ${rows.length}</span></div>
+    <div class="wrap"><table>
+    <thead><tr><th>Ressource</th><th>Type</th><th>Contenu</th><th>Ordre</th><th>Visibilité</th><th></th></tr></thead>
+    <tbody>${rows.map(r=>`<tr>
+      <td><strong>${esc(r.titre)}</strong>${r.description?`<div style="font-size:11px;color:var(--muted);max-width:340px">${esc(r.description)}</div>`:''}</td>
+      <td>${r.type==='video'?'<span class="badge bgray">▶ Vidéo</span>':'<span class="badge bgray">📄 PDF</span>'}</td>
+      <td>${contenu(r)}</td>
+      <td>${esc(r.ordre??0)}</td>
+      <td>${Number(r.actif)===1?'<span class="badge bok">Visible</span>':'<span class="badge bwarn">Masquée</span>'}</td>
+      <td style="white-space:nowrap">${canWrite?`<button class="btn sm" onclick="openModal('ressource','${esc(r.id)}')">Modifier</button>
+      <button class="btn sm danger" style="margin-left:4px" onclick="delRessource('${esc(r.id)}')">✕</button>`:''}</td>
+      </tr>`).join('')}</tbody></table></div></div>`).join('')}
+  ${(!D.ressources.length&&!D.ressourcesError)?`<div class="empty">Aucune ressource pour le moment.${canWrite?' Ajoutez un PDF ou une vidéo pour qu\'ils apparaissent dans l\'espace membre.':''}</div>`:''}`;
+}
+
+function vRessourceModal(){
+  const r=UI.editObj||{titre:'',description:'',categorie:'',type:'pdf',video_url:'',fichier_path:'',ordre:0,actif:1};
+  const cats=[...new Set([...RESSOURCE_CATEGORIES_SUGGEREES,...D.ressources.map(x=>x.categorie).filter(Boolean)])];
+  const isVideo=r.type==='video';
+  const videoMode=(r.type==='video'&&r.fichier_path)?'fichier':'lien';
+  const current=r.fichier_path?`<div style="font-size:12px;color:var(--muted);margin-bottom:4px">Fichier actuel : <strong>${esc(r.fichier_nom||'')}</strong> (${fmtOctets(r.fichier_taille)}) — laissez vide pour le conserver.</div>`:'';
+  return`<div class="modal" style="max-width:520px"><h2>📚 ${UI.editObj?'Modifier la ressource':'Ajouter une ressource'}</h2>
+  <div class="g2">
+  <div class="fg full"><label>Titre</label><input id="r-titre" value="${esc(r.titre||'')}" placeholder="Techniques de pieds — niveau 1"></div>
+  <div class="fg full"><label>Description (facultatif)</label><textarea id="r-desc" rows="2" placeholder="Courte présentation, durée, niveau…">${esc(r.description||'')}</textarea></div>
+  <div class="fg"><label>Catégorie</label><input id="r-cat" list="r-cats" value="${esc(r.categorie||'')}" placeholder="Techniques"><datalist id="r-cats">${cats.map(c=>`<option value="${esc(c)}">`).join('')}</datalist></div>
+  <div class="fg"><label>Type</label><select id="r-type" onchange="ressourceFormChanged()"><option value="pdf" ${!isVideo?'selected':''}>📄 Document PDF</option><option value="video" ${isVideo?'selected':''}>▶ Vidéo</option></select></div>
+
+  <div class="fg full" id="r-sec-pdf" style="${isVideo?'display:none':''}">
+    <label>Fichier PDF (${RESSOURCE_MAX_MO.pdf} Mo maximum)</label>
+    ${!isVideo?current:''}
+    <input id="r-pdf" type="file" accept=".pdf,application/pdf">
+  </div>
+
+  <div class="fg full" id="r-sec-video" style="${isVideo?'':'display:none'}">
+    <label>Source de la vidéo</label>
+    <div style="display:flex;gap:14px;margin-bottom:6px;font-size:13px">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="r-vsrc" value="lien" ${videoMode==='lien'?'checked':''} onchange="ressourceFormChanged()" style="width:auto"> Lien YouTube / Vimeo</label>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="r-vsrc" value="fichier" ${videoMode==='fichier'?'checked':''} onchange="ressourceFormChanged()" style="width:auto"> Fichier vidéo</label>
+    </div>
+    <div id="r-sec-lien">
+      <input id="r-url" value="${esc(r.video_url||'')}" placeholder="https://www.youtube.com/watch?v=…" oninput="ressourceFormChanged()">
+      <div id="r-url-hint" style="font-size:12px;margin-top:4px;color:var(--muted)"></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">Conseillé pour les vidéos longues : publiez-la sur YouTube en « non répertoriée » pour qu'elle ne soit pas publique.</div>
+    </div>
+    <div id="r-sec-fichier" style="display:none">
+      ${isVideo?current:''}
+      <input id="r-video" type="file" accept=".mp4,.m4v,.webm,.mov,video/mp4,video/webm,video/quicktime">
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">MP4, WebM ou MOV — ${RESSOURCE_MAX_MO.video} Mo maximum. Au-delà, utilisez un lien YouTube ou Vimeo.</div>
+    </div>
+  </div>
+
+  <div class="fg"><label>Ordre d'affichage</label><input id="r-ordre" type="number" value="${esc(r.ordre??0)}"></div>
+  <label style="display:flex;flex-direction:row;align-items:center;gap:7px;font-size:13px;cursor:pointer;align-self:end;margin-bottom:10px" class="fg"><input type="checkbox" id="r-actif" ${Number(r.actif)!==0?'checked':''} style="width:auto;accent-color:var(--red)"> Visible par les adhérents</label>
+  </div>
+  <div id="r-progress" style="display:none;margin-top:10px"><progress id="r-bar" max="100" value="0" style="width:100%"></progress><div id="r-pct" style="font-size:12px;color:var(--muted)"></div></div>
+  <div class="modal-act"><button class="btn" id="r-cancel" onclick="closeModal()">Annuler</button><button class="btn primary" id="r-save" onclick="saveRessource()">Enregistrer</button></div>
+  </div>`;
+}
+
+// Affiche la bonne section selon le type / la source, et valide le lien en direct.
+function ressourceFormChanged(){
+  const type=document.getElementById('r-type')?.value;
+  if(!type) return;
+  const src=document.querySelector('input[name="r-vsrc"]:checked')?.value||'lien';
+  document.getElementById('r-sec-pdf').style.display=type==='pdf'?'':'none';
+  document.getElementById('r-sec-video').style.display=type==='video'?'':'none';
+  document.getElementById('r-sec-lien').style.display=src==='lien'?'':'none';
+  document.getElementById('r-sec-fichier').style.display=src==='fichier'?'':'none';
+  const hint=document.getElementById('r-url-hint');
+  const val=document.getElementById('r-url')?.value.trim();
+  if(!hint) return;
+  if(!val){hint.textContent='';return;}
+  const parsed=parseVideoLink(val);
+  hint.style.color=parsed?'#1e7e34':'var(--red)';
+  hint.textContent=parsed?`✓ Lien ${parsed.provider} reconnu`:'Lien non reconnu : seuls YouTube et Vimeo sont acceptés.';
+}
+function uploadRessourceFile(id,type,file,onProgress){
+  return new Promise((resolve,reject)=>{
+    const xhr=new XMLHttpRequest();
+    xhr.open('PUT',`/api/admin/ressources/fichier?id=${encodeURIComponent(id)}&type=${type}&nom=${encodeURIComponent(file.name)}`);
+    xhr.withCredentials=true;
+    xhr.setRequestHeader('Content-Type','application/octet-stream');
+    xhr.upload.onprogress=e=>{if(e.lengthComputable)onProgress(Math.round(e.loaded*100/e.total));};
+    xhr.onload=()=>{
+      let payload=null;try{payload=JSON.parse(xhr.responseText);}catch{}
+      if(xhr.status>=200&&xhr.status<300&&payload?.data) return resolve(payload.data);
+      if(xhr.status===401&&typeof window._onSessionExpired==='function') window._onSessionExpired();
+      const msg=typeof payload?.error==='string'?payload.error:payload?.error?.message;
+      reject(new Error(msg||`Téléversement refusé (HTTP ${xhr.status}).`));
+    };
+    xhr.onerror=()=>reject(new Error('Connexion interrompue pendant le téléversement.'));
+    xhr.send(file);
+  });
+}
+
+async function cleanupRessourceFiles(id,keepPath){
+  try{
+    await fetch(`/api/admin/ressources/fichier?id=${encodeURIComponent(id)}&garder=${encodeURIComponent(keepPath||'')}`,{method:'DELETE',credentials:'same-origin'});
+  }catch{/* nettoyage au mieux : un fichier orphelin n'est visible de personne */}
+}
+
+async function saveRessource(){
+  if(UI.ressourceSaving) return;
+  const titre=document.getElementById('r-titre').value.trim();
+  if(!titre) return alert('Le titre est obligatoire.');
+  const type=document.getElementById('r-type').value==='video'?'video':'pdf';
+  const editing=UI.editObj;
+  const id=editing?editing.id:crypto.randomUUID();
+  const payload={
+    titre,
+    description:document.getElementById('r-desc').value.trim()||null,
+    categorie:document.getElementById('r-cat').value.trim()||null,
+    type,
+    ordre:parseInt(document.getElementById('r-ordre').value,10)||0,
+    actif:document.getElementById('r-actif').checked?1:0,
+    updated_at:new Date().toISOString(),
+  };
+  const hadFile=!!(editing&&editing.fichier_path);
+  let file=null;
+  if(type==='pdf'){
+    file=document.getElementById('r-pdf').files[0]||null;
+    if(!file&&!(hadFile&&editing.type==='pdf')) return alert('Choisissez le fichier PDF.');
+    if(file&&!/\.pdf$/i.test(file.name)) return alert('Le fichier doit être un PDF.');
+    payload.video_url=null;
+  }else if((document.querySelector('input[name="r-vsrc"]:checked')?.value||'lien')==='lien'){
+    const url=document.getElementById('r-url').value.trim();
+    if(!parseVideoLink(url)) return alert('Collez un lien YouTube ou Vimeo valide.');
+    payload.video_url=url;
+    Object.assign(payload,{fichier_path:null,fichier_nom:null,fichier_taille:null,fichier_mime:null});
+  }else{
+    file=document.getElementById('r-video').files[0]||null;
+    if(!file&&!(hadFile&&editing.type==='video')) return alert('Choisissez le fichier vidéo.');
+    if(file&&!/\.(mp4|m4v|webm|mov)$/i.test(file.name)) return alert('Format vidéo accepté : MP4, WebM ou MOV.');
+    payload.video_url=null;
+  }
+  if(file&&file.size>RESSOURCE_MAX_MO[type]*1048576) return alert(`Fichier trop volumineux (${RESSOURCE_MAX_MO[type]} Mo maximum).${type==='video'?' Utilisez plutôt un lien YouTube ou Vimeo.':''}`);
+
+  UI.ressourceSaving=true;
+  const saveBtn=document.getElementById('r-save'),cancelBtn=document.getElementById('r-cancel');
+  const setBusy=(busy,label)=>{if(saveBtn){saveBtn.disabled=busy;saveBtn.textContent=label||'Enregistrer';}if(cancelBtn)cancelBtn.disabled=busy;};
+  let uploaded=null;
+  try{
+    if(file){
+      const box=document.getElementById('r-progress'),bar=document.getElementById('r-bar'),pct=document.getElementById('r-pct');
+      box.style.display='';setBusy(true,'Téléversement…');
+      uploaded=await uploadRessourceFile(id,type,file,p=>{bar.value=p;pct.textContent=`Téléversement : ${p} %`;});
+      pct.textContent='Enregistrement…';
+      Object.assign(payload,{fichier_path:uploaded.path,fichier_nom:uploaded.nom||file.name,fichier_taille:uploaded.taille,fichier_mime:uploaded.mime});
+    }
+    setBusy(true,'Enregistrement…');
+    if(editing){
+      const {error}=await SB.from('club_ressources').update(payload).eq('id',editing.id);
+      if(error) throw new Error(error.message);
+      Object.assign(D.ressources.find(x=>x.id===editing.id),payload);
+    }else{
+      const {data,error}=await SB.from('club_ressources').insert({...payload,id,created_at:new Date().toISOString()}).select().single();
+      if(error) throw new Error(error.message);
+      D.ressources.push(data);
+    }
+  }catch(e){
+    // La ligne n'a pas été enregistrée : on retire le fichier tout juste téléversé
+    // (en modification, l'ancien fichier — référencé par la ligne — est conservé).
+    if(uploaded) await cleanupRessourceFiles(id,editing?.fichier_path||'');
+    UI.ressourceSaving=false;setBusy(false);
+    const box=document.getElementById('r-progress');if(box)box.style.display='none';
+    return alert('Erreur : '+e.message);
+  }
+  // Ligne enregistrée : supprime les anciennes versions du fichier (remplacement,
+  // ou passage à un lien vidéo).
+  if(uploaded) await cleanupRessourceFiles(id,uploaded.path);
+  else if(hadFile&&payload.fichier_path===null) await cleanupRessourceFiles(id,'');
+  UI.ressourceSaving=false;
+  closeModal();render();
+}
+
+async function delRessource(id){
+  const r=D.ressources.find(x=>x.id===id);
+  if(!confirm(`Supprimer « ${r?.titre||'cette ressource'} » ? Elle disparaîtra de l'espace membre${r?.fichier_path?' et son fichier sera effacé':''}.`)) return;
+  const res=await fetch(`/api/admin/ressources/${encodeURIComponent(id)}`,{method:'DELETE',credentials:'same-origin'});
+  const payload=await res.json().catch(()=>null);
+  if(!res.ok) return alert('Erreur : '+((typeof payload?.error==='string'?payload.error:payload?.error?.message)||`HTTP ${res.status}`));
+  D.ressources=D.ressources.filter(x=>x.id!==id);
+  render();
+}
+
 function vFacture(){
   const canWrite=hasPerm('perm_facturation','write');
   const sub=UI.subTab.facture;
@@ -8534,6 +8795,9 @@ function renderModal(){
     <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="savePlanning()">Enregistrer</button></div>
     </div>`;
 
+  }else if(UI.modal==='ressource'){
+    html=vRessourceModal();
+
   }else if(UI.modal==='budget_ligne'){
     const b=UI.editObj||{compte:'',libelle:'',montant_prevu:0,notes:''};
     html=`<div class="modal" style="max-width:420px"><h2>💰 ${UI.editObj?'Modifier la ligne':'Nouvelle ligne de budget'}</h2>
@@ -8821,8 +9085,9 @@ function renderModal(){
   if(!html) return;
   const div=document.createElement('div');
   div.className='modal-bg';div.innerHTML=html;
-  div.addEventListener('click',e=>{if(e.target===div)closeModal()});
+  div.addEventListener('click',e=>{if(e.target===div&&!UI.ressourceSaving)closeModal()});
   document.getElementById('app').appendChild(div);
+  if(UI.modal==='ressource') ressourceFormChanged();
 }
 
 // Écritures types — préremplir la modal écriture selon un modèle.
@@ -9294,7 +9559,7 @@ function openEcritureType(type){
 }
 
 function openModal(t,id){
-  const permMap={adh:'perm_adherents',compte:'perm_banque',ecr:'perm_comptabilite',achat:'perm_achats',user:'perm_administration',exo:'perm_comptabilite',exo_close:'perm_comptabilite',feedback_campaign:'perm_feedback',feedback_invite:'perm_feedback',presence:'perm_presences',materiel:'perm_materiel',materiel_emprunt:'perm_materiel',materiel_mouvement:'perm_materiel',planning:'perm_planning',budget_ligne:'perm_comptabilite'};
+  const permMap={adh:'perm_adherents',compte:'perm_banque',ecr:'perm_comptabilite',achat:'perm_achats',user:'perm_administration',exo:'perm_comptabilite',exo_close:'perm_comptabilite',feedback_campaign:'perm_feedback',feedback_invite:'perm_feedback',presence:'perm_presences',materiel:'perm_materiel',materiel_emprunt:'perm_materiel',materiel_mouvement:'perm_materiel',planning:'perm_planning',ressource:'perm_adherents',budget_ligne:'perm_comptabilite'};
   if(permMap[t] && !requireWritePerm(permMap[t])) return;
   UI.modal=t;UI.editObj=null;UI.guardianInfo=null;UI.blacklistHistorique=null;
   if(id){
@@ -9307,6 +9572,7 @@ function openModal(t,id){
     if(t==='presence') UI.editObj=D.presences.find(p=>p.id===id);
     if(t==='materiel') UI.editObj=D.materiel.find(m=>m.id===id);
     if(t==='planning') UI.editObj=D.planning.find(p=>p.id===id);
+    if(t==='ressource') UI.editObj=D.ressources.find(r=>r.id===id);
     if(t==='materiel_emprunt' || t==='materiel_mouvement') UI.materielTargetId=id;
   }
   if(t==='adh' && id){ loadGuardianInfo(id); loadBlacklistHistorique(id); }
