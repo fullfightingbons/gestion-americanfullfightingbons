@@ -4,6 +4,53 @@ Ajoutées sur la base du projet existant, sans rien retirer. `tsc --noEmit`,
 les 31 tests existants (`vitest run`) et `wrangler deploy --dry-run` sont
 propres après ajout.
 
+## Espace membre : deux adhérents sur la même adresse e-mail (père et fils) — 11/10/2026
+
+**Cause.** L'espace membre retrouvait « la fiche d'un adhérent » (et toutes ses saisons) par son **e-mail seul**.
+Quand deux adhérents partagent une adresse, ils étaient donc traités comme une seule personne : la « fiche courante »
+était celle inscrite en dernier (l'enfant, au hasard des inscriptions), et diplômes, cotisations et présences des
+deux étaient mélangés — y compris dans les routes d'écriture (coordonnées, certificat médical) et de téléchargement
+(diplômes, attestation de présence). Le sélecteur de profils fusionnait aussi les enfants qui partagent l'adresse du
+parent (seul le plus récemment inscrit apparaissait).
+
+**Correctif** (`src/lib/member-identity.ts`, branché sur toutes les routes `/api/member/*` concernées) :
+- Deux fiches qui partagent un e-mail sont la **même personne** sauf preuve du contraire : dates de naissance qui se
+  contredisent, ou prénoms nettement différents (casse, accents, tirets ignorés ; une coquille d'une lettre sur un prénom
+  d'au moins 5 lettres est tolérée pour ne pas amputer un historique). **Pour une adresse portée par une seule personne,
+  rien ne change.**
+- `resolveCurrentAdherentRow`, le tableau de bord, `/cotisations`, `/presences`, `/diplomes`, le téléchargement d'un
+  diplôme et l'attestation de présence travaillent maintenant sur les **fiches de la personne du profil actif**
+  (`adherents.id IN (…)`), plus sur « toutes les lignes de cet e-mail ».
+- `/api/member/profiles` : un enfant = une personne (sa saison la plus récente), plus « une ligne par e-mail ».
+- `/api/member/activation/request` : quand plusieurs personnes partagent l'adresse, le compte est ancré sur la
+  **plus âgée** (le parent) au lieu d'une fiche quelconque ; un compte déjà existant pour cette adresse est réutilisé
+  (jamais re-ancré) au lieu de provoquer une erreur sur l'e-mail unique.
+- Le lien de tutelle reste un geste manuel du bureau (partager une adresse ne prouve pas une tutelle) : tant que le fils
+  n'est pas rattaché au compte du père, le père ne voit que lui-même.
+
+**À vérifier / reprendre côté données (non automatisé volontairement).** Un compte déjà créé pour une adresse partagée
+a pu être ancré sur la fiche de l'enfant. Pour les repérer, dans la console D1 :
+```sql
+SELECT ac.id AS compte_id, ac.email, ac.adherent_id AS fiche_ancre, a.prenom, a.nom, a.naissance
+FROM adherent_comptes ac JOIN adherents a ON a.id = ac.adherent_id
+WHERE (SELECT COUNT(DISTINCT UPPER(TRIM(x.prenom))) FROM adherents x
+       WHERE LOWER(TRIM(x.email)) = LOWER(TRIM(ac.email))) > 1;
+```
+Si l'ancre est l'enfant : `UPDATE adherent_comptes SET adherent_id = '<id fiche parent>' WHERE id = '<compte_id>';`
+puis rattacher l'enfant au compte depuis sa fiche (Adhérents › tuteur) ou
+`UPDATE adherents SET guardian_compte_id = '<compte_id>' WHERE id = '<id fiche enfant>';`
+(le lien porte sur une ligne par saison : à reposer à chaque réinscription, comme avant).
+
+**Limites connues.** `handleBoutiqueMemberStatus` (tenue offerte aux membres du bureau) interroge toujours par e-mail
+seul : si le père est membre du bureau, son fils sur la même adresse est aussi considéré comme tel. Le correctif complet
+demande que `boutique` transmette aussi l'adhérent actif (présent dans le jeton : `activeAdherentId`). Le rapprochement
+à l'inscription en ligne (`findMatchingAdherent`, projet `inscription`) cherche d'abord « par e-mail exact » : à vérifier
+qu'une réinscription du fils ne met pas à jour la fiche du père.
+
+Tests : `test/member-identity.test.ts` (24, fonctions pures) et `test/member-shared-email.test.ts` (9, vraies routes du
+Worker sur SQLite avec toutes les migrations ; ignoré si Node < 22.5). Sur le même jeu de données, 7 de ces 9 tests échouent
+avec l'ancien code. `tsc --noEmit` et les 311 tests passent. Aucune migration, aucun changement côté `espace-membre`.
+
 ## Journal : boutons rapides « Compte courant → Épargne » et « Épargne → Compte courant » — 11/10/2026
 
 Deux nouveaux boutons dans les écritures types du **Journal comptable** (après « Remboursement adhérent »),

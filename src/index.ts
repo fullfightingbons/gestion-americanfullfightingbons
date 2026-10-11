@@ -33,6 +33,7 @@ import {verifyPassword, createSessionToken, parseSessionToken, hashPassword, pre
 import { buildDocumentPdfBytes, type DocumentInput, type DocumentLigne } from './lib/pdf/document-template';
 import { bytesToBase64 } from './lib/pdf/pdf-engine';
 import { buildCotisationReceipt, buildReceiptContent } from './lib/pdf/cotisation-receipt';
+import { loadMemberPersonRows, personRowIds, sqlPlaceholders, latestRowPerPerson, pickAccountHolder } from './lib/member-identity';
 import type { RegistrationRow } from './lib/pdf/cotisation-receipt';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -115,25 +116,38 @@ function clearMemberSessionCookie(request: Request): string {
 // Construit la charge utile "profil membre" telle que renvoyée par
 // /api/member/me — extrait ici pour être réutilisée telle quelle par
 // /api/member/dashboard, sans dupliquer le calcul de certificat_expire_le.
-// Trouve la ligne `adherents` la plus récente d'un membre (par email, comme
-// /api/member/diplomes et cotisationsResult), plutôt que member.adherent_id
-// — l'ancrage figé à l'activation du compte espace membre (cf. commentaire
-// complet sur /api/member/diplomes). À utiliser partout où il faut LA fiche
-// courante d'un adhérent (profil, certificat, bulletin/notation, sondages),
-// à distinguer des routes historiques (diplômes, cotisations) qui ont
-// besoin de TOUTES ses lignes/saisons et non de la seule plus récente.
-// Retombe sur l'ancrage figé si la recherche par email ne trouve rien (ne
-// devrait arriver qu'en cas de données incohérentes) plutôt que de renvoyer
-// null et casser tout l'espace membre.
-async function resolveCurrentAdherentRow(member: Record<string, any>, env: Env): Promise<Record<string, any> | null> {
-  const email = String((member.isGuardianView ? member.adherent_email : member.email) || '').trim().toLowerCase();
-  if (email) {
-    const row = await env.DB.prepare(
-      `SELECT * FROM adherents WHERE LOWER(TRIM(email)) = ? ORDER BY date_inscription DESC, created_at DESC LIMIT 1`
-    ).bind(email).first<Record<string, any>>();
-    if (row) return row;
-  }
+// Trouve la ligne `adherents` la plus récente d'une personne (une ligne par
+// saison), plutôt que member.adherent_id — l'ancrage figé à l'activation du
+// compte espace membre (cf. commentaire complet sur /api/member/diplomes). À
+// utiliser partout où il faut LA fiche courante d'un adhérent (profil,
+// certificat, bulletin/notation, sondages), à distinguer des routes
+// historiques (diplômes, cotisations, présences) qui ont besoin de TOUTES ses
+// lignes/saisons — cf. loadMemberScope.
+//
+// Les lignes sont reliées par e-mail ET par identité (src/lib/member-identity.ts) :
+// deux adhérents qui partagent une adresse (père et fils, fratrie sur l'adresse
+// d'un parent) ne sont pas la même personne et ne doivent pas se voir
+// mutuellement leur fiche, leurs diplômes ou leurs présences. Pour une adresse
+// portée par une seule personne, rien ne change.
+// Retombe sur l'ancrage figé si aucune ligne ne correspond (ne devrait arriver
+// qu'en cas de données incohérentes) plutôt que de renvoyer null et casser
+// tout l'espace membre.
+async function resolveCurrentAdherentRow(
+  member: Record<string, any>,
+  env: Env,
+  personRows?: Record<string, any>[],
+): Promise<Record<string, any> | null> {
+  const rows = personRows ?? await loadMemberPersonRows(env.DB, member as any);
+  if (rows.length) return rows[0];
   return env.DB.prepare(`SELECT * FROM adherents WHERE id = ?`).bind(member.adherent_id).first<Record<string, any>>();
+}
+
+// Toutes les fiches (saisons) de la personne du profil actif : `rows` (la plus
+// récente d'abord) et `ids` (ancrage inclus) pour les clauses `IN (...)` des
+// routes d'historique.
+async function loadMemberScope(member: Record<string, any>, env: Env) {
+  const rows = await loadMemberPersonRows(env.DB, member as any);
+  return { rows, ids: personRowIds(member as any, rows) };
 }
 
 async function memberProfilePayload(member: Record<string, any>, env: Env, precomputedRow?: Record<string, any> | null) {
@@ -2946,12 +2960,21 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       const generic = { data: { ok: true, message: "Si cet e-mail correspond à un adhérent, un lien d'activation vient de lui être envoyé." }, error: null };
       if (!email) return json(generic);
 
-      const adherent = await env.DB.prepare(`SELECT id, email, nom, prenom FROM adherents WHERE LOWER(TRIM(email)) = ?`).bind(email).first<any>();
+      // Plusieurs adhérents peuvent partager cette adresse (père et fils...) : sans
+      // ORDER BY, `.first()` ancrait le compte sur une fiche quelconque — parfois
+      // celle de l'enfant. pickAccountHolder choisit la personne la plus âgée.
+      const { results: sameEmailRows } = await env.DB
+        .prepare(`SELECT id, email, nom, prenom, naissance, date_inscription, created_at FROM adherents WHERE LOWER(TRIM(email)) = ?`)
+        .bind(email).all<any>();
+      const adherent = pickAccountHolder(sameEmailRows || []) as any;
       if (!adherent) return json(generic); // pas d'énumération
 
       const token = bytesToHex(crypto.getRandomValues(new Uint8Array(32)));
       const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
-      const existing = await env.DB.prepare(`SELECT id FROM adherent_comptes WHERE adherent_id = ?`).bind(adherent.id).first<any>();
+      // adherent_comptes.email est UNIQUE : si un compte existe déjà pour cette adresse, on le
+      // réutilise tel quel (sans toucher à son ancrage) plutôt que d'en créer un second.
+      const existing = (await env.DB.prepare(`SELECT id FROM adherent_comptes WHERE LOWER(TRIM(email)) = ?`).bind(email).first<any>())
+        ?? (await env.DB.prepare(`SELECT id FROM adherent_comptes WHERE adherent_id = ?`).bind(adherent.id).first<any>());
       if (existing) {
         await env.DB.prepare(`UPDATE adherent_comptes SET activation_token=?, activation_expires_at=?, email=? WHERE id=?`)
           .bind(token, expiresAt, adherent.email, existing.id).run();
@@ -3061,7 +3084,9 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
     if (method === 'GET' && path === '/api/member/dashboard') {
       const member = await getCurrentMemberFromBearer(request, env);
       if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
-      const currentRow = await resolveCurrentAdherentRow(member, env);
+      const scope = await loadMemberScope(member, env);
+      const idsIn = sqlPlaceholders(scope.ids.length);
+      const currentRow = await resolveCurrentAdherentRow(member, env, scope.rows);
 
       const [me, diplomesResult, annuaireResult, cotisationsResult, feedbackResult, presencesResult] = await Promise.all([
         memberProfilePayload(member, env, currentRow),
@@ -3070,9 +3095,9 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
                   (d.pdf_storage_path IS NOT NULL) AS pdf_disponible
            FROM diplomes d
            JOIN adherents a ON a.id = d.adherent_id
-           WHERE LOWER(TRIM(a.email)) = LOWER(TRIM(?))
+           WHERE a.id IN ${idsIn}
            ORDER BY d.date_emission DESC`
-        ).bind((member.isGuardianView ? member.adherent_email : member.email) || '').all(),
+        ).bind(...scope.ids).all(),
         env.DB.prepare(
           `SELECT prenom, nom FROM adherents
            WHERE annuaire_visible = 1 AND statut = 'Actif'
@@ -3093,9 +3118,9 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
         env.DB.prepare(
           `SELECT a.cotisation, a.paiement, a.date_inscription, a.exercice_id, e.libelle AS saison
            FROM adherents a LEFT JOIN exercices e ON e.id = a.exercice_id
-           WHERE LOWER(TRIM(a.email)) = LOWER(TRIM(?))
+           WHERE a.id IN ${idsIn}
            ORDER BY a.date_inscription DESC`
-        ).bind((member.isGuardianView ? member.adherent_email : member.email) || '').all(),
+        ).bind(...scope.ids).all(),
         // Enquête de satisfaction en attente pour ce membre, s'il y en a une.
         // Réutilise le token déjà généré dans feedback_recipients (même
         // mécanisme que le lien envoyé par email) plutôt que d'inventer un
@@ -3132,9 +3157,9 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
           `SELECT p.date_seance, p.creneau, p.present, p.notes
            FROM presences p
            JOIN adherents a ON a.id = p.adherent_id
-           WHERE LOWER(TRIM(a.email)) = LOWER(TRIM(?))
+           WHERE a.id IN ${idsIn}
            ORDER BY p.date_seance DESC, p.creneau`
-        ).bind((member.isGuardianView ? member.adherent_email : member.email) || '').all(),
+        ).bind(...scope.ids).all(),
       ]);
 
       return json({
@@ -3156,13 +3181,15 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
     if (method === 'GET' && path === '/api/member/cotisations') {
       const member = await getCurrentMemberFromBearer(request, env);
       if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+      const scope = await loadMemberScope(member, env);
+      const idsIn = sqlPlaceholders(scope.ids.length);
 
       const { results } = await env.DB.prepare(
         `SELECT a.cotisation, a.paiement, a.date_inscription, a.exercice_id, e.libelle AS saison
          FROM adherents a LEFT JOIN exercices e ON e.id = a.exercice_id
-         WHERE LOWER(TRIM(a.email)) = LOWER(TRIM(?))
+         WHERE a.id IN ${idsIn}
          ORDER BY a.date_inscription DESC`
-      ).bind((member.isGuardianView ? member.adherent_email : member.email) || '').all();
+      ).bind(...scope.ids).all();
       return json({ data: results || [], error: null });
     }
 
@@ -3175,14 +3202,16 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
     if (method === 'GET' && path === '/api/member/presences') {
       const member = await getCurrentMemberFromBearer(request, env);
       if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+      const scope = await loadMemberScope(member, env);
+      const idsIn = sqlPlaceholders(scope.ids.length);
 
       const { results } = await env.DB.prepare(
         `SELECT p.date_seance, p.creneau, p.present, p.notes
          FROM presences p
          JOIN adherents a ON a.id = p.adherent_id
-         WHERE LOWER(TRIM(a.email)) = LOWER(TRIM(?))
+         WHERE a.id IN ${idsIn}
          ORDER BY p.date_seance DESC, p.creneau`
-      ).bind((member.isGuardianView ? member.adherent_email : member.email) || '').all();
+      ).bind(...scope.ids).all();
       return json({ data: results || [], error: null });
     }
 
@@ -3400,14 +3429,16 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
     if (method === 'GET' && path === '/api/member/diplomes') {
       const member = await getCurrentMemberFromBearer(request, env);
       if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+      const scope = await loadMemberScope(member, env);
+      const idsIn = sqlPlaceholders(scope.ids.length);
       const { results } = await env.DB.prepare(
         `SELECT d.id, d.titre, d.ceinture, d.date_emission, d.saison, d.delivre_par,
                 (d.pdf_storage_path IS NOT NULL) AS pdf_disponible
          FROM diplomes d
          JOIN adherents a ON a.id = d.adherent_id
-         WHERE LOWER(TRIM(a.email)) = LOWER(TRIM(?))
+         WHERE a.id IN ${idsIn}
          ORDER BY d.date_emission DESC`
-      ).bind((member.isGuardianView ? member.adherent_email : member.email) || '').all();
+      ).bind(...scope.ids).all();
       return json({ data: results || [], error: null });
     }
 
@@ -3427,14 +3458,16 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
     if (diplomeDocMatch && method === 'GET') {
       const member = await getCurrentMemberFromBearer(request, env);
       if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+      const scope = await loadMemberScope(member, env);
+      const idsIn = sqlPlaceholders(scope.ids.length);
       if (!env.R2_PDF) return err('Stockage indisponible', 503);
 
       const diplome = await env.DB.prepare(
         `SELECT d.id, d.pdf_storage_path, d.titre
          FROM diplomes d
          JOIN adherents a ON a.id = d.adherent_id
-         WHERE d.id = ? AND LOWER(TRIM(a.email)) = LOWER(TRIM(?))`
-      ).bind(diplomeDocMatch[1], (member.isGuardianView ? member.adherent_email : member.email) || '').first<any>();
+         WHERE d.id = ? AND a.id IN ${idsIn}`
+      ).bind(diplomeDocMatch[1], ...scope.ids).first<any>();
       if (!diplome) return err('Diplôme introuvable', 404);
       if (!diplome.pdf_storage_path) return err("Ce diplôme n'a pas d'archive PDF disponible", 404);
 
@@ -3566,6 +3599,8 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
     if (method === 'GET' && path === '/api/member/documents/attestation-presence') {
       const member = await getCurrentMemberFromBearer(request, env);
       if (!member) return json({ data: null, error: { message: 'Session invalide ou expirée' } }, 401);
+      const scope = await loadMemberScope(member, env);
+      const idsIn = sqlPlaceholders(scope.ids.length);
 
       const isIsoDate = (s: string | null) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
       const debutParam = url.searchParams.get('debut');
@@ -3573,16 +3608,15 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       const debut = isIsoDate(debutParam) ? debutParam : null;
       const fin = isIsoDate(finParam) ? finParam : null;
 
-      const emailToMatch = (member.isGuardianView ? member.adherent_email : member.email) || '';
       const { results } = await env.DB.prepare(
         `SELECT p.date_seance
          FROM presences p
          JOIN adherents a ON a.id = p.adherent_id
-         WHERE LOWER(TRIM(a.email)) = LOWER(TRIM(?)) AND p.present = 1
+         WHERE a.id IN ${idsIn} AND p.present = 1
            AND (? IS NULL OR p.date_seance >= ?)
            AND (? IS NULL OR p.date_seance <= ?)
          ORDER BY p.date_seance ASC`
-      ).bind(emailToMatch, debut, debut, fin, fin).all<{ date_seance: string }>();
+      ).bind(...scope.ids, debut, debut, fin, fin).all<{ date_seance: string }>();
 
       const seances = results || [];
       if (!seances.length) {
@@ -3938,15 +3972,11 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
       const [ownRecord, childrenResult, dureeMois] = await Promise.all([
         loadMemberRecord(member.id, undefined, env),
         env.DB.prepare(
-          `SELECT id, nom, prenom, statut, couleur_ceinture, paiement, certificat_date, date_fin_adhesion
-           FROM adherents a
-           WHERE guardian_compte_id = ?
-             AND date_inscription = (
-               SELECT MAX(date_inscription) FROM adherents a2
-               WHERE a2.email = a.email AND a2.guardian_compte_id = ?
-             )
-           ORDER BY prenom COLLATE NOCASE, nom COLLATE NOCASE`
-        ).bind(member.id, member.id).all<Record<string, any>>(),
+          `SELECT id, nom, prenom, naissance, statut, couleur_ceinture, paiement, certificat_date,
+                  date_fin_adhesion, date_inscription, created_at
+           FROM adherents
+           WHERE guardian_compte_id = ?`
+        ).bind(member.id).all<Record<string, any>>(),
         getCertificatDureeMois(env),
       ]);
 
@@ -3962,6 +3992,14 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
         return d.toISOString().slice(0, 10);
       };
 
+      // Un enfant a une ligne par saison : on ne garde que la plus récente PAR
+      // PERSONNE. Dédoublonner par e-mail fusionnait deux enfants partageant
+      // l'adresse du parent (seul le plus récemment inscrit apparaissait dans
+      // le sélecteur de profils).
+      const children = latestRowPerPerson((childrenResult.results || []) as any[])
+        .sort((x, y) => String(x.prenom || '').localeCompare(String(y.prenom || ''), 'fr', { sensitivity: 'base' })
+          || String(x.nom || '').localeCompare(String(y.nom || ''), 'fr', { sensitivity: 'base' }));
+
       const profiles = [
         ...(ownRecord ? [{
           id: ownRecord.loginAdherentId, nom: ownRecord.nom, prenom: ownRecord.prenom,
@@ -3970,9 +4008,11 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
           certificat_expire_le: certificatExpireLe(ownRecord.certificat_date),
           family_role: ownRecord.family_role ?? null,
         }] : []),
-        ...((childrenResult.results || []).map((r) => ({
-          ...r, isSelf: false, certificat_expire_le: certificatExpireLe(r.certificat_date),
-        }))),
+        ...children.map((r) => ({
+          id: r.id, nom: r.nom, prenom: r.prenom, statut: r.statut, couleur_ceinture: r.couleur_ceinture,
+          paiement: r.paiement, certificat_date: r.certificat_date, date_fin_adhesion: r.date_fin_adhesion,
+          isSelf: false, certificat_expire_le: certificatExpireLe(r.certificat_date),
+        })),
       ];
 
       return json({ data: { profiles, activeAdherentId: member.adherent_id }, error: null });
