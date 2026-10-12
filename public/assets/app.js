@@ -51,13 +51,12 @@ const MODES_PAIE = ['Virement','Chèque','Espèces','CB','Prélèvement','HelloA
 const ADH_TYPES = ['Club','CSE Thalès','Membre du Bureau'];
 const ADH_STATUTS = ['Actif','Renouvellement','Inactif','Adhésion annulée'];
 const CEINTURE_COLORS = ['Blanche','Jaune','Orange','Verte','Bleue','Marron','Noire'];
-const JOUR_LABELS = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 const MATERIEL_ETATS = ['Neuf','Bon','Usagé','À réviser','Hors service'];
 
 const ALL_TABS = [
   {id:'dashboard',    icon:'🏁',label:'Pilotage'},
 {id:'adherents',    icon:'👥',label:'Adhérents',    perm:'perm_adherents'},
-{id:'suivi',        icon:'✅',label:'Présences & Planning', perms:['perm_presences','perm_planning']},
+{id:'suivi',        icon:'✅',label:'Présences',    perm:'perm_presences'},
 {id:'diplomes',     icon:'🎓',label:'Diplômes',     perm:'perm_diplomes'},
 {id:'ressources',    icon:'📚',label:'Ressources',   perm:'perm_adherents'},
 {id:'banque',       icon:'🏦',label:'Banque',        perm:'perm_banque'},
@@ -76,7 +75,6 @@ const TAB_PRIMARY_MOBILE = new Set(['dashboard','adherents','suivi']);
 const PERM_META = [
   ['perm_adherents','👥 Adhérents'],
 ['perm_presences','✅ Présences'],
-['perm_planning','🗓️ Planning'],
 ['perm_diplomes','🎓 Diplômes'],
 ['perm_banque','🏦 Banque'],
 ['perm_comptabilite','📊 Comptabilité'],
@@ -92,11 +90,11 @@ const PERM_LEVELS = {
   write:{label:'Lecture / écriture',rank:2},
 };
 const DEFAULT_ROLE_PERMS = {
-  admin:{perm_adherents:'write',perm_diplomes:'write',perm_banque:'write',perm_comptabilite:'write',perm_achats:'write',perm_facturation:'write',perm_feedback:'write',perm_services:'write',perm_administration:'write',perm_presences:'write',perm_materiel:'write',perm_planning:'write'},
-  tresorier:{perm_adherents:'write',perm_diplomes:'read',perm_banque:'write',perm_comptabilite:'write',perm_achats:'write',perm_facturation:'write',perm_feedback:'none',perm_services:'none',perm_administration:'none',perm_presences:'none',perm_materiel:'write',perm_planning:'read'},
-  secretaire:{perm_adherents:'write',perm_diplomes:'write',perm_banque:'none',perm_comptabilite:'none',perm_achats:'none',perm_facturation:'none',perm_feedback:'none',perm_services:'none',perm_administration:'none',perm_presences:'read',perm_materiel:'none',perm_planning:'write'},
-  entraineur:{perm_adherents:'read',perm_diplomes:'read',perm_banque:'none',perm_comptabilite:'none',perm_achats:'none',perm_facturation:'none',perm_feedback:'none',perm_services:'none',perm_administration:'none',perm_presences:'write',perm_materiel:'read',perm_planning:'read'},
-  membre:{perm_adherents:'none',perm_diplomes:'none',perm_banque:'none',perm_comptabilite:'none',perm_achats:'none',perm_facturation:'none',perm_feedback:'none',perm_services:'none',perm_administration:'none',perm_presences:'none',perm_materiel:'none',perm_planning:'none'},
+  admin:{perm_adherents:'write',perm_diplomes:'write',perm_banque:'write',perm_comptabilite:'write',perm_achats:'write',perm_facturation:'write',perm_feedback:'write',perm_services:'write',perm_administration:'write',perm_presences:'write',perm_materiel:'write'},
+  tresorier:{perm_adherents:'write',perm_diplomes:'read',perm_banque:'write',perm_comptabilite:'write',perm_achats:'write',perm_facturation:'write',perm_feedback:'none',perm_services:'none',perm_administration:'none',perm_presences:'none',perm_materiel:'write'},
+  secretaire:{perm_adherents:'write',perm_diplomes:'write',perm_banque:'none',perm_comptabilite:'none',perm_achats:'none',perm_facturation:'none',perm_feedback:'none',perm_services:'none',perm_administration:'none',perm_presences:'read',perm_materiel:'none'},
+  entraineur:{perm_adherents:'read',perm_diplomes:'read',perm_banque:'none',perm_comptabilite:'none',perm_achats:'none',perm_facturation:'none',perm_feedback:'none',perm_services:'none',perm_administration:'none',perm_presences:'write',perm_materiel:'read'},
+  membre:{perm_adherents:'none',perm_diplomes:'none',perm_banque:'none',perm_comptabilite:'none',perm_achats:'none',perm_facturation:'none',perm_feedback:'none',perm_services:'none',perm_administration:'none',perm_presences:'none',perm_materiel:'none'},
 };
 
 const PLAN = [
@@ -208,16 +206,16 @@ const D = {
     diplomeLayouts:{},
     diplomes:[],
     feedbackCampaigns:[], feedbackRecipients:[], feedbackResponses:[],
-    presences:[], materiel:[], materielEmprunts:[], materielMouvements:[], planning:[], ressources:[], ressourcesError:'', budgetPrevisionnel:[], budgetComparatif:null,
+    presences:[], materiel:[], materielEmprunts:[], materielMouvements:[], ressources:[], ressourcesError:'', budgetPrevisionnel:[], budgetComparatif:null,
     familles:[], famillesError:null,
     renouvellement:null,
     rolePerms: JSON.parse(JSON.stringify(DEFAULT_ROLE_PERMS)),
-    loaded:{core:false,dashboard:false,adherents:false,banque:false,comptabilite:false,achat:false,facture:false,administration:false,diplomesArchive:false,feedback:false,presences:false,materiel:false,planning:false,ressources:false,familles:false},
+    loaded:{core:false,dashboard:false,adherents:false,banque:false,comptabilite:false,achat:false,facture:false,administration:false,diplomesArchive:false,feedback:false,presences:false,materiel:false,ressources:false,familles:false},
     loading:{},
 };
 const UI = {
   tab:'dashboard',
-  subTab:{banque:'comptes',compta:'journal',facture:'liste',achat:'liste',admin:'users',feedback:'liste',suivi:'presences'},
+  subTab:{banque:'comptes',compta:'journal',facture:'liste',achat:'liste',admin:'users',feedback:'liste'},
   modal:null, editObj:null, currentUser:null,
   notices:[],
   search:{adherents:'',achats:'',factures:'',feedback:''},
@@ -583,7 +581,7 @@ function normalizeUserRow(row){
   });
   // Permissions : conserver la valeur string "read"/"write"/"none" si présente
   // Ne normaliser en booléen que si la valeur est 0/1/true/false
-  ['perm_adherents','perm_diplomes','perm_banque','perm_comptabilite','perm_achats','perm_facturation','perm_feedback','perm_presences','perm_materiel','perm_planning','perm_administration'].forEach(key=>{
+  ['perm_adherents','perm_diplomes','perm_banque','perm_comptabilite','perm_achats','perm_facturation','perm_feedback','perm_presences','perm_materiel','perm_administration'].forEach(key=>{
     const v=next[key];
     if(typeof v==='string' && (v==='read'||v==='write'||v==='none')) return; // OK, laisser tel quel
     if(v===true || v===1 || v==='1') next[key]='write';
@@ -613,7 +611,7 @@ function markLoaded(key,value=true){
 }
 
 function resetLoadedData(){
-  D.loaded={core:false,dashboard:false,adherents:false,banque:false,comptabilite:false,achat:false,facture:false,administration:false,diplomesArchive:false,feedback:false,presences:false,materiel:false,planning:false,ressources:false,familles:false};
+  D.loaded={core:false,dashboard:false,adherents:false,banque:false,comptabilite:false,achat:false,facture:false,administration:false,diplomesArchive:false,feedback:false,presences:false,materiel:false,ressources:false,familles:false};
   D.loading={};
 }
 
@@ -757,15 +755,6 @@ async function loadTabData(tab, force=false){
       D.ressources=res.data||[];
       D.ressourcesError=res.error?(res.error.message||'Chargement impossible'):'';
       markLoaded('ressources');
-      return;
-    }
-    if(tab==='planning'){
-      const [planRes]=await Promise.all([
-        SB.from('planning_encadrants').select('*').order('jour_semaine'),
-        D.loaded.adherents?Promise.resolve():loadTabData('adherents',force),
-      ]);
-      D.planning=planRes.data||[];
-      markLoaded('planning');
       return;
     }
   })().finally(()=>{
@@ -2003,7 +1992,7 @@ async function ensureCurrentTabData(){
     return;
   }
   if(UI.tab==='suivi'){
-    await Promise.all([loadTabData('presences'),loadTabData('planning')]);
+    await loadTabData('presences');
     return;
   }
   await loadTabData(target);
@@ -6148,22 +6137,10 @@ function vAchat(){
 }
 
 // ═══════════════════════════════════════════════════
-// PRÉSENCES & PLANNING (onglet fusionné)
+// PRÉSENCES
 // ═══════════════════════════════════════════════════
 function vSuivi(){
-  const canSeePresences=hasPerm('perm_presences');
-  const canSeePlanning=hasPerm('perm_planning');
-  // Si l'utilisateur n'a accès qu'à l'un des deux volets, on saute directement
-  // dessus plutôt que d'afficher un sous-onglet inutile vers une page vide.
-  let sub=UI.subTab.suivi;
-  if(sub==='presences' && !canSeePresences && canSeePlanning) sub=UI.subTab.suivi='planning';
-  if(sub==='planning' && !canSeePlanning && canSeePresences) sub=UI.subTab.suivi='presences';
-  const showTabs=canSeePresences && canSeePlanning;
-  return`${showTabs?`<div class="stabs">
-  <button class="stab ${sub==='presences'?'active':''}" onclick="showST('suivi','presences')">✅ Présences</button>
-  <button class="stab ${sub==='planning'?'active':''}" onclick="showST('suivi','planning')">🗓️ Planning</button>
-  </div>`:''}
-  ${sub==='planning'&&canSeePlanning?vPlanning():canSeePresences?vPresences():vPlanning()}`;
+  return vPresences();
 }
 
 function presenceDisplayName(p){
@@ -6391,40 +6368,6 @@ function vMaterielHistorique(){
     </tr>`).join('')}
   ${rows.length===0?`<tr><td colspan="5" class="empty">Aucun mouvement enregistré</td></tr>`:''}
   </tbody></table></div>`;
-}
-
-// ═══════════════════════════════════════════════════
-// PLANNING DES ENCADRANTS
-// ═══════════════════════════════════════════════════
-function vPlanning(){
-  const canWrite=hasPerm('perm_planning','write');
-  const adhName=(id)=>{const a=D.adherents.find(x=>x.id===id);return a?`${a.prenom} ${a.nom}`:'—';};
-  const byJour=[1,2,3,4,5,6,0].map(j=>({
-    jour:j,
-    creneaux:D.planning.filter(p=>p.jour_semaine===j && p.actif).sort((a,b)=>(a.heure_debut||'').localeCompare(b.heure_debut||'')),
-  })).filter(g=>g.creneaux.length>0);
-  return`<div class="view-head">
-  <div><div class="eyebrow">Cours réguliers</div><h2>Planning</h2>
-  <p>Qui encadre quel créneau chaque semaine — distinct du calendrier des stages et compétitions ponctuels.</p></div>
-  ${canWrite?`<button class="btn primary" onclick="openModal('planning')">+ Ajouter un créneau</button>`:''}
-  </div>
-  ${byJour.map(g=>`<div class="card" style="margin-bottom:10px">
-    <div style="font-weight:600;margin-bottom:8px">${JOUR_LABELS[g.jour]}</div>
-    <div class="wrap"><table>
-    <thead><tr><th>Horaire</th><th>Cours</th><th>Encadrant</th><th>Lieu</th><th></th></tr></thead>
-    <tbody>${g.creneaux.map(p=>`<tr>
-      <td>${esc(p.heure_debut)} – ${esc(p.heure_fin)}</td>
-      <td>${esc(p.cours)}</td>
-      <td>${esc(adhName(p.encadrant_id))}</td>
-      <td style="font-size:11px;color:var(--txt2)">${esc(p.lieu||'—')}</td>
-      <td style="white-space:nowrap">
-      ${canWrite?`<button class="btn sm" onclick="openModal('planning','${p.id}')">Modifier</button>
-      <button class="btn sm danger" style="margin-left:4px" onclick="delPlanning('${p.id}')">✕</button>`:''}
-      </td>
-      </tr>`).join('')}
-      </tbody></table></div>
-    </div>`).join('')}
-  ${byJour.length===0?`<div class="empty">Aucun créneau enregistré</div>`:''}`;
 }
 
 // ═══════════════════════════════════════════════════
@@ -8780,21 +8723,6 @@ function renderModal(){
     <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="saveMaterielMouvement()">Enregistrer le mouvement</button></div>
     </div>`;
 
-  }else if(UI.modal==='planning'){
-    const p=UI.editObj||{encadrant_id:D.adherents[0]?.id||'',jour_semaine:1,heure_debut:'19:00',heure_fin:'20:30',cours:'',lieu:'',actif:true,notes:''};
-    html=`<div class="modal" style="max-width:440px"><h2>🗓️ ${UI.editObj?'Modifier le créneau':'Ajouter un créneau'}</h2>
-    <div class="g2">
-    <div class="fg full"><label>Cours</label><input id="pl-cours" value="${esc(p.cours||'')}" placeholder="Cours adultes"></div>
-    <div class="fg"><label>Encadrant</label><select id="pl-enc">${D.adherents.map(a=>`<option value="${a.id}" ${p.encadrant_id===a.id?'selected':''}>${esc(a.prenom)} ${esc(a.nom)}</option>`).join('')}</select></div>
-    <div class="fg"><label>Jour</label><select id="pl-jour">${JOUR_LABELS.map((l,i)=>`<option value="${i}" ${p.jour_semaine===i?'selected':''}>${l}</option>`).join('')}</select></div>
-    <div class="fg"><label>Heure de début</label><input id="pl-deb" type="time" value="${p.heure_debut||'19:00'}"></div>
-    <div class="fg"><label>Heure de fin</label><input id="pl-fin" type="time" value="${p.heure_fin||'20:30'}"></div>
-    <div class="fg full"><label>Lieu</label><input id="pl-lieu" value="${esc(p.lieu||'')}" placeholder="Dojo AFFBC"></div>
-    <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer" class="fg full"><input type="checkbox" id="pl-actif" ${p.actif!==false?'checked':''} style="width:auto;accent-color:var(--red)"> Créneau actif</label>
-    </div>
-    <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="savePlanning()">Enregistrer</button></div>
-    </div>`;
-
   }else if(UI.modal==='ressource'){
     html=vRessourceModal();
 
@@ -9559,7 +9487,7 @@ function openEcritureType(type){
 }
 
 function openModal(t,id){
-  const permMap={adh:'perm_adherents',compte:'perm_banque',ecr:'perm_comptabilite',achat:'perm_achats',user:'perm_administration',exo:'perm_comptabilite',exo_close:'perm_comptabilite',feedback_campaign:'perm_feedback',feedback_invite:'perm_feedback',presence:'perm_presences',materiel:'perm_materiel',materiel_emprunt:'perm_materiel',materiel_mouvement:'perm_materiel',planning:'perm_planning',ressource:'perm_adherents',budget_ligne:'perm_comptabilite'};
+  const permMap={adh:'perm_adherents',compte:'perm_banque',ecr:'perm_comptabilite',achat:'perm_achats',user:'perm_administration',exo:'perm_comptabilite',exo_close:'perm_comptabilite',feedback_campaign:'perm_feedback',feedback_invite:'perm_feedback',presence:'perm_presences',materiel:'perm_materiel',materiel_emprunt:'perm_materiel',materiel_mouvement:'perm_materiel',ressource:'perm_adherents',budget_ligne:'perm_comptabilite'};
   if(permMap[t] && !requireWritePerm(permMap[t])) return;
   UI.modal=t;UI.editObj=null;UI.guardianInfo=null;UI.blacklistHistorique=null;
   if(id){
@@ -9571,7 +9499,6 @@ function openModal(t,id){
     if(t==='feedback_campaign') UI.editObj=D.feedbackCampaigns.find(c=>c.id===id);
     if(t==='presence') UI.editObj=D.presences.find(p=>p.id===id);
     if(t==='materiel') UI.editObj=D.materiel.find(m=>m.id===id);
-    if(t==='planning') UI.editObj=D.planning.find(p=>p.id===id);
     if(t==='ressource') UI.editObj=D.ressources.find(r=>r.id===id);
     if(t==='materiel_emprunt' || t==='materiel_mouvement') UI.materielTargetId=id;
   }
@@ -10371,40 +10298,6 @@ async function saveMaterielMouvement(){
   if(error)return alert('Erreur : '+error.message);
   D.materielMouvements.push(data);
   closeModal();render();
-}
-
-async function savePlanning(){
-  const cours=document.getElementById('pl-cours').value.trim();if(!cours)return alert('Nom du cours obligatoire.');
-  const heure_debut=document.getElementById('pl-deb').value;
-  const heure_fin=document.getElementById('pl-fin').value;
-  if(!heure_debut||!heure_fin)return alert('Horaires obligatoires.');
-  const payload={
-    cours,
-    encadrant_id:document.getElementById('pl-enc').value,
-    jour_semaine:parseInt(document.getElementById('pl-jour').value,10),
-    heure_debut, heure_fin,
-    lieu:document.getElementById('pl-lieu').value.trim()||null,
-    actif:document.getElementById('pl-actif').checked?1:0,
-    updated_at:new Date().toISOString(),
-  };
-  if(UI.editObj){
-    const {error}=await SB.from('planning_encadrants').update(payload).eq('id',UI.editObj.id);
-    if(error)return alert('Erreur : '+error.message);
-    Object.assign(D.planning.find(p=>p.id===UI.editObj.id),payload);
-  }else{
-    const {data,error}=await SB.from('planning_encadrants').insert({...payload,id:crypto.randomUUID(),created_at:new Date().toISOString()}).select().single();
-    if(error)return alert('Erreur : '+error.message);
-    D.planning.push(data);
-  }
-  closeModal();render();
-}
-
-async function delPlanning(id){
-  if(!confirm('Supprimer ce créneau du planning ?'))return;
-  const {error}=await SB.from('planning_encadrants').delete().eq('id',id);
-  if(error)return alert('Erreur : '+error.message);
-  D.planning=D.planning.filter(p=>p.id!==id);
-  render();
 }
 
 async function saveBudgetLigne(){

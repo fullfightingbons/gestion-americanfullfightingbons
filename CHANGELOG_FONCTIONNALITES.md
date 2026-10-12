@@ -4,6 +4,30 @@ Ajoutées sur la base du projet existant, sans rien retirer. `tsc --noEmit`,
 les 31 tests existants (`vitest run`) et `wrangler deploy --dry-run` sont
 propres après ajout.
 
+## Onglet Planning retiré + historique bancaire 2024-2025 importé — 12/10/2026
+
+**Onglet Planning supprimé** (jugé inutile). Le sous-onglet « Planning » de « Présences & Planning » disparaît : l'onglet
+s'appelle désormais **Présences**, et la permission « 🗓️ Planning » n'est plus proposée dans l'administration des
+utilisateurs. Retirés du frontend : la vue, la fenêtre d'ajout/modification, le chargement des données et les fonctions
+d'enregistrement. **Rien n'est supprimé en base ni côté API** : la table `planning_encadrants`, la colonne
+`perm_planning` et la route restent en place (les données sont conservées ; un `DROP TABLE` serait une migration à part,
+irréversible). `app.min.js` régénéré, `app.js?v=20261012b`.
+
+**Historique bancaire d'avant juillet 2025** — migration **`0039_import_historique_releves.sql`**. Le contrôle des relevés
+PDF (37 relevés, du 06/04/2024 au 30/09/2026) montre que les 155 opérations en base (juillet 2025 → septembre 2026) sont
+toutes présentes et exactes, mais que les 16 relevés antérieurs n'avaient jamais été importés (146 opérations : 145 sur le
+compte courant, le dépôt de 500 € du 10/01/2025 sur le Livret Bleu), et que le solde initial du compte courant valait
+−61,10 € au lieu de 41,90 € (solde du 30/06/2025), soit 103,00 € de moins que la banque. La migration :
+- importe ces 146 opérations, telles que le ferait l'import PDF (mêmes libellés et dates, `source_format = 'pdf'`, **non
+  rapprochées**) ; `INSERT OR IGNORE` sur l'index d'unicité, donc aucune opération déjà importée à la main n'est dupliquée ;
+- remet les soldes initiaux à **0 €** (compte courant et livret, tous deux ouverts avec un solde nul) — uniquement s'ils
+  valent encore la valeur attendue **et** que l'historique en base est complet (solde net avant le 01/07/2025 = 41,90 € /
+  500,00 €), sinon rien n'est modifié ;
+- est sans effet si on la rejoue ou sur une base vide.
+
+Résultat attendu, égal à la banque au 30/09/2026 : compte courant **2 420,22 €**, Livret Bleu **1 508,39 €**. À noter : les
+146 anciennes opérations apparaîtront « en attente » dans le rapprochement tant qu'elles ne sont pas liées à une écriture.
+
 ## Ressources du club : PDF et vidéos pour l'espace membre — 12/10/2026
 
 Nouvel onglet **📚 Ressources** (droits de la fiche adhérent : `perm_adherents`, écriture pour secrétaire / trésorier /
@@ -565,7 +589,7 @@ affichait +6953.35 € là où le Bilan affichait +6521.00 € pour le même jou
   de l'exercice précédent retrouvés (comparaison par email). Purement en
   lecture, aucune nouvelle table.
 
-## 6. Planning des encadrants
+## 6. Planning des encadrants (interface retirée en octobre 2026)
 
 - Table `planning_encadrants` (migration `0028`) : encadrant, jour de la
   semaine, créneau horaire, cours, lieu — distinct du calendrier
@@ -580,7 +604,7 @@ Le frontend est maintenant câblé pour les 4 nouvelles tables :
 
 - **Onglet Présences** : pointage par adhérent/date/créneau, présent ou absence justifiée.
 - **Onglet Matériel** : inventaire avec alerte visuelle si une révision est prévue dans les 30 jours.
-- **Onglet Planning** : créneaux groupés par jour de la semaine, avec encadrant assigné.
+- ~~**Onglet Planning**~~ : retiré de l'interface (octobre 2026), jugé inutile. La table `planning_encadrants` et la permission `perm_planning` sont conservées en base et côté API (aucune donnée supprimée) ; seul l'écran (sous-onglet, modale, chargement) a disparu du frontend.
 - **Sous-onglet "Budget"** dans Comptabilité : saisie du prévisionnel par compte + comparatif avec le réalisé (`GET /api/budget/:exercice_id/comparatif`).
 - **Carte "Renouvellement"** sur le tableau de bord (`GET /api/stats/renouvellement`), à côté des cartes Dossiers et Flux net déjà existantes.
 
