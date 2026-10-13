@@ -4,6 +4,23 @@ Ajoutées sur la base du projet existant, sans rien retirer. `tsc --noEmit`,
 les 31 tests existants (`vitest run`) et `wrangler deploy --dry-run` sont
 propres après ajout.
 
+## Page Rapprochement allégée (elle faisait ramer, voire planter, le navigateur) — 12/10/2026
+
+Causes, mesurées sur vos 155 opérations réelles et un journal de 3 600 à 13 800 lignes :
+- **Une liste d'options complète recopiée dans CHAQUE ligne** : le menu « Pièce unique » embarquait toutes les écritures
+  du journal (512 + « autres comptes ») pour chaque opération en attente. Résultat : 3,5 à 13 Mo de HTML et 41 000 à
+  159 000 éléments `<option>` à construire dans le navigateur à chaque affichage, et à chaque frappe dans la recherche.
+- **Recherche sans anti-rebond** : chaque touche régénérait tout le tableau (donc ces mégaoctets).
+- **Détection des regroupements non bornée** : chaque pièce 512 pouvait consommer jusqu'à 200 000 combinaisons ; avec
+  beaucoup d'opérations en attente, ~9 s de calcul (et jusqu'à 10 000 cartes de regroupement affichées).
+
+Corrections : menu « Pièce unique » **rempli à l'ouverture** (`rapprFillOptions`, au focus/clic ; seule la suggestion est
+dans la page ; la pré-sélection auto ajoute la seule option voulue, `rapprEnsureOption`) ; recherche **différée de 250 ms** ;
+regroupements avec un **budget global** (300 000 combinaisons, 300 ms, pièces les plus récentes d'abord) et **20 cartes
+affichées** au maximum ; tableau **plafonné à 300 opérations** avec un message invitant à filtrer. Mesures (journal de
+13 800 lignes) : HTML 13,1 Mo → 0,2 Mo, 158 723 → 27 options ; pire cas (155 opérations en attente) 8,8 s → 0,15 s.
+Comportement inchangé : la suggestion reste pré-sélectionnée, « Valider » lit la même valeur. 9 tests ajoutés.
+
 ## Onglet Planning retiré + historique bancaire 2024-2025 importé — 12/10/2026
 
 **Onglet Planning supprimé** (jugé inutile). Le sous-onglet « Planning » de « Présences & Planning » disparaît : l'onglet

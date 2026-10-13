@@ -1348,3 +1348,109 @@ describe("date de début du rapprochement (RAPPR_DATE_DEBUT = 2025-07-01)", () =
     expect(run(`pendingBankPieces().map(j => j.id)`)).toEqual(["n1", "n2"]);
   });
 });
+
+describe("performance de la page Rapprochement", () => {
+  // 120 écritures 512 en attente + 60 autres écritures ; 3 opérations en attente
+  const setup = `
+    D.journal = [];
+    for (let i = 0; i < 120; i++) {
+      D.journal.push({id:'b'+i, piece:'HA-'+i, compte:'512 - Banque', debit:10+(i%5)*5, credit:0, date_op:'2026-01-'+String(1+(i%27)).padStart(2,'0'), libelle:'Encaissement '+i});
+    }
+    for (let i = 0; i < 60; i++) {
+      D.journal.push({id:'v'+i, piece:'VTE-'+i, compte:'707 - Ventes', debit:0, credit:20, date_op:'2026-02-10', libelle:'Vente '+i});
+    }
+    D.comptes = [{nom:'CM', solde_initial:0, transactions:[
+      {id:'t1', date_op:'05/01/2026', date_valeur:'2026-01-05', libelle:'VIR Un', debit:0, credit:10, rapproche:false},
+      {id:'t2', date_op:'06/01/2026', date_valeur:'2026-01-06', libelle:'VIR Deux', debit:0, credit:999, rapproche:false},
+      {id:'t3', date_op:'07/01/2026', date_valeur:'2026-01-07', libelle:'VIR Trois', debit:0, credit:15, rapproche:true, ecriture_piece:'HA-1'},
+    ]}];
+  `;
+  const run = (code: string) => JSON.parse(loadAppAndRun(`${setup} capture(JSON.stringify(${code}));`));
+
+  it("une ligne en attente n'embarque pas la liste de toutes les écritures (au plus la suggestion)", () => {
+    const n = run(`(function(){ const t = D.comptes[0].transactions[1]; return (rapprRowHtml(t).match(/<option/g)||[]).length; })()`);
+    expect(n).toBeLessThanOrEqual(2); // « -- Pièce unique -- » (+ éventuelle suggestion)
+  });
+
+  it("le tableau entier reste léger : une dizaine d'options au lieu de lignes × écritures", () => {
+    const r = run(`(function(){ const h = rapprBodyHtml(rapprActiveTransactions()); return {options:(h.match(/<option/g)||[]).length, len:h.length}; })()`);
+    expect(r.options).toBeLessThanOrEqual(6);
+    expect(r.len).toBeLessThan(40000);
+  });
+
+  it("la liste complète est construite à la demande, avec toutes les écritures disponibles", () => {
+    const n = run(`(rapprOptionsHtml().match(/<option/g)||[]).length`);
+    // 120 pièces 512 (moins HA-1 déjà rapprochée) + 60 autres écritures
+    expect(n).toBe(119 + 60);
+  });
+
+  it("rapprFillOptions remplit le menu une seule fois et conserve le choix en cours", () => {
+    const r = run(`(function(){
+      const sel = {value:'HA-7', innerHTML:'', dataset:{}};
+      rapprFillOptions(sel);
+      const first = sel.innerHTML.length;
+      sel.innerHTML = 'changé';
+      rapprFillOptions(sel); // 2e appel : sans effet
+      return {first: first > 1000, again: sel.innerHTML, value: sel.value, filled: sel.dataset.filled};
+    })()`);
+    expect(r).toEqual({ first: true, again: "changé", value: "HA-7", filled: "1" });
+  });
+
+  it("rapprEnsureOption ajoute la seule option voulue (pré-sélection) sans remplir tout le menu", () => {
+    const r = run(`(function(){
+      const opts = [{value:''}];
+      const sel = {value:'', options: opts, appendChild(o){ opts.push(o); }};
+      const ok = rapprEnsureOption(sel, 'HA-9');
+      const missing = rapprEnsureOption({value:'', options:[{value:''}], appendChild(){}}, 'INCONNUE');
+      return {ok, n: opts.length, value: sel.value, missing};
+    })()`);
+    expect(r).toEqual({ ok: true, n: 2, value: "HA-9", missing: false });
+  });
+
+  it("la recherche est différée (anti-rebond) : la valeur est mémorisée, le tableau n'est pas recalculé à chaque frappe", () => {
+    const r = run(`(function(){
+      const calls = [];
+      globalThis.setTimeout = (fn, ms) => { calls.push(ms); return calls.length; };
+      globalThis.clearTimeout = () => {};
+      rapprSetSearch('d'); rapprSetSearch('du'); rapprSetSearch('dup');
+      return {search: UI.rapprSearch, timers: calls};
+    })()`);
+    expect(r).toEqual({ search: "dup", timers: [250, 250, 250] });
+  });
+
+  it("le tableau est plafonné pour garder la page fluide, et l'utilisateur est prévenu", () => {
+    const r = run(`(function(){
+      const txs = [];
+      for (let i = 0; i < 350; i++) txs.push({id:'x'+i, date_op:'05/01/2026', libelle:'VIR '+i, debit:0, credit:1+i, rapproche:true, ecriture_piece:'P'+i});
+      D.comptes = [{nom:'CM', solde_initial:0, transactions: txs}];
+      const h = rapprBodyHtml(rapprActiveTransactions());
+      return {rows:(h.match(/<tr class=/g)||[]).length, warned: h.includes('Seules les 300 opérations')};
+    })()`);
+    expect(r).toEqual({ rows: 300, warned: true });
+  });
+
+  it("la recherche de regroupements est bornée : un gros relevé ne fige plus l'écran", () => {
+    const t0 = Date.now();
+    const r = run(`(function(){
+      const txs = [];
+      for (let i = 0; i < 140; i++) txs.push({id:'g'+i, date_op:'05/01/2026', libelle:'VIR '+i, debit:0, credit:10+(i%4)*5, rapproche:false});
+      D.comptes = [{nom:'CM', solde_initial:0, transactions: txs}];
+      const g = findGroupedRapprochement(txs);
+      return {done: Array.isArray(g), n: g.length};
+    })()`);
+    expect(r.done).toBe(true);
+    expect(Date.now() - t0).toBeLessThan(5000); // avant : plusieurs secondes, voire minutes
+  });
+
+  it("findSubsetSum accepte toujours un budget numérique et un budget partagé {left}", () => {
+    const r = run(`(function(){
+      const pool = [{credit:10},{credit:20},{credit:30},{credit:40}];
+      const normal = findSubsetSum(pool, 50).length;
+      const shared = {left: 3};
+      findSubsetSum(pool, 50, 10, shared);
+      return {normal, spent: shared.left < 0 || shared.left === 0};
+    })()`);
+    expect(r.normal).toBe(2); // 10+40 et 20+30
+    expect(r.spent).toBe(true);
+  });
+});

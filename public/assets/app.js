@@ -4602,7 +4602,7 @@ function rapprFilterTransactions(all){
   });
 }
 
-function rapprRowHtml(t,optionsHtml){
+function rapprRowHtml(t){
   const selMap=UI.rapprTxSel||{};
   const result=!t.rapproche?rapprSugg(t):null;
   const confidence=result?Math.round((result.score/5)*100):0;
@@ -4613,10 +4613,13 @@ function rapprRowHtml(t,optionsHtml){
     if(!piecesLiees.length&&t.ecriture_piece)piecesLiees=[t.ecriture_piece];
   }
   const suggested=result&&result.entry?(result.entry.piece||String(result.entry.id).slice(0,8)):'';
-  const opts=suggested?optionsHtml.replace(`value="${esc(suggested)}"`,m=>`${m} selected`):optionsHtml;
+  // Menu « Pièce unique » : seule la suggestion est dans la page ; la liste complète des écritures
+  // n'est construite qu'à l'ouverture du menu (rapprFillOptions), sinon N lignes × M écritures
+  // = des dizaines de milliers d'options et un navigateur qui rame.
+  const opts=suggested?`<option value="${esc(suggested)}" selected>${esc(rapprOptLabel(result.entry))}</option>`:'';
   const ecritureCell=t.rapproche
     ?`<div>${piecesLiees.map(p=>`<span class="badge bok" style="margin-right:3px;margin-bottom:3px">${esc(p)}</span>`).join('')}${piecesLiees.length>1?`<div style="font-size:10px;color:var(--txt2);margin-top:2px">${piecesLiees.length} pièces liées</div>`:''}</div>`
-    :`<div style="font-size:11px"><select style="font-size:11px;padding:3px 6px;width:auto;max-width:240px" id="ecr-${esc(t.id)}">
+    :`<div style="font-size:11px"><select style="font-size:11px;padding:3px 6px;width:auto;max-width:240px" id="ecr-${esc(t.id)}" onfocus="rapprFillOptions(this)" onmousedown="rapprFillOptions(this)">
         <option value="">-- Pièce unique --</option>
         ${opts}
       </select></div>`;
@@ -4646,31 +4649,63 @@ function rapprRowHtml(t,optionsHtml){
     </tr>`;
 }
 
+// ─── Menu « Pièce unique » : options construites à la demande ─────────────
+// D'abord les pièces du compte 512 encore en attente (date, pièce, libellé, montant vu de la
+// banque), puis les autres écritures. Une pièce déjà rapprochée n'est plus proposée (comme dans
+// « Imputation multi »), y compris dans « Autres écritures » : sinon on pouvait la lier 2 fois.
+const RAPPR_MAX_ROWS=300; // au-delà, on invite à filtrer (le DOM d'une page de 1000+ lignes rame)
+let RAPPR_OPTIONS_HTML=null;
+function rapprOptLabel(c){
+  return `${fd(c.date_op)||''} · ${c.piece} · ${(c.libelle||'').slice(0,30)} · ${rapprSignedEuro(c.amount)}${c.compte&&!String(c.compte).startsWith('512')?' ['+String(c.compte).split(' ')[0]+']':''}`;
+}
+function rapprOptionsHtml(){
+  if(RAPPR_OPTIONS_HTML!==null) return RAPPR_OPTIONS_HTML;
+  const consumedNow=RAPPR_CONSUMED||consumedPieces();
+  const pendingPieces=rapprPieceCandidates({consumed:consumedNow});
+  const pendingKeys=new Set(pendingPieces.map(c=>c.piece));
+  const otherPieces=rapprPieceCandidates({includeAllAccounts:true,consumed:consumedNow}).filter(c=>!pendingKeys.has(c.piece));
+  const opt=c=>`<option value="${esc(c.piece)}">${esc(rapprOptLabel(c))}</option>`;
+  RAPPR_OPTIONS_HTML=`<optgroup label="512 Banque — en attente de relevé">${pendingPieces.map(opt).join('')}</optgroup>`
+    +(otherPieces.length?`<optgroup label="Autres écritures (autres comptes)">${otherPieces.map(opt).join('')}</optgroup>`:'');
+  return RAPPR_OPTIONS_HTML;
+}
+// Remplit le menu au premier focus / clic, en conservant la valeur déjà choisie.
+function rapprFillOptions(sel){
+  if(!sel||(sel.dataset&&sel.dataset.filled)) return;
+  if(sel.dataset) sel.dataset.filled='1';
+  const cur=sel.value;
+  sel.innerHTML='<option value="">-- Pièce unique --</option>'+rapprOptionsHtml();
+  sel.value=cur;
+}
+// Pré-sélection automatique : ajoute l'unique option voulue sans remplir tout le menu.
+function rapprEnsureOption(sel,piece){
+  if(!sel||!piece) return false;
+  const has=Array.from(sel.options||[]).some(o=>o.value===piece);
+  if(!has){
+    const c=(RAPPR_POOL||rapprPieceCandidates({consumed:RAPPR_CONSUMED||consumedPieces()})).find(x=>x.piece===piece);
+    if(!c) return false;
+    const o=document.createElement('option');
+    o.value=piece; o.textContent=rapprOptLabel(c);
+    sel.appendChild(o);
+  }
+  sel.value=piece;
+  return true;
+}
+
 // Tableau + compteur : seule cette partie est régénérée quand on tape dans la
 // recherche ou qu'on change le filtre (le champ de saisie reste intact).
 function rapprBodyHtml(all){
   if(all.length===0) return `<div class="empty">Importez d'abord un relevé bancaire</div>`;
   const rowsData=rapprFilterTransactions(all);
-  RAPPR_VISIBLE_IDS=rowsData.filter(t=>!t.rapproche).map(t=>t.id);
+  RAPPR_VISIBLE_IDS=rowsData.slice(0,RAPPR_MAX_ROWS).filter(t=>!t.rapproche).map(t=>t.id);
   const selMap=UI.rapprTxSel||{};
   const allChecked=RAPPR_VISIBLE_IDS.length>0&&RAPPR_VISIBLE_IDS.every(id=>selMap[id]);
   const filtered=!!((UI.rapprSearch||'').trim()||UI.rapprStatus);
-  // Options du menu « Pièce unique » construites une seule fois pour toutes les lignes.
-  // Menu « Pièce unique » : d'abord les pièces du compte 512 encore en attente (date,
-  // pièce, libellé, montant vu de la banque), puis les autres écritures. Avant, toutes
-  // les lignes du journal étaient mélangées avec un libellé tronqué à 20 caractères et
-  // sans montant : impossible de distinguer la ligne 411, 707 ou 512 d'une même vente.
-  // Une pièce déjà rapprochée n'est plus proposée nulle part (comme dans « Imputation multi »),
-  // y compris dans le groupe « Autres écritures » : sinon on pouvait la lier une 2e fois.
-  const consumedNow=RAPPR_CONSUMED||consumedPieces();
-  const pendingPieces=rapprPieceCandidates({consumed:consumedNow});
-  const pendingKeys=new Set(pendingPieces.map(c=>c.piece));
-  const otherPieces=rapprPieceCandidates({includeAllAccounts:true,consumed:consumedNow}).filter(c=>!pendingKeys.has(c.piece));
-  const optLabel=c=>`${fd(c.date_op)||''} · ${c.piece} · ${(c.libelle||'').slice(0,30)} · ${rapprSignedEuro(c.amount)}${c.compte&&!String(c.compte).startsWith('512')?' ['+String(c.compte).split(' ')[0]+']':''}`;
-  const optionsHtml=`<optgroup label="512 Banque — en attente de relevé">${pendingPieces.map(c=>`<option value="${esc(c.piece)}">${esc(optLabel(c))}</option>`).join('')}</optgroup>`
-    +(otherPieces.length?`<optgroup label="Autres écritures (autres comptes)">${otherPieces.map(c=>`<option value="${esc(c.piece)}">${esc(optLabel(c))}</option>`).join('')}</optgroup>`:'');
-  const rows=rowsData.map(t=>rapprRowHtml(t,optionsHtml)).join('');
-  return`${filtered?`<div style="font-size:12px;color:var(--txt2);margin-bottom:6px">${rowsData.length}/${all.length} opération(s) affichée(s)</div>`:''}
+  const shown=rowsData.slice(0,RAPPR_MAX_ROWS);
+  const rows=shown.map(t=>rapprRowHtml(t)).join('');
+  const truncated=rowsData.length>shown.length
+    ?`<div style="font-size:12px;color:var(--gold-d);margin:6px 0">Seules les ${shown.length} opérations les plus récentes sur ${rowsData.length} sont affichées pour garder la page fluide : utilisez la recherche ou le filtre « En attente » pour cibler les autres.</div>`:'';
+  return`${filtered?`<div style="font-size:12px;color:var(--txt2);margin-bottom:6px">${rowsData.length}/${all.length} opération(s) affichée(s)</div>`:''}${truncated}
   <div class="wrap"><table>
   <thead><tr><th class="rappr-cbcell"><input type="checkbox" class="rappr-cb" id="rappr-cb-all" ${allChecked?'checked':''} onchange="rapprToggleAllTx(this.checked)" title="Cocher / décocher toutes les opérations en attente affichées" aria-label="Tout sélectionner"></th><th>Date</th><th>Libellé</th><th>Compte</th><th>Débit</th><th>Crédit</th><th>Écriture(s)</th><th>Confiance</th><th>Statut</th><th>Actions</th></tr></thead>
   <tbody>${rows||`<tr><td colspan="10" class="empty">Aucune opération pour ce filtre</td></tr>`}</tbody>
@@ -4680,11 +4715,14 @@ function rapprBodyHtml(all){
 function refreshRapprBody(){
   const host=document.getElementById('rappr-body');
   if(!host){ render(); return; }
+  RAPPR_OPTIONS_HTML=null;
   host.innerHTML=rapprBodyHtml(rapprActiveTransactions());
   rapprUpdateSelBar();
 }
 
-function rapprSetSearch(v){ UI.rapprSearch=v; refreshRapprBody(); }
+// Anti-rebond : sans lui, chaque frappe régénérait tout le tableau.
+let RAPPR_SEARCH_TIMER=null;
+function rapprSetSearch(v){ UI.rapprSearch=v; clearTimeout(RAPPR_SEARCH_TIMER); RAPPR_SEARCH_TIMER=setTimeout(refreshRapprBody,250); }
 function rapprSetStatus(v){ UI.rapprStatus=v; refreshRapprBody(); }
 function rapprResetFilters(){ UI.rapprSearch=''; UI.rapprStatus=''; render(); }
 
@@ -4943,6 +4981,7 @@ async function restaurerRapprochementsPerdus(){
 function vRappr(){
   RAPPR_CONSUMED=consumedPieces();
   RAPPR_POOL=null;
+  RAPPR_OPTIONS_HTML=null;
   RAPPR_SUGG=new Map();
   const all=rapprActiveTransactions();
   const nonR=all.filter(t=>!t.rapproche);
@@ -4965,7 +5004,7 @@ function vRappr(){
   <div class="card" style="margin-bottom:14px;border-left:3px solid var(--gold-d)">
   <div style="font-weight:600;margin-bottom:8px">🔗 ${grouped.length} regroupement(s) bancaire(s) détecté(s)</div>
   <p style="font-size:12px;color:var(--txt2);margin-bottom:10px">Ces groupes de transactions correspondent ensemble à une même écriture comptable (remise de chèques, virement groupé HelloAsso).</p>
-  ${grouped.map(g=>`
+  ${grouped.slice(0,RAPPR_GROUP_MAX_SHOWN).map(g=>`
     <div style="background:var(--bg2);border-radius:6px;padding:10px;margin-bottom:8px">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px">
     <div>
@@ -4978,6 +5017,7 @@ function vRappr(){
     ${g.transactions.map(t=>`<div style="padding:2px 0">${fd(frDateToISO(t.date_op)||t.date_op)||''} — ${esc(t.libelle||'')} — ${((+t.credit||0)+(+t.debit||0)).toFixed(2)} €</div>`).join('')}
     </div>
     </div>`).join('')}
+  ${grouped.length>RAPPR_GROUP_MAX_SHOWN?`<div style="font-size:11px;color:var(--txt2)">… et ${grouped.length-RAPPR_GROUP_MAX_SHOWN} autre(s) regroupement(s) possible(s) : validez ceux-ci puis la liste sera recalculée.</div>`:''}
   </div>`:'';
 
   return`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
@@ -11634,9 +11674,10 @@ function bestRapprochementEntry(transaction, excludePieces=null, pool=null){
 // explorées pour ne jamais figer l'écran sur un gros relevé.
 function findSubsetSum(pool, target, maxSize=10, budget=200000){
   const results=[];
-  let steps=0;
+  // `budget` : un nombre, ou un objet {left} partagé entre plusieurs appels (budget global).
+  const shared=(budget&&typeof budget==='object')?budget:{left:budget};
   function recurse(start, current, sum){
-    if(++steps>budget) return;
+    if(--shared.left<0) return;
     if(Math.abs(sum-target)<0.02 && current.length>1){
       results.push([...current]);
     }
@@ -11652,6 +11693,7 @@ function findSubsetSum(pool, target, maxSize=10, budget=200000){
   return results;
 }
 
+const RAPPR_GROUP_BUDGET=300000, RAPPR_GROUP_MAX_MS=300, RAPPR_GROUP_MAX_SHOWN=20;
 function findGroupedRapprochement(transactions){
   // Pièces du compte 512 non rapprochées, montant signé vu de la banque (+ entrée, − sortie).
   const candidates = rapprPieceCandidates({consumed: consumedPieces()}).filter(g=>Math.abs(g.amount)>=0.01);
@@ -11661,10 +11703,19 @@ function findGroupedRapprochement(transactions){
 
   const results = [];
   const seen = new Set();
+  // Budget GLOBAL (nombre de combinaisons et durée) : avant, chaque pièce pouvait consommer
+  // 200 000 combinaisons, d'où des milliards d'opérations et un écran figé sur un gros relevé.
+  // Les pièces sont parcourues de la plus récente à la plus ancienne : en cas de dépassement,
+  // ce sont les plus anciennes qui ne sont pas examinées.
+  const budget = {left: RAPPR_GROUP_BUDGET};
+  const t0 = Date.now();
   for(const group of candidates){
+    if(budget.left<=0 || Date.now()-t0>RAPPR_GROUP_MAX_MS) break;
     const groupAmount = Math.abs(group.amount);
     // Cherche tous les sous-ensembles d'opérations non rapprochées, de même sens, dont la somme colle
-    const subsets = findSubsetSum(group.amount>0 ? poolIn : poolOut, groupAmount);
+    const poolDir = group.amount>0 ? poolIn : poolOut;
+    if(poolDir.length<2) continue; // un groupe compte au moins 2 opérations
+    const subsets = findSubsetSum(poolDir, groupAmount, 10, budget);
     for(const subset of subsets){
       // Évite les doublons (même ensemble de transactions, pièce différente)
       const ids = subset.map(t=>t.id).sort().join(',');
@@ -11703,7 +11754,7 @@ async function preselectRapprochements(){
     } else {
       // Confiance moyenne → pré-sélection manuelle uniquement
       const select = document.getElementById(`ecr-${transaction.id}`);
-      if(select){ select.value = piece; nbSuggest++; }
+      if(select && rapprEnsureOption(select, piece)) nbSuggest++;
     }
   });
 
