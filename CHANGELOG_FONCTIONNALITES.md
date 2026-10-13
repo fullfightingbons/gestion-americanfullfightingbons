@@ -25,8 +25,18 @@ compte courant, le dépôt de 500 € du 10/01/2025 sur le Livret Bleu), et que 
   500,00 €), sinon rien n'est modifié ;
 - est sans effet si on la rejoue ou sur une base vide.
 
-Résultat attendu, égal à la banque au 30/09/2026 : compte courant **2 420,22 €**, Livret Bleu **1 508,39 €**. À noter : les
-146 anciennes opérations apparaîtront « en attente » dans le rapprochement tant qu'elles ne sont pas liées à une écriture.
+Résultat attendu, égal à la banque au 30/09/2026 : compte courant **2 420,22 €**, Livret Bleu **1 508,39 €**.
+
+**Rapprochement : tout ce qui précède le 01/07/2025 est ignoré.** Constante `RAPPR_DATE_DEBUT` (début de la section
+rapprochement de `app.js`, `'2025-07-01'` ; valeur vide = rien d'ignoré). Les opérations bancaires **et** les écritures du
+compte 512 antérieures à cette date disparaissent des listes « en attente » (écran Rapprochement, imputation multiple),
+des suggestions et de la pré-sélection automatique, du contrôle de complétude (y compris la fermeture d'exercice : sa borne
+basse ne descend jamais sous cette date), de « Tout rapprocher » et des compteurs du tableau de bord / de l'onglet
+Écritures 512. Dans la liste d'un compte (onglet Banque), ces opérations portent le badge gris « Ignorée » au lieu de « En
+attente ». **Rien n'est supprimé ni marqué rapproché** : elles restent en base et dans tous les soldes. L'état de
+rapprochement (écart banque ↔ 512) porte toujours sur la totalité et détaille la part ignorée sur deux lignes, de sorte
+que l'écart se décompose exactement comme avant. La limite est une constante du code et non un réglage en base, car
+`club_info` n'est lisible qu'avec la permission d'administration : le trésorier ne l'aurait pas vue. 8 tests ajoutés.
 
 ## Ressources du club : PDF et vidéos pour l'espace membre — 12/10/2026
 

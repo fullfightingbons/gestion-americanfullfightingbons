@@ -2241,7 +2241,7 @@ function dashboardData(){
   const certAlertList=currentSeasonAdherents.filter(a=>adherentDossierStatus(a).needsCertAction);
   const totalBank=comptes.reduce((sum,c)=>sum+(+c.solde_initial||0)+(c.transactions||[]).reduce((acc,t)=>acc+(+t.credit||0)-(+t.debit||0),0),0);
   const bankTransactions=comptes.flatMap(c=>(c.transactions||[]).map(t=>({...t,compte_nom:c.nom||'Compte'})));
-  const unreconciledTransactions=bankTransactions.filter(t=>!t.rapproche);
+  const unreconciledTransactions=bankTransactions.filter(t=>!t.rapproche&&!rapprIgnoredTx(t));
   const pendingBankEntries=pendingBankPieces();
   const monthEntriesList=journal.filter(j=>(j.date_op||'').slice(0,7)===monthPrefix);
   const prevMonthEntriesList=journal.filter(j=>(j.date_op||'').slice(0,7)===prevMonthPrefix);
@@ -4307,7 +4307,7 @@ function vComptes(){
       <td>${esc(t.libelle)}</td>
       <td style="color:var(--red);text-align:right">${+t.debit>0?(+t.debit).toFixed(2)+' €':''}</td>
       <td style="color:#1e7e34;text-align:right">${+t.credit>0?(+t.credit).toFixed(2)+' €':''}</td>
-      <td>${t.rapproche?`<span class="badge bok">✓</span>`:`<span class="badge bwarn">En attente</span>`}</td>
+      <td>${t.rapproche?`<span class="badge bok">✓</span>`:rapprIgnoredTx(t)?`<span class="badge bgray" title="Antérieure au ${esc(fd(RAPPR_DATE_DEBUT))} : ignorée du rapprochement">Ignorée</span>`:`<span class="badge bwarn">En attente</span>`}</td>
       </tr>`).join('')}</tbody>
       </table></div>`:''}
       </div>`;
@@ -4356,7 +4356,7 @@ function vCompteDetail(c){
   const tr=allTr.filter(t=>{
     if(searchTx && !(t.libelle||'').toLowerCase().includes(searchTx)) return false;
     if(filterRappr==='rapproche' && !t.rapproche) return false;
-    if(filterRappr==='attente' && t.rapproche) return false;
+    if(filterRappr==='attente' && (t.rapproche||rapprIgnoredTx(t))) return false;
     if(filterDateFrom){
       const iso=frDateToISO(t.date_op)||t.date_op||'';
       if(iso && iso<filterDateFrom) return false;
@@ -4456,7 +4456,7 @@ function vCompteDetail(c){
     <td>${esc(t.libelle||'')}</td>
     <td style="color:var(--red);text-align:right">${+t.debit>0?(+t.debit).toFixed(2)+' €':'-'}</td>
     <td style="color:#1e7e34;text-align:right">${+t.credit>0?(+t.credit).toFixed(2)+' €':'-'}</td>
-    <td>${t.rapproche?`<span class="badge bok">✓</span>`:`<span class="badge bwarn">En attente</span>`}</td>
+    <td>${t.rapproche?`<span class="badge bok">✓</span>`:rapprIgnoredTx(t)?`<span class="badge bgray" title="Antérieure au ${esc(fd(RAPPR_DATE_DEBUT))} : ignorée du rapprochement">Ignorée</span>`:`<span class="badge bwarn">En attente</span>`}</td>
     <td style="font-size:11px;color:var(--txt2)">${piecesLiees.length?piecesLiees.map(p=>`<span class="badge bok" style="margin-right:2px">${esc(p)}</span>`).join(''):'—'}</td>
     <td>${t.rapproche?`<button class="btn sm bwarn" onclick="modifierRapprochement('${t.id}')" title="Corriger le rapprochement" style="font-size:10px;padding:2px 6px">✎</button>`:''}
     </td>
@@ -4551,8 +4551,33 @@ let RAPPR_SUGG=new Map();
 let RAPPR_VISIBLE_IDS=[];
 let RAPPR_LAST_TX=null;
 
+// ═══════════════════════════════════════════════════
+// DATE DE DÉBUT DU RAPPROCHEMENT
+// Les opérations bancaires ET les écritures du compte 512 datées AVANT cette date (AAAA-MM-JJ)
+// sont IGNORÉES du rapprochement : plus de liste « en attente », de suggestion, de contrôle de
+// complétude, de compteur du tableau de bord ni de « Tout rapprocher » pour elles. Elles restent
+// en base et comptent toujours dans les soldes et dans l'état de rapprochement (écart banque ↔
+// 512). Valeur vide ('') = rien n'est ignoré. Pour changer la limite, modifier cette seule ligne.
+// ═══════════════════════════════════════════════════
+const RAPPR_DATE_DEBUT='2025-07-01';
+function rapprIsoDate(v){ const s=String(v||''); return /^\d{4}-\d{2}-\d{2}/.test(s)?s.slice(0,10):(frDateToISO(s)||''); }
+function rapprIgnoredDate(v){ const iso=rapprIsoDate(v); return !!RAPPR_DATE_DEBUT&&!!iso&&iso<RAPPR_DATE_DEBUT; }
+function rapprIgnoredTx(t){ return !!t&&rapprIgnoredDate(t.date_op); }
+
 function rapprAllTransactions(){
   return D.comptes.flatMap(c=>(c.transactions||[]).map(t=>({...t,cname:c.nom}))).sort((a,b)=>compareFrDates(b.date_op,a.date_op));
+}
+// Opérations à traiter dans le rapprochement (hors opérations antérieures à RAPPR_DATE_DEBUT).
+function rapprActiveTransactions(){
+  return rapprAllTransactions().filter(t=>!rapprIgnoredTx(t));
+}
+// Ce qui est mis de côté (non rapproché et antérieur à la date de début) : pour l'information affichée.
+function rapprIgnoredSummary(){
+  if(!RAPPR_DATE_DEBUT) return {tx:0,pieces:0};
+  const tx=rapprAllTransactions().filter(t=>!t.rapproche&&rapprIgnoredTx(t)).length;
+  const pieces=rapprPieceCandidates({consumed:consumedPieces(),keepIgnored:true})
+    .filter(c=>rapprIgnoredDate(c.date_op)&&Math.abs(c.amount)>=0.01).length;
+  return {tx,pieces};
 }
 
 // Meilleure écriture suggérée pour une transaction, calculée une seule fois par rendu.
@@ -4655,7 +4680,7 @@ function rapprBodyHtml(all){
 function refreshRapprBody(){
   const host=document.getElementById('rappr-body');
   if(!host){ render(); return; }
-  host.innerHTML=rapprBodyHtml(rapprAllTransactions());
+  host.innerHTML=rapprBodyHtml(rapprActiveTransactions());
   rapprUpdateSelBar();
 }
 
@@ -4760,16 +4785,18 @@ function rapprLostLinks(all){
 //  • opérations et écritures 512 encore EN ATTENTE (dont les anciennes : > 45 jours) ;
 //  • lignes à ZÉRO (débit = crédit = 0) dans le journal ou les relevés ;
 //  • mois SANS aucune opération entre la première et la dernière d'un compte (relevé manquant ?).
-// `opts.from` / `opts.to` (AAAA-MM-JJ) bornent la période, p. ex. un exercice.
+// `opts.from` / `opts.to` (AAAA-MM-JJ) bornent la période, p. ex. un exercice. La borne basse ne
+// descend jamais sous RAPPR_DATE_DEBUT : ce qui est antérieur est ignoré (listes), mais reste dans
+// l'état de rapprochement ci-dessous, qui porte sur la totalité des opérations.
 function rapprControlReport(opts={}){
-  const from=opts.from||null, to=opts.to||null;
+  const from=[opts.from,RAPPR_DATE_DEBUT].filter(Boolean).sort().pop()||null, to=opts.to||null;
   const inRange=iso=>!iso||((!from||iso>=from)&&(!to||iso<=to));
   const cents=n=>Math.round(n*100)/100;
   const signed=t=>cents((+t.credit||0)-(+t.debit||0));
   const txIso=t=>frDateToISO(t.date_op)||t.date_op||'';
   const allTx=rapprAllTransactions();
   const txById=new Map(allTx.map(t=>[t.id,t]));
-  const pieceInfo=new Map(rapprPieceCandidates({includeAllAccounts:true,consumed:new Set()}).map(c=>[c.piece,c]));
+  const pieceInfo=new Map(rapprPieceCandidates({includeAllAccounts:true,consumed:new Set(),keepIgnored:true}).map(c=>[c.piece,c]));
   const limitDate=new Date(td()+'T12:00:00'); limitDate.setDate(limitDate.getDate()-45);
   const oldLimit=limitDate.toISOString().slice(0,10);
 
@@ -4832,11 +4859,14 @@ function rapprControlReport(opts={}){
   const bookNet=cents(D.journal.filter(j=>String(j.compte||'').startsWith('512')).reduce((a,j)=>a+(+j.debit||0)-(+j.credit||0),0));
   const unrecTx=cents(allTx.filter(t=>!t.rapproche).reduce((a,t)=>a+signed(t),0));
   const forcedNet=cents(forced.reduce((a,t)=>a+signed(t),0));
-  const unrecPieces=cents(rapprPieceCandidates({consumed:consumedPieces()}).reduce((a,c)=>a+c.amount,0));
+  const unrecPieces=cents(rapprPieceCandidates({consumed:consumedPieces(),keepIgnored:true}).reduce((a,c)=>a+c.amount,0));
+  // Part de ces deux montants mise de côté (antérieure à RAPPR_DATE_DEBUT), pour l'affichage.
+  const unrecTxIgnored=cents(allTx.filter(t=>!t.rapproche&&rapprIgnoredTx(t)).reduce((a,t)=>a+signed(t),0));
+  const unrecPiecesIgnored=cents(rapprPieceCandidates({consumed:consumedPieces(),keepIgnored:true}).filter(c=>rapprIgnoredDate(c.date_op)).reduce((a,c)=>a+c.amount,0));
   const equation={
     soldeBanque:cents(soldeInitial+bankNet), soldeCompta:bookNet,
     ecart:cents(soldeInitial+bankNet-bookNet),
-    soldeInitial, unrecTx, forcedNet, unrecPieces: -unrecPieces,
+    soldeInitial, unrecTx, forcedNet, unrecPieces: -unrecPieces, unrecTxIgnored, unrecPiecesIgnored: -unrecPiecesIgnored,
     // Reste : liens dont le montant ne colle pas, ou écritures liées d'un autre compte que 512.
     autres:cents(soldeInitial+bankNet-bookNet-soldeInitial-unrecTx-forcedNet+unrecPieces),
   };
@@ -4854,6 +4884,7 @@ function rapprControlReport(opts={}){
 
 function rapprControlHtml(rep){
   const f=n=>rapprSignedEuro(n);
+  const cents2=n=>Math.round(n*100)/100;
   const row=(l,r,btn='')=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid var(--brd);font-size:11px"><span>${l}</span><span style="white-space:nowrap">${r}${btn}</span></div>`;
   const txRow=(t,withUndo)=>row(`${esc(fd(frDateToISO(t.date_op)||t.date_op)||'')} · ${esc((t.libelle||'').slice(0,60))}${t.cname?` <span style="color:var(--txt2)">(${esc(t.cname)})</span>`:''}`,f((+t.credit||0)-(+t.debit||0)),withUndo?` <button class="btn sm" onclick="annulerRapprochement('${esc(t.id)}')">Défaire</button>`:'');
   const pieceRow=c=>row(`${esc(fd(c.date_op)||'')} · ${esc(c.piece)} · ${esc((c.libelle||'').slice(0,50))}`,f(c.amount));
@@ -4880,9 +4911,11 @@ function rapprControlHtml(rep){
   ${row('<strong>Écart</strong>',`<strong>${f(e.ecart)}</strong>`)}
   <div style="font-size:11px;color:var(--txt2);margin:6px 0 2px">Cet écart se compose de :</div>
   ${row('soldes initiaux des comptes bancaires',f(e.soldeInitial))}
-  ${row('opérations bancaires non rapprochées',f(e.unrecTx))}
+  ${row('opérations bancaires non rapprochées',f(cents2(e.unrecTx-e.unrecTxIgnored)))}
+  ${e.unrecTxIgnored?row(`opérations bancaires ignorées (avant le ${esc(fd(RAPPR_DATE_DEBUT))})`,f(e.unrecTxIgnored)):''}
   ${row('opérations rapprochées sans écriture',f(e.forcedNet))}
-  ${row('écritures 512 non rapprochées (à retrancher)',f(e.unrecPieces))}
+  ${row('écritures 512 non rapprochées (à retrancher)',f(cents2(e.unrecPieces-e.unrecPiecesIgnored)))}
+  ${e.unrecPiecesIgnored?row(`écritures 512 ignorées (avant le ${esc(fd(RAPPR_DATE_DEBUT))}, à retrancher)`,f(e.unrecPiecesIgnored)):''}
   ${row('écarts sur les rapprochements (montants discordants, autres comptes)',f(e.autres))}
   <div style="font-size:11px;color:var(--txt2);margin-top:6px">Quand tout est rapproché et cohérent, l'écart est nul : la comptabilité 512 correspond exactement aux relevés.</div>
   </div></details>
@@ -4890,7 +4923,7 @@ function rapprControlHtml(rep){
 }
 
 async function restaurerRapprochementsPerdus(){
-  const lost=rapprLostLinks(rapprAllTransactions());
+  const lost=rapprLostLinks(rapprActiveTransactions());
   if(!lost.length) return;
   // Sécurité anti-doublon : on ne rétablit pas un lien dont l'écriture est entre-temps
   // rapprochée avec une autre opération.
@@ -4911,13 +4944,15 @@ function vRappr(){
   RAPPR_CONSUMED=consumedPieces();
   RAPPR_POOL=null;
   RAPPR_SUGG=new Map();
-  const all=rapprAllTransactions();
+  const all=rapprActiveTransactions();
   const nonR=all.filter(t=>!t.rapproche);
   const doneR=all.filter(t=>t.rapproche);
   const autoCount=nonR.filter(t=>{ const r=rapprSugg(t); return r&&r.auto; }).length;
   const suggestCount=nonR.filter(t=>{ const r=rapprSugg(t); return r&&!r.auto; }).length;
   const grouped=findGroupedRapprochement(all);
   const controlPanel=all.length||D.journal.length?rapprControlHtml(rapprControlReport()):'';
+  const ign=rapprIgnoredSummary();
+  const ignInfo=RAPPR_DATE_DEBUT?`<div style="font-size:11px;color:var(--txt2);margin-bottom:10px">ℹ️ Les opérations et écritures antérieures au ${esc(fd(RAPPR_DATE_DEBUT))} sont ignorées du rapprochement${(ign.tx||ign.pieces)?` (${ign.tx} opération(s) bancaire(s) et ${ign.pieces} écriture(s) 512 mises de côté ; elles restent comptées dans les soldes)`:''}.</div>`:'';
   const lost=rapprLostLinks(all);
   const lostPanel=lost.length?`
   <div class="card" style="margin-bottom:14px;border-left:3px solid var(--red)">
@@ -4955,7 +4990,7 @@ function vRappr(){
   <button class="btn sm primary" onclick="toutRappr()">Tout rapprocher</button>
   </div>
   </div>
-  ${controlPanel}
+  ${ignInfo}${controlPanel}
   ${lostPanel}
   ${groupPanel}
   ${all.length===0?'':`<div class="toolbar" style="margin-bottom:8px">
@@ -4975,7 +5010,7 @@ function vEcr512(){
   const sol=e.reduce((s,j)=>s+(+j.debit)-(+j.credit),0);
   const consumed=consumedPieces();
   const isPending=j=>!consumed.has(j.piece||(j.id||'').slice(0,8));
-  const pending=e.filter(isPending);
+  const pending=e.filter(j=>isPending(j)&&!rapprIgnoredDate(j.date_op));
   const pendingAmount=pending.reduce((s,j)=>s+(+j.debit)-(+j.credit),0);
   return`<div style="margin-bottom:12px">
   <div class="sc" style="display:inline-block;min-width:200px;margin-right:10px">
@@ -11121,7 +11156,7 @@ async function rapprocher(id){
     if(!await confirmModal(`L'écriture ${piece} est déjà rapprochée avec une autre opération bancaire.\n\nLa lier aussi à celle-ci (risque de doublon) ?`)) return;
   }
   // Garde-fou : montant ou sens différent entre l'opération et l'écriture choisie.
-  const cand=rapprPieceCandidates({includeAllAccounts:true,consumed:new Set()}).find(c=>c.piece===piece);
+  const cand=rapprPieceCandidates({includeAllAccounts:true,consumed:new Set(),keepIgnored:true}).find(c=>c.piece===piece);
   if(t&&cand){
     const txSigned=Math.round(((+t.credit||0)-(+t.debit||0))*100)/100;
     if(Math.abs(txSigned-cand.amount)>=0.01){
@@ -11215,6 +11250,9 @@ function rapprBankSenseAmount(j){
 // comporte plusieurs lignes. includeAllAccounts élargit à toutes les écritures.
 function rapprPieceCandidates(opts){
   const includeAll=!!(opts&&opts.includeAllAccounts);
+  // Par défaut, les écritures antérieures à RAPPR_DATE_DEBUT sont ignorées ; `keepIgnored:true`
+  // les conserve (contrôle d'intégrité des liens, état de rapprochement).
+  const keepIgnored=!!(opts&&opts.keepIgnored);
   const consumed=(opts&&opts.consumed)||consumedPieces();
   const byKey=new Map();
   for(const j of D.journal){
@@ -11241,7 +11279,8 @@ function rapprPieceCandidates(opts){
     const {_bank,_other,_hasBank,...rest}=g;
     return {...rest,amount:Math.round((_hasBank?_bank:_other)*100)/100};
   });
-  return out.sort((a,b)=>compareFrDates(b.date_op,a.date_op)||a.piece.localeCompare(b.piece));
+  return out.filter(g=>keepIgnored||!rapprIgnoredDate(g.date_op))
+    .sort((a,b)=>compareFrDates(b.date_op,a.date_op)||a.piece.localeCompare(b.piece));
 }
 
 // Équilibre entre le total des opérations bancaires et celui des écritures cochées.
@@ -11549,6 +11588,7 @@ function pendingBankPieces(){
   const consumed = consumedPieces();
   return D.journal.filter(j=>{
     if(!j.compte || !j.compte.startsWith('512')) return false;
+    if(rapprIgnoredDate(j.date_op)) return false; // antérieure à RAPPR_DATE_DEBUT : ignorée du rapprochement
     const pieceKey = j.piece || (j.id||'').slice(0,8);
     return !consumed.has(pieceKey);
   });
@@ -11615,7 +11655,7 @@ function findSubsetSum(pool, target, maxSize=10, budget=200000){
 function findGroupedRapprochement(transactions){
   // Pièces du compte 512 non rapprochées, montant signé vu de la banque (+ entrée, − sortie).
   const candidates = rapprPieceCandidates({consumed: consumedPieces()}).filter(g=>Math.abs(g.amount)>=0.01);
-  const pending = transactions.filter(t=>!t.rapproche);
+  const pending = transactions.filter(t=>!t.rapproche&&!rapprIgnoredTx(t));
   const poolIn  = pending.filter(t=>(+t.credit||0) > (+t.debit||0));
   const poolOut = pending.filter(t=>(+t.debit||0) > (+t.credit||0));
 
@@ -11651,7 +11691,7 @@ async function preselectRapprochements(){
   let nbAuto = 0; let nbSuggest = 0;
 
   transactions.forEach((transaction, index)=>{
-    if(transaction.rapproche) return;
+    if(transaction.rapproche||rapprIgnoredTx(transaction)) return;
     const result = bestRapprochementEntry(transaction, excluded, pool);
     if(!result) return;
     const piece = result.entry.piece;
@@ -11707,7 +11747,7 @@ async function preselectRapprochements(){
 }
 
 async function toutRappr(){
-  const ids=D.comptes.flatMap(c=>(c.transactions||[]).filter(t=>!t.rapproche).map(t=>t.id));
+  const ids=D.comptes.flatMap(c=>(c.transactions||[]).filter(t=>!t.rapproche&&!rapprIgnoredTx(t)).map(t=>t.id));
   if(!ids.length) return;
   if(!await confirmModal(`Rapprocher les ${ids.length} transaction(s) restantes sans vérification ?`)) return;
   const {error}=await SB.from('transactions').update({rapproche:true}).in('id',ids);

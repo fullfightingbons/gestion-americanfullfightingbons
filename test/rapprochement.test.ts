@@ -1275,3 +1275,76 @@ describe("nouveaux boutons : enregistrement réel", () => {
     expect(r.j).toEqual([["512", 320, 0], ["7080", 0, 320]]);
   });
 });
+
+describe("date de début du rapprochement (RAPPR_DATE_DEBUT = 2025-07-01)", () => {
+  const setup = `
+    D.journal = [
+      {id:'o1', piece:'OLD-1', compte:'512000', debit:50, credit:0, date_op:'2025-03-10', libelle:'Ancienne cotisation'},
+      {id:'o2', piece:'OLD-1-COT', compte:'706000', debit:0, credit:50, date_op:'2025-03-10', libelle:'Ancienne cotisation'},
+      {id:'n1', piece:'NEW-1', compte:'512000', debit:80, credit:0, date_op:'2025-07-01', libelle:'Cotisation récente'},
+      {id:'n2', piece:'NEW-2', compte:'512000', debit:0, credit:20, date_op:'2026-01-05', libelle:'Achat'},
+    ];
+    D.comptes = [{nom:'CM', solde_initial:0, transactions:[
+      {id:'t-old', date_op:'30/06/2025', date_valeur:'2025-06-30', libelle:'VIR ancien', debit:0, credit:50, rapproche:false},
+      {id:'t-new', date_op:'01/07/2025', date_valeur:'2025-07-01', libelle:'VIR récent', debit:0, credit:80, rapproche:false},
+    ]}];
+  `;
+  const run = (code: string) => JSON.parse(loadAppAndRun(`${setup} capture(JSON.stringify(${code}));`));
+
+  it("la limite est le 1er juillet 2025 : la veille est ignorée, le jour même ne l'est pas (dates ISO ou JJ/MM/AAAA)", () => {
+    expect(
+      run(`['2025-06-30','2025-07-01','30/06/2025','01/07/2025','',null].map(rapprIgnoredDate)`)
+    ).toEqual([true, false, true, false, false, false]);
+  });
+
+  it("les opérations bancaires antérieures sortent de la liste de travail", () => {
+    expect(run(`rapprActiveTransactions().map(t => t.id)`)).toEqual(["t-new"]);
+    expect(run(`rapprAllTransactions().length`)).toBe(2);
+  });
+
+  it("les écritures 512 antérieures ne sont plus proposées, sauf avec keepIgnored", () => {
+    expect(run(`rapprPieceCandidates().map(c => c.piece)`)).toEqual(["NEW-2", "NEW-1"]);
+    expect(run(`rapprPieceCandidates({includeAllAccounts:true}).map(c => c.piece).sort()`)).toEqual(["NEW-1", "NEW-2"]);
+    expect(run(`rapprPieceCandidates({keepIgnored:true}).map(c => c.piece).sort()`)).toEqual(["NEW-1", "NEW-2", "OLD-1"]);
+  });
+
+  it("le contrôle de complétude ne compte plus ce qui est antérieur", () => {
+    const r = run(`(function(){ const r = rapprControlReport(); return {
+      pendingTx: r.pendingTx.map(t => t.id), pendingPieces: r.pendingPieces.map(p => p.piece), waiting: r.counts.waiting }; })()`);
+    expect(r).toEqual({ pendingTx: ["t-new"], pendingPieces: ["NEW-2", "NEW-1"], waiting: 3 });
+  });
+
+  it("une borne d'exercice antérieure ne ramène pas les éléments ignorés", () => {
+    expect(run(`rapprControlReport({from:'2024-01-01'}).pendingTx.map(t => t.id)`)).toEqual(["t-new"]);
+  });
+
+  it("l'état de rapprochement garde TOUTES les opérations : l'écart est inchangé et se décompose exactement", () => {
+    const e = run(`rapprControlReport().equation`);
+    expect(e.soldeBanque).toBe(130);
+    expect(e.soldeCompta).toBe(110);
+    expect(e.ecart).toBe(20);
+    expect(e.unrecTx).toBe(130);
+    expect(e.unrecTxIgnored).toBe(50);
+    expect(e.unrecPieces).toBe(-110);
+    expect(e.unrecPiecesIgnored).toBe(-50);
+    expect(e.autres).toBe(0);
+  });
+
+  it("l'écran affiche l'information et détaille les éléments ignorés dans l'état de rapprochement", () => {
+    const html: string = JSON.parse(
+      loadAppAndRun(`${setup} capture(JSON.stringify(vRappr() + rapprControlHtml(rapprControlReport())));`)
+    );
+    expect(html).toContain("antérieures au 01/07/2025 sont ignorées du rapprochement");
+    expect(html).toContain("1 opération(s) bancaire(s) et 1 écriture(s) 512 mises de côté");
+    expect(html).toContain("opérations bancaires ignorées (avant le 01/07/2025)");
+    expect(html).toContain("écritures 512 ignorées (avant le 01/07/2025");
+    // seule l'opération récente est listée dans le tableau de travail
+    expect(html).toContain("VIR récent");
+    expect(html).not.toContain("VIR ancien");
+  });
+
+  it("le résumé des éléments mis de côté, et les écritures 512 en attente du tableau de bord", () => {
+    expect(run(`rapprIgnoredSummary()`)).toEqual({ tx: 1, pieces: 1 });
+    expect(run(`pendingBankPieces().map(j => j.id)`)).toEqual(["n1", "n2"]);
+  });
+});
