@@ -330,7 +330,7 @@ tr:hover td{background:#fbf6ef}
   .stab{padding:10px 14px;font-size:13px;min-height:40px}
   .dash-priority-actions .btn,.modal-act .btn{flex:1 1 auto}
   /* Regroupement des onglets secondaires sous "Plus" (voir renderTabs()
-     dans app.js) : sur mobile, seuls Pilotage/Adhérents/Présences
+     dans app.js) : sur mobile, seuls Pilotage/Adhérents
      restent visibles d'emblée, le reste se déplie au tap. L'onglet
      secondaire actif reste toujours visible même replié, pour garder le
      repère de navigation. */

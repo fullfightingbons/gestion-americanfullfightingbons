@@ -4,6 +4,15 @@ Ajoutées sur la base du projet existant, sans rien retirer. `tsc --noEmit`,
 les 31 tests existants (`vitest run`) et `wrangler deploy --dry-run` sont
 propres après ajout.
 
+## Onglet Présences retiré — 14/10/2026
+
+**Onglet Présences supprimé** du back-office. Retirés du frontend (`app.js`) : l'entrée du menu (et du groupe prioritaire
+mobile), la vue, la fenêtre « Pointer une présence », le chargement des données, les fonctions d'enregistrement /
+suppression, l'export CSV, et la permission « ✅ Présences » dans l'administration des utilisateurs. `app.min.js` régénéré.
+**Rien n'est supprimé en base ni côté API** : la table `presences`, la colonne `perm_presences` et la route `/api/presences`
+restent en place (les données sont conservées), et l'**espace membre** continue d'afficher les présences de chaque
+adhérent et de générer l'attestation de présence (`/api/member/presences`, `/api/member/documents/attestation-presence`).
+
 ## Page Rapprochement allégée (elle faisait ramer, voire planter, le navigateur) — 12/10/2026
 
 Causes, mesurées sur vos 155 opérations réelles et un journal de 3 600 à 13 800 lignes :

@@ -56,7 +56,6 @@ const MATERIEL_ETATS = ['Neuf','Bon','Usagé','À réviser','Hors service'];
 const ALL_TABS = [
   {id:'dashboard',    icon:'🏁',label:'Pilotage'},
 {id:'adherents',    icon:'👥',label:'Adhérents',    perm:'perm_adherents'},
-{id:'suivi',        icon:'✅',label:'Présences',    perm:'perm_presences'},
 {id:'diplomes',     icon:'🎓',label:'Diplômes',     perm:'perm_diplomes'},
 {id:'ressources',    icon:'📚',label:'Ressources',   perm:'perm_adherents'},
 {id:'banque',       icon:'🏦',label:'Banque',        perm:'perm_banque'},
@@ -71,10 +70,9 @@ const ALL_TABS = [
 // passent derrière le bouton "Plus" — n'affecte que l'affichage sous 700px
 // (voir styles.css), la liste desktop et la logique de navigation (showTab)
 // restent identiques dans tous les cas.
-const TAB_PRIMARY_MOBILE = new Set(['dashboard','adherents','suivi']);
+const TAB_PRIMARY_MOBILE = new Set(['dashboard','adherents']);
 const PERM_META = [
   ['perm_adherents','👥 Adhérents'],
-['perm_presences','✅ Présences'],
 ['perm_diplomes','🎓 Diplômes'],
 ['perm_banque','🏦 Banque'],
 ['perm_comptabilite','📊 Comptabilité'],
@@ -206,11 +204,11 @@ const D = {
     diplomeLayouts:{},
     diplomes:[],
     feedbackCampaigns:[], feedbackRecipients:[], feedbackResponses:[],
-    presences:[], materiel:[], materielEmprunts:[], materielMouvements:[], ressources:[], ressourcesError:'', budgetPrevisionnel:[], budgetComparatif:null,
+    materiel:[], materielEmprunts:[], materielMouvements:[], ressources:[], ressourcesError:'', budgetPrevisionnel:[], budgetComparatif:null,
     familles:[], famillesError:null,
     renouvellement:null,
     rolePerms: JSON.parse(JSON.stringify(DEFAULT_ROLE_PERMS)),
-    loaded:{core:false,dashboard:false,adherents:false,banque:false,comptabilite:false,achat:false,facture:false,administration:false,diplomesArchive:false,feedback:false,presences:false,materiel:false,ressources:false,familles:false},
+    loaded:{core:false,dashboard:false,adherents:false,banque:false,comptabilite:false,achat:false,facture:false,administration:false,diplomesArchive:false,feedback:false,materiel:false,ressources:false,familles:false},
     loading:{},
 };
 const UI = {
@@ -220,7 +218,6 @@ const UI = {
   notices:[],
   search:{adherents:'',achats:'',factures:'',feedback:''},
   adhFilters:{statut:'',type:'',season:'current',special:''},
-  presFilters:{from:'',to:'',creneau:'',statut:'',q:''},
   materielFilters:{q:'',categorie:'',etat:'',dispo:''},
   materielSection:'inventaire',
   adhSection:'liste',
@@ -611,7 +608,7 @@ function markLoaded(key,value=true){
 }
 
 function resetLoadedData(){
-  D.loaded={core:false,dashboard:false,adherents:false,banque:false,comptabilite:false,achat:false,facture:false,administration:false,diplomesArchive:false,feedback:false,presences:false,materiel:false,ressources:false,familles:false};
+  D.loaded={core:false,dashboard:false,adherents:false,banque:false,comptabilite:false,achat:false,facture:false,administration:false,diplomesArchive:false,feedback:false,materiel:false,ressources:false,familles:false};
   D.loading={};
 }
 
@@ -727,15 +724,6 @@ async function loadTabData(tab, force=false){
       D.feedbackRecipients=recRes.data||[];
       D.feedbackResponses=repRes.data||[];
       markLoaded('feedback');
-      return;
-    }
-    if(tab==='presences'){
-      const [presRes]=await Promise.all([
-        SB.from('presences').select('*').order('date_seance',{ascending:false}),
-        D.loaded.adherents?Promise.resolve():loadTabData('adherents',force),
-      ]);
-      D.presences=presRes.data||[];
-      markLoaded('presences');
       return;
     }
     if(tab==='materiel'){
@@ -1982,17 +1970,13 @@ function toggleTabsMore(){
   if(btn) btn.setAttribute('aria-expanded',open?'true':'false');
 }
 function needsLoadedTab(tab){
-  return ['dashboard','adherents','diplomes','banque','comptabilite','achat','facture','administration','feedback','suivi','materiel','ressources'].includes(tab);
+  return ['dashboard','adherents','diplomes','banque','comptabilite','achat','facture','administration','feedback','materiel','ressources'].includes(tab);
 }
 async function ensureCurrentTabData(){
   const target=UI.tab==='diplomes'?'adherents':UI.tab;
   if(!needsLoadedTab(UI.tab)) return;
   if(target==='adherents' && UI.tab==='diplomes' && !D.diplomeTemplates.length){
     await Promise.all([loadTabData(target),loadDiplomeTemplates()]);
-    return;
-  }
-  if(UI.tab==='suivi'){
-    await loadTabData('presences');
     return;
   }
   await loadTabData(target);
@@ -2013,12 +1997,12 @@ function canWriteCurrentTab(){
 function render(){
   if(!UI.currentUser) return;
   const c=document.getElementById('tab-content');
-  const loadKey=UI.tab==='diplomes'?'adherents':UI.tab==='suivi'?'presences':UI.tab;
+  const loadKey=UI.tab==='diplomes'?'adherents':UI.tab;
   if(needsLoadedTab(UI.tab) && !D.loaded[loadKey] && D.loading[loadKey]){
     c.innerHTML=`<div class="empty">Chargement de la rubrique…</div>`;
     return;
   }
-  const map={dashboard:vDashboard,adherents:vAdh,diplomes:vDiplomes,banque:vBanque,comptabilite:vCompta,achat:vAchat,facture:vFacture,feedback:vFeedback,administration:vAdmin,suivi:vSuivi,materiel:vMateriel,ressources:vRessources};
+  const map={dashboard:vDashboard,adherents:vAdh,diplomes:vDiplomes,banque:vBanque,comptabilite:vCompta,achat:vAchat,facture:vFacture,feedback:vFeedback,administration:vAdmin,materiel:vMateriel,ressources:vRessources};
   c.innerHTML=(map[UI.tab]||vAdh)();
   renderModal();
   updLogo();
@@ -6212,80 +6196,6 @@ function vAchat(){
 }
 
 // ═══════════════════════════════════════════════════
-// PRÉSENCES
-// ═══════════════════════════════════════════════════
-function vSuivi(){
-  return vPresences();
-}
-
-function presenceDisplayName(p){
-  if(p.nom_invite) return p.nom_invite;
-  const a=D.adherents.find(x=>x.id===p.adherent_id);
-  return a?`${a.prenom} ${a.nom}`:'—';
-}
-function filteredPresencesList(){
-  return [...D.presences].filter(p=>{
-    const matchesFrom=!UI.presFilters.from || (p.date_seance||'')>=UI.presFilters.from;
-    const matchesTo=!UI.presFilters.to || (p.date_seance||'')<=UI.presFilters.to;
-    const matchesCreneau=!UI.presFilters.creneau || (p.creneau||'')===UI.presFilters.creneau;
-    const matchesStatut=!UI.presFilters.statut || (UI.presFilters.statut==='present'?!!p.present:!p.present);
-    const q=(UI.presFilters.q||'').toLowerCase();
-    const matchesSearch=!q || presenceDisplayName(p).toLowerCase().includes(q);
-    return matchesFrom&&matchesTo&&matchesCreneau&&matchesStatut&&matchesSearch;
-  }).sort((a,b)=>(b.date_seance||'').localeCompare(a.date_seance||''));
-}
-function vPresences(){
-  const canWrite=hasPerm('perm_presences','write');
-  const filtered=filteredPresencesList();
-  const creneaux=[...new Set(D.presences.map(p=>p.creneau).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
-  const presentCount=filtered.filter(p=>p.present).length;
-  const guestCount=filtered.filter(p=>p.nom_invite).length;
-  const periodLabel=UI.presFilters.from||UI.presFilters.to?` du ${UI.presFilters.from?fd(UI.presFilters.from):'…'} au ${UI.presFilters.to?fd(UI.presFilters.to):'…'}`:'';
-  return`<div class="view-head">
-  <div><div class="eyebrow">Suivi de l'activité</div><h2>Présences</h2>
-  <p>Pointage par séance — adhérent·e·s et invité·e·s non adhérent·e·s (essai, CSE ponctuel...) — utile pour l'assiduité et pour justifier l'activité réelle du club.</p></div>
-  ${canWrite?`<button class="btn primary" onclick="openModal('presence')">+ Pointer une présence</button>`:''}
-  </div>
-  <div class="g4" style="margin-bottom:14px">
-  <div class="sc"><div class="v vr">${filtered.length}</div><div class="l">Pointages${periodLabel?' (période)':''}</div></div>
-  <div class="sc"><div class="v vg">${presentCount}</div><div class="l">Présents</div></div>
-  <div class="sc"><div class="v">${filtered.length-presentCount}</div><div class="l">Absences</div></div>
-  <div class="sc"><div class="v vgo">${guestCount}</div><div class="l">Dont invité·e·s</div></div>
-  </div>
-  <div class="toolbar">
-  <input style="flex:1;min-width:160px" placeholder="Rechercher un nom..." value="${esc(UI.presFilters.q||'')}" oninput="UI.presFilters.q=this.value;render()">
-  <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--txt2)">Du <input type="date" style="width:auto" value="${UI.presFilters.from||''}" onchange="UI.presFilters.from=this.value;render()"></label>
-  <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--txt2)">Au <input type="date" style="width:auto" value="${UI.presFilters.to||''}" onchange="UI.presFilters.to=this.value;render()"></label>
-  <select style="width:auto;min-width:170px" onchange="UI.presFilters.creneau=this.value;render()">
-  <option value="" ${!UI.presFilters.creneau?'selected':''}>Tous les créneaux</option>
-  ${creneaux.map(c=>`<option value="${esc(c)}" ${UI.presFilters.creneau===c?'selected':''}>${esc(c)}</option>`).join('')}
-  </select>
-  <select style="width:auto;min-width:170px" onchange="UI.presFilters.statut=this.value;render()">
-  <option value="" ${!UI.presFilters.statut?'selected':''}>Présents + absences</option>
-  <option value="present" ${UI.presFilters.statut==='present'?'selected':''}>Présents uniquement</option>
-  <option value="absent" ${UI.presFilters.statut==='absent'?'selected':''}>Absences uniquement</option>
-  </select>
-  <button class="btn" onclick="exportPresencesCSV()" title="Exporte la liste ci-dessous : période et filtres actifs (date, créneau, présent/absent, recherche)">⬇ Export CSV</button>
-  <button class="btn" onclick="UI.presFilters={from:'',to:'',creneau:'',statut:'',q:''};render()">Réinitialiser</button>
-  </div>
-  <div class="wrap"><table>
-  <thead><tr><th>Date</th><th>Nom</th><th>Créneau</th><th>Présence</th><th>Notes</th><th></th></tr></thead>
-  <tbody>${filtered.map(p=>`<tr>
-    <td>${fd(p.date_seance)}</td>
-    <td><strong style="font-weight:500">${esc(presenceDisplayName(p))}</strong>${p.nom_invite?` <span class="badge bgray" style="margin-left:4px" title="Personne non adhérente">Invité·e</span>`:''}</td>
-    <td>${esc(p.creneau||'—')}</td>
-    <td><span class="badge ${p.present?'bok':'bno'}">${p.present?'Présent':'Absence'}</span></td>
-    <td style="font-size:11px;color:var(--txt2)">${esc(p.notes||'')}</td>
-    <td style="white-space:nowrap">
-    ${canWrite?`<button class="btn sm" onclick="openModal('presence','${p.id}')">Modifier</button>
-    <button class="btn sm danger" style="margin-left:4px" onclick="delPresence('${p.id}')">✕</button>`:''}
-    </td>
-    </tr>`).join('')}
-    ${filtered.length===0?`<tr><td colspan="6" class="empty">Aucune présence enregistrée pour cette sélection</td></tr>`:''}
-    </tbody></table></div>`;
-}
-
-// ═══════════════════════════════════════════════════
 // MATÉRIEL CLUB
 // ═══════════════════════════════════════════════════
 // ── Helpers stock ──────────────────────────────────────────────
@@ -8726,26 +8636,6 @@ function renderModal(){
     <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="saveCpt()">Créer</button></div>
     </div>`;
 
-  }else if(UI.modal==='presence'){
-    const p=UI.editObj||{adherent_id:D.adherents[0]?.id||'',nom_invite:'',date_seance:td(),creneau:'',present:true,notes:''};
-    const isInvite=!!p.nom_invite;
-    html=`<div class="modal" style="max-width:420px"><h2>✅ ${UI.editObj?'Modifier la présence':'Pointer une présence'}</h2>
-    <div style="display:flex;flex-direction:column;gap:10px">
-    <div class="fg"><label>Type</label>
-    <div style="display:flex;gap:14px;font-size:13px">
-    <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="radio" name="p-type" value="adherent" ${!isInvite?'checked':''} onchange="onPresenceTypeChange('adherent')" style="width:auto">Adhérent·e</label>
-    <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="radio" name="p-type" value="invite" ${isInvite?'checked':''} onchange="onPresenceTypeChange('invite')" style="width:auto">Invité·e (non adhérent·e)</label>
-    </div></div>
-    <div class="fg" id="p-adh-wrap" style="${isInvite?'display:none':''}"><label>Adhérent</label><select id="p-adh">${D.adherents.map(a=>`<option value="${a.id}" ${p.adherent_id===a.id?'selected':''}>${esc(a.prenom)} ${esc(a.nom)}</option>`).join('')}</select></div>
-    <div class="fg" id="p-inv-wrap" style="${isInvite?'':'display:none'}"><label>Nom de l'invité·e</label><input id="p-inv" value="${esc(p.nom_invite||'')}" placeholder="Prénom Nom (essai, CSE, visiteur...)"></div>
-    <div class="fg"><label>Date de la séance</label><input id="p-date" type="date" value="${p.date_seance||td()}"></div>
-    <div class="fg"><label>Créneau</label><input id="p-cre" value="${esc(p.creneau||'')}" placeholder="Cours adultes 20h"></div>
-    <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer"><input type="checkbox" id="p-pres" ${p.present!==false?'checked':''} style="width:auto;accent-color:var(--red)"> Présent (décocher pour une absence justifiée)</label>
-    <div class="fg"><label>Notes</label><input id="p-notes" value="${esc(p.notes||'')}"></div>
-    </div>
-    <div class="modal-act"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn primary" onclick="savePresence()">Enregistrer</button></div>
-    </div>`;
-
   }else if(UI.modal==='materiel'){
     const m=UI.editObj||{nom:'',categorie:'',quantite:1,quantite_min:0,etat:'Bon',date_achat:'',prix_achat:'',derniere_revision:'',prochaine_revision:'',localisation:'',notes:''};
     html=`<div class="modal" style="max-width:460px"><h2>🥊 ${UI.editObj?'Modifier le matériel':'Ajouter du matériel'}</h2>
@@ -9562,7 +9452,7 @@ function openEcritureType(type){
 }
 
 function openModal(t,id){
-  const permMap={adh:'perm_adherents',compte:'perm_banque',ecr:'perm_comptabilite',achat:'perm_achats',user:'perm_administration',exo:'perm_comptabilite',exo_close:'perm_comptabilite',feedback_campaign:'perm_feedback',feedback_invite:'perm_feedback',presence:'perm_presences',materiel:'perm_materiel',materiel_emprunt:'perm_materiel',materiel_mouvement:'perm_materiel',ressource:'perm_adherents',budget_ligne:'perm_comptabilite'};
+  const permMap={adh:'perm_adherents',compte:'perm_banque',ecr:'perm_comptabilite',achat:'perm_achats',user:'perm_administration',exo:'perm_comptabilite',exo_close:'perm_comptabilite',feedback_campaign:'perm_feedback',feedback_invite:'perm_feedback',materiel:'perm_materiel',materiel_emprunt:'perm_materiel',materiel_mouvement:'perm_materiel',ressource:'perm_adherents',budget_ligne:'perm_comptabilite'};
   if(permMap[t] && !requireWritePerm(permMap[t])) return;
   UI.modal=t;UI.editObj=null;UI.guardianInfo=null;UI.blacklistHistorique=null;
   if(id){
@@ -9572,7 +9462,6 @@ function openModal(t,id){
     if(t==='user')  UI.editObj=D.users.find(u=>u.id===id);
     if(t==='exo_close') UI.editObj=D.exercices.find(e=>e.id===id);
     if(t==='feedback_campaign') UI.editObj=D.feedbackCampaigns.find(c=>c.id===id);
-    if(t==='presence') UI.editObj=D.presences.find(p=>p.id===id);
     if(t==='materiel') UI.editObj=D.materiel.find(m=>m.id===id);
     if(t==='ressource') UI.editObj=D.ressources.find(r=>r.id===id);
     if(t==='materiel_emprunt' || t==='materiel_mouvement') UI.materielTargetId=id;
@@ -10224,52 +10113,6 @@ async function saveCpt(){
   if(error)return alert('Erreur : '+error.message);
   D.comptes.push({...data,transactions:[]});
   closeModal();render();
-}
-
-function onPresenceTypeChange(v){
-  const adhWrap=document.getElementById('p-adh-wrap');
-  const invWrap=document.getElementById('p-inv-wrap');
-  if(!adhWrap||!invWrap)return;
-  adhWrap.style.display=v==='invite'?'none':'';
-  invWrap.style.display=v==='invite'?'':'none';
-}
-async function savePresence(){
-  const isInvite=document.querySelector('input[name="p-type"]:checked')?.value==='invite';
-  const date_seance=document.getElementById('p-date').value;
-  if(!date_seance)return alert('Date obligatoire.');
-  let adherent_id=null,nom_invite=null;
-  if(isInvite){
-    nom_invite=document.getElementById('p-inv').value.trim();
-    if(!nom_invite)return alert('Nom de l\u2019invité·e obligatoire.');
-  }else{
-    adherent_id=document.getElementById('p-adh').value;
-    if(!adherent_id)return alert('Adhérent obligatoire.');
-  }
-  const payload={
-    adherent_id, nom_invite, date_seance,
-    creneau:document.getElementById('p-cre').value.trim()||null,
-    present:document.getElementById('p-pres').checked?1:0,
-    notes:document.getElementById('p-notes').value.trim()||null,
-    updated_at:new Date().toISOString(),
-  };
-  if(UI.editObj){
-    const {error}=await SB.from('presences').update(payload).eq('id',UI.editObj.id);
-    if(error)return alert('Erreur : '+error.message);
-    Object.assign(D.presences.find(p=>p.id===UI.editObj.id),payload);
-  }else{
-    const {data,error}=await SB.from('presences').insert({...payload,id:crypto.randomUUID(),created_at:new Date().toISOString()}).select().single();
-    if(error)return alert('Erreur : '+(error.message.includes('UNIQUE')?'Cette personne est déjà pointée sur ce créneau à cette date.':error.message));
-    D.presences.push(data);
-  }
-  closeModal();render();
-}
-
-async function delPresence(id){
-  if(!confirm('Supprimer ce pointage de présence ?'))return;
-  const {error}=await SB.from('presences').delete().eq('id',id);
-  if(error)return alert('Erreur : '+error.message);
-  D.presences=D.presences.filter(p=>p.id!==id);
-  render();
 }
 
 async function saveMateriel(){
@@ -12000,16 +11843,6 @@ function exportAdhEmailsCSV(){
   notify('success',`${filtered.length} email(s) exporté(s).`,'Export emails');
 }
 
-function exportPresencesCSV(){
-  // Exporte les présences actuellement filtrées (période, créneau, statut, recherche — même filtre que la vue)
-  const filtered=filteredPresencesList();
-  if(!filtered.length){notify('warn','Aucune présence dans la sélection courante.','Export CSV');return;}
-  const rows=[['Date','Nom','Type','Créneau','Présence','Notes']];
-  filtered.forEach(p=>rows.push([p.date_seance||'',csvSafe(presenceDisplayName(p)),p.nom_invite?'Invité·e':'Adhérent·e',csvSafe(p.creneau||''),p.present?'Présent':'Absence',csvSafe(p.notes||'')]));
-  const periodSuffix=UI.presFilters.from||UI.presFilters.to?`_${UI.presFilters.from||'debut'}_${UI.presFilters.to||'fin'}`:'';
-  dl('\uFEFF'+rows.map(r=>r.join(';')).join('\n'),`presences${periodSuffix}_${td()}.csv`,'text/csv;charset=utf-8');
-  notify('success',`${filtered.length} présence(s) exportée(s).`,'Export CSV');
-}
 function exportAchatsCSV(){
   const rows=[['Date','Fournisseur','Désignation','Catégorie','Montant','Mode paiement','Référence','Statut','Pièce']];
   D.achats.forEach(a=>rows.push([a.date_op,csvSafe(a.fournisseur),csvSafe(a.designation),csvSafe(a.categorie),(+a.montant).toFixed(2),a.mode_paiement||'',csvSafe(a.reference_paiement||''),a.statut,csvSafe(a.piece||'')]));
