@@ -5142,7 +5142,7 @@ function rowFallsWithinExercice(row, exo){
 function normalizePieceGroupKey(piece){
   const p=(piece||'').trim();
   if(!p) return '__SANS_PIECE__';
-  const autoPiece=p.match(/^((?:ADH|ACH|PAY|SUB|VTE)-[^-]+)-([A-Z]{2,4}\d*)$/);
+  const autoPiece=p.match(/^((?:ADH|ACH|PAY|SUB|VTE)-[^-]+(?:-S\d{4})?)-([A-Z]{2,4}\d*)$/);
   const suffixes=new Set(['ART','ATT','BNQ','CHG','CLI','COT','CTR','ENC','PAS','PRO','SUB']);
   if(autoPiece&&(suffixes.has(autoPiece[2])||/^PRD\d+$/.test(autoPiece[2]))) return autoPiece[1];
   if(/-L[12]$/.test(p)) return p.replace(/-L[12]$/,'');
@@ -9897,17 +9897,52 @@ async function deleteJournalAutoPrefix(prefix){
   D.journal=D.journal.filter(j=>!ids.includes(j.id));
 }
 
-function hasInscriptionWebAdherentAccounting(adherent,prefix){
+// ── Pièces d'adhésion : une série de pièces PAR SAISON ─────────────────────────
+// Un adhérent garde le même id d'une saison à l'autre (renouvellement). Les pièces
+// automatiques ADH-<id> étaient donc réécrites à chaque enregistrement et la saison
+// précédente disparaissait du journal. Chaque pièce porte désormais la saison de la
+// date d'inscription : ADH-<id>-S2526-ENC, -COT, -PAS. Les anciennes pièces sans
+// jeton de saison (ADH-<id>-ENC…) sont conservées et ne sont recalculées que si
+// leur date tombe dans la même saison.
+function exerciceForDate(dateOp){
+  const d=String(dateOp||'');
+  if(!d) return null;
+  return (D.exercices||[]).find(e=>(!e.date_debut||d>=e.date_debut)&&(!e.date_fin||d<=e.date_fin))||null;
+}
+
+function seasonTagForExercice(exo){
+  const a=String(exo?.date_debut||'').slice(2,4);
+  const b=String(exo?.date_fin||'').slice(2,4);
+  return /^\d{2}$/.test(a)&&/^\d{2}$/.test(b)?`S${a}${b}`:'';
+}
+
+function adherentSeasonInfo(adherent){
+  const dateOp=adherent?.date_inscription||td();
+  const exo=exerciceForDate(dateOp)||(D.exercices||[]).find(e=>e.id===adherent?.exercice_id)||D.currentExo||null;
+  return {dateOp,exo,tag:seasonTagForExercice(exo)};
+}
+
+function hasInscriptionWebAdherentAccounting(adherent,prefix,exo){
   const id=String(adherent?.id||'');
   return D.journal.some(j=>
     String(j.source_logiciel||'')==='inscription-web' &&
-    (String(j.source_id||'')===id || normalizePieceGroupKey(j.piece)===prefix)
+    (String(j.source_id||'')===id || normalizePieceGroupKey(j.piece)===prefix) &&
+    // Une inscription web d'une AUTRE saison ne doit pas empêcher de comptabiliser celle-ci.
+    (!exo || rowFallsWithinExercice(j,exo))
   );
 }
 
-async function deleteGestionAdherentJournal(prefix){
-  const suffixes=new Set([`${prefix}-ENC`,`${prefix}-COT`,`${prefix}-PAS`]);
-  const rows=D.journal.filter(j=>suffixes.has(j.piece||'') && String(j.source_logiciel||'')!=='inscription-web');
+async function deleteGestionAdherentJournal(basePrefix,seasonPrefix,exo){
+  const suffixes=['ENC','COT','PAS'];
+  const current=new Set(suffixes.map(x=>`${seasonPrefix}-${x}`));
+  const legacy=new Set(suffixes.map(x=>`${basePrefix}-${x}`));
+  const rows=D.journal.filter(j=>{
+    if(String(j.source_logiciel||'')==='inscription-web') return false;
+    const piece=j.piece||'';
+    if(current.has(piece)) return true;
+    // Ancienne pièce sans saison : seulement si elle appartient à la même saison.
+    return legacy.has(piece) && (!exo || rowFallsWithinExercice(j,exo));
+  });
   if(rows.length===0) return;
   const ids=rows.map(r=>r.id);
   const {error}=await SB.from('journal_comptable').delete().in('id',ids);
@@ -10007,9 +10042,11 @@ async function syncVenteJournal(facture){
 }
 
 async function syncAdherentJournal(adherent){
-  const prefix=autoPiecePrefix('ADH',adherent.id);
-  const hasPublicAccounting=hasInscriptionWebAdherentAccounting(adherent,prefix);
-  await deleteGestionAdherentJournal(prefix);
+  const basePrefix=autoPiecePrefix('ADH',adherent.id);
+  const {dateOp,exo,tag}=adherentSeasonInfo(adherent);
+  const prefix=tag?`${basePrefix}-${tag}`:basePrefix;
+  const hasPublicAccounting=hasInscriptionWebAdherentAccounting(adherent,basePrefix,exo);
+  await deleteGestionAdherentJournal(basePrefix,prefix,exo);
   if(hasPublicAccounting) return;
 
   const cotisation=adherent.paiement==='Gratuit' ? 0 : (parseFloat(adherent.cotisation)||0);
@@ -10017,10 +10054,10 @@ async function syncAdherentJournal(adherent){
   const total=cotisation+passRegion;
   if(total<=0) return;
 
-  const dateOp=adherent.date_inscription||td();
   const base={
     date_op:dateOp,
-    exercice_id:adherent.exercice_id||D.currentExo?.id||null,
+    // L'exercice suit la DATE de l'opération (et non l'exercice d'origine fiche adhérent).
+    exercice_id:exo?.id||adherent.exercice_id||D.currentExo?.id||null,
     created_at:new Date().toISOString()
   };
   const nom=`${adherent.nom||''} ${adherent.prenom||''}`.trim();

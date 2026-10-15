@@ -4,14 +4,25 @@ Ajoutées sur la base du projet existant, sans rien retirer. `tsc --noEmit`,
 les 31 tests existants (`vitest run`) et `wrangler deploy --dry-run` sont
 propres après ajout.
 
-## Onglet Présences retiré — 14/10/2026
+## Onglet Présences retiré + une série de pièces d'adhésion par saison — 14/10/2026
 
-**Onglet Présences supprimé** du back-office. Retirés du frontend (`app.js`) : l'entrée du menu (et du groupe prioritaire
-mobile), la vue, la fenêtre « Pointer une présence », le chargement des données, les fonctions d'enregistrement /
-suppression, l'export CSV, et la permission « ✅ Présences » dans l'administration des utilisateurs. `app.min.js` régénéré.
-**Rien n'est supprimé en base ni côté API** : la table `presences`, la colonne `perm_presences` et la route `/api/presences`
-restent en place (les données sont conservées), et l'**espace membre** continue d'afficher les présences de chaque
-adhérent et de générer l'attestation de présence (`/api/member/presences`, `/api/member/documents/attestation-presence`).
+**Onglet Présences supprimé** (jugé inutile). L'onglet disparaît de la navigation (bureau et mobile) et la permission
+« ✅ Présences » n'est plus proposée dans l'administration des utilisateurs. Retirés du frontend : la vue, la fenêtre de
+pointage, le chargement des données, les filtres et les fonctions d'enregistrement, de suppression et d'export CSV. Un
+utilisateur dont le dernier onglet était « Présences » arrive sur le premier onglet auquel il a accès. **Rien n'est supprimé
+en base ni côté API** : la table `presences`, la colonne `perm_presences` et la route restent en place, car l'espace membre
+lit encore ces données (liste des présences de l'adhérent, attestation de présence en PDF). Un `DROP TABLE` serait une
+migration à part, irréversible. `app.min.js` régénéré, `app.js?v=20261014b`. 3 tests ajoutés
+(`test/onglet-presences-retire.test.ts`).
+
+**Adhésions : la réinscription n'écrase plus les pièces de la saison précédente.** Un adhérent garde le même identifiant
+d'une saison à l'autre ; `syncAdherentJournal` supprimait puis recréait `ADH-<id>-ENC/-COT/-PAS` à chaque enregistrement
+de la fiche, donc la comptabilité de la saison précédente disparaissait du journal alors que ses virements bancaires
+restaient. Les pièces portent désormais la saison de la date d'inscription (`ADH-<id>-S2627-ENC`, `-COT`, `-PAS`) ; le
+regroupement par pièce reconnaît ce jeton (`normalizePieceGroupKey`) ; l'exercice de la ligne suit la date de l'opération
+(et non l'exercice d'origine de la fiche) ; les anciennes pièces sans jeton ne sont recalculées que si leur date tombe dans
+la même saison ; une inscription web d'une autre saison n'empêche plus de comptabiliser la saison en cours. Aucune migration.
+6 tests ajoutés (`test/adherent-journal-saison.test.ts`).
 
 ## Page Rapprochement allégée (elle faisait ramer, voire planter, le navigateur) — 12/10/2026
 
